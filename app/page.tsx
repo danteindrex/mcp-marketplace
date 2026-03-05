@@ -199,7 +199,6 @@ export default function HomePage() {
               ))}
             </div>
           </LightModeOnly>
-          </div>
         </div>
       </section>
 
