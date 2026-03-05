@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from 'sonner'
+import { RetroUIGlobalProvider } from '@/components/retroui/globals'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -40,8 +41,10 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
-          <Toaster />
+          <RetroUIGlobalProvider>
+            {children}
+            <Toaster />
+          </RetroUIGlobalProvider>
         </ThemeProvider>
         <Analytics />
       </body>
