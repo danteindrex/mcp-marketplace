@@ -7,10 +7,7 @@ import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { LoadingState } from '@/components/empty-state'
 import { fetchBilling, fetchInvoices } from '@/lib/api-client'
-import { mockBilling } from '@/lib/mock-data'
 import { CurrencyTransfer } from '@/components/kokonut'
-
-const userId = 'user_001'
 
 const planFeatures: Record<
   string,
@@ -52,7 +49,7 @@ const planFeatures: Record<
 
 export default function BillingPage() {
   const [isLoading, setIsLoading] = useState(true)
-  const [billing, setBilling] = useState(mockBilling[0])
+  const [billing, setBilling] = useState<any>({ plan: 'free', monthlySpend: 0, currentBalance: 0, nextBillingDate: new Date(), status: 'active' })
   const [invoices, setInvoices] = useState<any[]>([])
 
   useEffect(() => {
@@ -60,8 +57,8 @@ export default function BillingPage() {
       setIsLoading(true)
       try {
         const [bill, invs] = await Promise.all([
-          fetchBilling(userId),
-          fetchInvoices(userId),
+          fetchBilling(),
+          fetchInvoices(),
         ])
         setBilling(bill as any)
         setInvoices(invs as any)

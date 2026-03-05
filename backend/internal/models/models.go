@@ -32,6 +32,7 @@ type Tenant struct {
 type Server struct {
 	ID                   string    `json:"id"`
 	TenantID             string    `json:"tenantId"`
+	Author               string    `json:"author"`
 	Name                 string    `json:"name"`
 	Slug                 string    `json:"slug"`
 	Description          string    `json:"description"`

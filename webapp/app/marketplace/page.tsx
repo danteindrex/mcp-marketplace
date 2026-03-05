@@ -6,8 +6,7 @@ import { LayoutGrid, List, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { TableToolbar } from '@/components/table-toolbar'
-import { mockServers } from '@/lib/mock-data'
-import { apiGet } from '@/lib/api'
+import { fetchServers, type Server } from '@/lib/api-client'
 
 type ViewMode = 'grid' | 'list'
 
@@ -28,21 +27,16 @@ const pricingOptions = [
 
 export default function MarketplacePage() {
   const [view, setView] = useState<ViewMode>('grid')
-  const [servers, setServers] = useState(mockServers)
+  const [servers, setServers] = useState<Server[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedPricing, setSelectedPricing] = useState('')
   const [sortBy, setSortBy] = useState('installs')
 
   useEffect(() => {
-    apiGet<{ items: typeof mockServers }>('/v1/marketplace/servers')
-      .then(data => {
-        if (Array.isArray(data.items)) {
-          setServers(data.items as typeof mockServers)
-        }
-      })
+    fetchServers().then(setServers)
       .catch(() => {
-        // Keep mock data when backend is unavailable.
+        setServers([])
       })
   }, [])
 
@@ -80,7 +74,7 @@ export default function MarketplacePage() {
         results.sort((a, b) => b.installCount - a.installCount)
         break
       case 'newest':
-        results.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime())
+        results.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         break
       case 'name':
         results.sort((a, b) => a.name.localeCompare(b.name))

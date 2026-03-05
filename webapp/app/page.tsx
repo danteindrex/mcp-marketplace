@@ -1,13 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useEffect } from 'react'
 import { ArrowRight, Zap, Shield, TrendingUp, Users, Grid, Sparkles, MessageCircle, Lock, Zap as ZapIcon, Cpu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { mockServers } from '@/lib/mock-data'
+import { fetchFeaturedServers, type Server } from '@/lib/api-client'
 import { TypeWriter, ScrollText, DynamicText, MouseEffectCard, SpotlightCard, BeamsBackground } from '@/components/kokonut'
 import { Accordion } from '@/components/animate-ui/accordion'
 import { LightModeOnly, DarkModeOnly } from '@/components/theme-aware'
@@ -36,16 +35,20 @@ const features = [
   },
 ]
 
-const categories = [
-  { name: 'Data', count: 24, color: 'bg-blue-500/10 text-blue-700 dark:text-blue-400' },
-  { name: 'Automation', count: 18, color: 'bg-purple-500/10 text-purple-700 dark:text-purple-400' },
-  { name: 'AI', count: 32, color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400' },
-  { name: 'Integration', count: 45, color: 'bg-green-500/10 text-green-700 dark:text-green-400' },
-]
-
 export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [featuredServers, setFeaturedServers] = useState(mockServers.filter(s => s.featured))
+  const [featuredServers, setFeaturedServers] = useState<Server[]>([])
+
+  const categories = [
+    { name: 'Data', count: featuredServers.filter(s => s.category === 'data').length, color: 'bg-blue-500/10 text-blue-700 dark:text-blue-400' },
+    { name: 'Automation', count: featuredServers.filter(s => s.category === 'automation').length, color: 'bg-purple-500/10 text-purple-700 dark:text-purple-400' },
+    { name: 'AI', count: featuredServers.filter(s => s.category === 'ai').length, color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400' },
+    { name: 'Integration', count: featuredServers.filter(s => s.category === 'integration').length, color: 'bg-green-500/10 text-green-700 dark:text-green-400' },
+  ]
+
+  useEffect(() => {
+    fetchFeaturedServers().then(setFeaturedServers).catch(() => setFeaturedServers([]))
+  }, [])
 
   return (
     <BeamsBackground className="flex flex-col min-h-screen" intensity={0.4}>

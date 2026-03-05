@@ -38,6 +38,7 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 	}
 	server := models.Server{
 		TenantID:             claims.TenantID,
+		Author:               claims.TenantID,
 		Name:                 req.Name,
 		Slug:                 req.Slug,
 		Description:          req.Description,
@@ -53,6 +54,9 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		SupportsLocal:        req.SupportsLocal,
 		CreatedAt:            time.Now().UTC(),
 		UpdatedAt:            time.Now().UTC(),
+	}
+	if tenant, ok := a.store.GetTenantByID(claims.TenantID); ok {
+		server.Author = tenant.Name
 	}
 	server = a.store.CreateServer(server)
 	a.store.AddAuditLog(models.AuditLog{TenantID: claims.TenantID, ActorID: claims.UserID, Action: "server.create", TargetType: "server", TargetID: server.ID, Outcome: "success"})

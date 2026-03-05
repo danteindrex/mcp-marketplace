@@ -8,22 +8,19 @@ import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { LoadingState } from '@/components/empty-state'
 import { fetchConnections, fetchBilling } from '@/lib/api-client'
-import { mockConnections, mockBilling } from '@/lib/mock-data'
-
-const userId = 'user_001' // Mock current user
 
 export default function BuyerDashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
-  const [connections, setConnections] = useState(mockConnections)
-  const [billing, setBilling] = useState(mockBilling[0])
+  const [connections, setConnections] = useState<any[]>([])
+  const [billing, setBilling] = useState<any>({ monthlySpend: 0, currentBalance: 0, plan: 'free' })
 
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true)
       try {
         const [conns, bill] = await Promise.all([
-          fetchConnections(userId),
-          fetchBilling(userId),
+          fetchConnections(),
+          fetchBilling(),
         ])
         setConnections(conns as any)
         setBilling(bill as any)

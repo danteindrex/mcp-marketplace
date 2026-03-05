@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
 
@@ -109,4 +110,34 @@ func (a *App) upsertLocalAgent(w http.ResponseWriter, r *http.Request) {
 		TunnelStatus: req.TunnelStatus,
 	})
 	writeJSON(w, http.StatusCreated, agent)
+}
+
+func (a *App) rotateBuyerConnectionToken(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	claims, _ := getClaims(r.Context())
+	connections := a.store.ListConnections(claims.TenantID, claims.UserID)
+	for _, conn := range connections {
+		if conn.ID == id {
+			conn.TokenExpiresAt = time.Now().UTC().Add(365 * 24 * time.Hour)
+			a.store.UpsertConnection(conn)
+			writeJSON(w, http.StatusOK, map[string]interface{}{"id": id, "status": "rotated", "tokenExpiresAt": conn.TokenExpiresAt})
+			return
+		}
+	}
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
+}
+
+func (a *App) revokeBuyerConnection(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	claims, _ := getClaims(r.Context())
+	connections := a.store.ListConnections(claims.TenantID, claims.UserID)
+	for _, conn := range connections {
+		if conn.ID == id {
+			conn.Status = "revoked"
+			a.store.UpsertConnection(conn)
+			writeJSON(w, http.StatusOK, map[string]interface{}{"id": id, "status": "revoked"})
+			return
+		}
+	}
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
 }

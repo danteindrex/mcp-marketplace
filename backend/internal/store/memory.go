@@ -61,13 +61,13 @@ func NewMemoryStore() *MemoryStore {
 	s.putUser(uBuyer)
 
 	server1 := models.Server{
-		ID: "srv_postgres", TenantID: tSeller.ID, Name: "PostgreSQL Assistant", Slug: "postgresql-assistant",
+		ID: "srv_postgres", TenantID: tSeller.ID, Author: "DataFlow Inc", Name: "PostgreSQL Assistant", Slug: "postgresql-assistant",
 		Description: "Postgres operations", Category: "data", Version: "2.1.0", DockerImage: "dataflow/postgresql-assistant:2.1.0",
 		CanonicalResourceURI: "https://mcp.marketplace.local/resource/srv_postgres", RequiredScopes: []string{"db:read", "db:write"}, PricingType: "subscription", PricingAmount: 29,
 		Verified: true, Featured: true, InstallCount: 2300, Rating: 4.8, Status: "published", SupportsCloud: true, SupportsLocal: true, CreatedAt: now, UpdatedAt: now,
 	}
 	server2 := models.Server{
-		ID: "srv_doc", TenantID: tSeller.ID, Name: "Document Analyzer", Slug: "document-analyzer",
+		ID: "srv_doc", TenantID: tSeller.ID, Author: "DataFlow Inc", Name: "Document Analyzer", Slug: "document-analyzer",
 		Description: "AI extraction", Category: "ai", Version: "1.5.2", DockerImage: "docai/document-analyzer:1.5.2",
 		CanonicalResourceURI: "https://mcp.marketplace.local/resource/srv_doc", RequiredScopes: []string{"documents:read", "ai:inference"}, PricingType: "x402", PricingAmount: 0.02,
 		Verified: true, Featured: false, InstallCount: 1800, Rating: 4.6, Status: "published", SupportsCloud: true, SupportsLocal: true, CreatedAt: now, UpdatedAt: now,

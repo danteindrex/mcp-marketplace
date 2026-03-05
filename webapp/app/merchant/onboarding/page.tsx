@@ -1,0 +1,51 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { AppShell } from '@/components/app-shell'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+
+export default function MerchantOnboardingPage() {
+  const [sourceType, setSourceType] = useState('docker')
+
+  return (
+    <AppShell role="merchant">
+      <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Merchant Onboarding</h1>
+          <p className="text-muted-foreground">Publish an MCP server with OAuth, pricing, and deployment ready defaults.</p>
+        </div>
+
+        <Card className="p-6 space-y-4">
+          <h2 className="text-xl font-semibold">1. Import Source</h2>
+          <RadioGroup value={sourceType} onValueChange={setSourceType}>
+            <div className="flex items-center space-x-3 p-3 border border-border rounded-lg"><RadioGroupItem value="docker" id="docker" /><Label htmlFor="docker">Docker Hub Image</Label></div>
+            <div className="flex items-center space-x-3 p-3 border border-border rounded-lg"><RadioGroupItem value="custom" id="custom" /><Label htmlFor="custom">Custom Registry Image</Label></div>
+          </RadioGroup>
+          <div>
+            <Label className="mb-2 block">Image Reference</Label>
+            <Input placeholder={sourceType === 'docker' ? 'org/image:tag' : 'registry.example.com/org/image:tag'} />
+          </div>
+        </Card>
+
+        <Card className="p-6 space-y-4">
+          <h2 className="text-xl font-semibold">2. Server Metadata</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><Label className="mb-2 block">Server Name</Label><Input placeholder="My MCP Server" /></div>
+            <div><Label className="mb-2 block">Slug</Label><Input placeholder="my-mcp-server" /></div>
+          </div>
+          <div><Label className="mb-2 block">Canonical Resource URI</Label><Input placeholder="https://mcp.yourplatform.com/resource/my-server" /></div>
+        </Card>
+
+        <div className="flex gap-3">
+          <Button variant="outline" asChild><Link href="/merchant/servers">Cancel</Link></Button>
+          <Button asChild><Link href="/merchant/servers/new/import-docker">Continue to Import</Link></Button>
+        </div>
+      </div>
+    </AppShell>
+  )
+}

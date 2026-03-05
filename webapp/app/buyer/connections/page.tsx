@@ -9,13 +9,10 @@ import { LoadingState } from '@/components/empty-state'
 import { TableToolbar } from '@/components/table-toolbar'
 import { toast } from 'sonner'
 import { fetchConnections, rotateToken, revokeConnection } from '@/lib/api-client'
-import { mockConnections } from '@/lib/mock-data'
-
-const userId = 'user_001'
 
 export default function ConnectionsPage() {
   const [isLoading, setIsLoading] = useState(true)
-  const [connections, setConnections] = useState(mockConnections)
+  const [connections, setConnections] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('')
   const [revoking, setRevoking] = useState<string | null>(null)
@@ -25,7 +22,7 @@ export default function ConnectionsPage() {
     const loadData = async () => {
       setIsLoading(true)
       try {
-        const conns = await fetchConnections(userId)
+        const conns = await fetchConnections()
         setConnections(conns as any)
       } finally {
         setIsLoading(false)

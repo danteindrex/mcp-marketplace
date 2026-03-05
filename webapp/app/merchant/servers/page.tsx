@@ -7,8 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { TableToolbar } from '@/components/table-toolbar'
-import { mockServers } from '@/lib/mock-data'
-import { apiGet } from '@/lib/api'
+import { fetchMerchantServers, type Server } from '@/lib/api-client'
 
 const statusOptions = [
   { value: 'published', label: 'Published' },
@@ -17,24 +16,15 @@ const statusOptions = [
 ]
 
 export default function MerchantServersPage() {
-  const [servers, setServers] = useState(mockServers)
+  const [servers, setServers] = useState<Server[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('')
   const [sortBy, setSortBy] = useState('installs')
 
   useEffect(() => {
-    apiGet<{ items: typeof mockServers }>('/v1/merchant/servers', 'merchant')
-      .then(data => {
-        if (Array.isArray(data.items)) {
-          const normalized = data.items.map((s: any) => ({
-            ...s,
-            lastUpdated: s.updatedAt ? new Date(s.updatedAt) : new Date(),
-          }))
-          setServers(normalized as typeof mockServers)
-        }
-      })
+    fetchMerchantServers().then(items => setServers(items))
       .catch(() => {
-        // Keep mock fallback when backend is unavailable.
+        setServers([])
       })
   }, [])
 
@@ -71,7 +61,7 @@ export default function MerchantServersPage() {
         results.sort((a, b) => b.rating - a.rating)
         break
       case 'newest':
-        results.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime())
+        results.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         break
     }
 

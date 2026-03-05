@@ -9,55 +9,8 @@ import { TableToolbar } from '@/components/table-toolbar'
 import { toast } from 'sonner'
 import { fetchTenants } from '@/lib/api-client'
 
-const tenantData = [
-  {
-    id: 'tenant_001',
-    name: 'Acme Corp',
-    email: 'admin@acmecorp.com',
-    status: 'active' as const,
-    riskScore: 12,
-    suspensions: 0,
-    installs: 1240,
-    createdAt: new Date('2024-06-15'),
-    lastActivity: new Date('2025-03-04'),
-  },
-  {
-    id: 'tenant_002',
-    name: 'DataFlow Inc',
-    email: 'admin@dataflow.io',
-    status: 'active' as const,
-    riskScore: 5,
-    suspensions: 0,
-    installs: 3240,
-    createdAt: new Date('2024-03-20'),
-    lastActivity: new Date('2025-03-03'),
-  },
-  {
-    id: 'tenant_003',
-    name: 'TechStartup Labs',
-    email: 'legal@techstartuplabs.com',
-    status: 'active' as const,
-    riskScore: 45,
-    suspensions: 1,
-    installs: 340,
-    createdAt: new Date('2025-01-10'),
-    lastActivity: new Date('2025-02-28'),
-  },
-  {
-    id: 'tenant_004',
-    name: 'Bad Actors Inc',
-    email: 'contact@badactors.local',
-    status: 'suspended' as const,
-    riskScore: 92,
-    suspensions: 3,
-    installs: 0,
-    createdAt: new Date('2025-02-01'),
-    lastActivity: new Date('2025-02-15'),
-  },
-]
-
 export default function AdminTenantsPage() {
-  const [tenants, setTenants] = useState(tenantData)
+  const [tenants, setTenants] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
