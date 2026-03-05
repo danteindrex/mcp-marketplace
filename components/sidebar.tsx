@@ -30,9 +30,22 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { TeamSelector, ProfileSelector, type Team, type Profile } from '@/components/kokonut'
 
 interface AppSidebarProps {
   role?: 'buyer' | 'merchant' | 'admin'
+}
+
+const mockTeams: Team[] = [
+  { id: 'team-1', name: 'Personal', avatar: '👤', role: 'owner' },
+  { id: 'team-2', name: 'Acme Corp', avatar: '🏢', role: 'member' },
+]
+
+const mockProfile: Profile = {
+  id: 'user-1',
+  name: 'John Developer',
+  email: 'john@example.com',
+  avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=John',
 }
 
 const buyerNavigation = [
@@ -142,6 +155,21 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <TeamSelector
+              teams={mockTeams}
+              selectedTeam={mockTeams[0]}
+              onTeamChange={(team) => console.log('Switched to team:', team.name)}
+              onCreateTeam={() => console.log('Create team clicked')}
+            />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <ProfileSelector
+              profile={mockProfile}
+              onSettings={() => console.log('Settings clicked')}
+              onLogout={() => console.log('Logout clicked')}
+            />
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton asChild>
               <Link href="/settings">

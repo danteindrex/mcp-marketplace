@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { mockServers } from '@/lib/mock-data'
+import { TypeWriter, ScrollText, DynamicText, MouseEffectCard, SpotlightCard } from '@/components/kokonut'
 
 const features = [
   {
@@ -81,15 +82,19 @@ export default function HomePage() {
         <div className="text-center space-y-8">
           <div className="space-y-4">
             <h1 className="text-5xl sm:text-6xl font-bold tracking-tight text-balance">
-              Discover & Deploy{' '}
-              <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                MCP Servers
-              </span>
+              <TypeWriter 
+                text="Discover & Deploy MCP Servers"
+                speed={50}
+                className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent block"
+              />
             </h1>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto text-balance">
-              The comprehensive marketplace for Model Context Protocol servers. Find, install, and manage servers
-              securely with enterprise-grade features.
-            </p>
+            <div className="text-xl text-muted-foreground max-w-2xl mx-auto text-balance h-24 overflow-hidden">
+              <ScrollText speed="normal" className="h-full">
+                <div className="py-6">
+                  The comprehensive marketplace for Model Context Protocol servers. Find, install, and manage servers securely with enterprise-grade features.
+                </div>
+              </ScrollText>
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -135,10 +140,19 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {featuredServers.slice(0, 3).map(server => (
               <Link key={server.id} href={`/marketplace/${server.slug}`}>
-                <Card className="p-6 h-full hover:border-primary transition-colors cursor-pointer group">
+                <SpotlightCard 
+                  className="p-6 h-full bg-card border border-border rounded-lg"
+                  spotlightColor="rgba(59, 130, 246, 0.3)"
+                >
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <h3 className="font-semibold group-hover:text-primary transition-colors">{server.name}</h3>
+                      <h3 className="font-semibold group-hover:text-primary transition-colors">
+                        <DynamicText 
+                          texts={[server.name, `${server.name} • Popular`]}
+                          interval={4000}
+                          className="text-primary"
+                        />
+                      </h3>
                       <p className="text-sm text-muted-foreground">by {server.author}</p>
                     </div>
                     {server.verified && <span className="text-xs bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-1 rounded">Verified</span>}
@@ -148,7 +162,7 @@ export default function HomePage() {
                     <span className="text-muted-foreground">⭐ {server.rating}</span>
                     <span className="text-muted-foreground">{server.installCount.toLocaleString()} installs</span>
                   </div>
-                </Card>
+                </SpotlightCard>
               </Link>
             ))}
           </div>
@@ -169,11 +183,11 @@ export default function HomePage() {
             {features.map((feature, index) => {
               const Icon = feature.icon
               return (
-                <Card key={index} className="p-6">
+                <MouseEffectCard key={index} className="p-6 bg-card border border-border rounded-lg" intensity={0.8}>
                   <Icon className="w-8 h-8 text-primary mb-4" />
                   <h3 className="font-semibold mb-2">{feature.title}</h3>
                   <p className="text-sm text-muted-foreground">{feature.description}</p>
-                </Card>
+                </MouseEffectCard>
               )
             })}
           </div>

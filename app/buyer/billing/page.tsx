@@ -8,6 +8,7 @@ import { AppShell } from '@/components/app-shell'
 import { LoadingState } from '@/components/empty-state'
 import { fetchBilling, fetchInvoices } from '@/lib/api-client'
 import { mockBilling } from '@/lib/mock-data'
+import { CurrencyTransfer } from '@/components/kokonut'
 
 const userId = 'user_001'
 
@@ -88,6 +89,19 @@ export default function BillingPage() {
           <h1 className="text-3xl font-bold mb-2">Billing & Invoices</h1>
           <p className="text-muted-foreground">Manage your subscription and payment information</p>
         </div>
+
+        {/* Payment Demo */}
+        <Card className="p-8 bg-gradient-to-br from-green-500/5 to-green-500/10 border-green-500/20">
+          <h2 className="text-xl font-bold mb-6">Recent Payment</h2>
+          <CurrencyTransfer
+            fromAmount={99.00}
+            fromCurrency="USD"
+            toCurrency="USD"
+            toAmount={99.00}
+            conversionRate={1.0}
+            isComplete={true}
+          />
+        </Card>
 
         {/* Current Plan */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
