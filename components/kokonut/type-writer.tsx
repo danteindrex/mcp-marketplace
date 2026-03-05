@@ -8,6 +8,8 @@ interface TypeWriterProps {
   speed?: number
   delay?: number
   cursor?: boolean
+  loop?: boolean
+  loopDelay?: number
 }
 
 export function TypeWriter({ 
@@ -15,7 +17,9 @@ export function TypeWriter({
   className = '', 
   speed = 50, 
   delay = 0,
-  cursor = true 
+  cursor = true,
+  loop = false,
+  loopDelay = 2000
 }: TypeWriterProps) {
   const [displayedText, setDisplayedText] = useState('')
   const [isComplete, setIsComplete] = useState(false)
@@ -30,6 +34,18 @@ export function TypeWriter({
           currentIndex++
         } else {
           setIsComplete(true)
+          
+          if (loop) {
+            // Wait before restarting
+            const resetTimeout = setTimeout(() => {
+              currentIndex = 0
+              setDisplayedText('')
+              setIsComplete(false)
+            }, loopDelay)
+            
+            return () => clearTimeout(resetTimeout)
+          }
+          
           clearInterval(interval)
         }
       }, speed)
@@ -38,7 +54,7 @@ export function TypeWriter({
     }, delay)
 
     return () => clearTimeout(startTime)
-  }, [text, speed, delay])
+  }, [text, speed, delay, loop, loopDelay])
 
   return (
     <span className={className}>
