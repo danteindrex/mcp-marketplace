@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { LoadingState } from '@/components/empty-state'
 import { fetchConnections, fetchBilling } from '@/lib/api-client'
+import { PieChart } from '@/components/retroui/charts/PieChart'
+import { LineChart } from '@/components/retroui/charts/LineChart'
 
 export default function BuyerDashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
@@ -42,6 +44,16 @@ export default function BuyerDashboardPage() {
 
   const activeConnections = connections.filter(c => c.status === 'active').length
   const expiredConnections = connections.filter(c => c.status === 'expired').length
+  const connectionStatus = [
+    { name: 'Active', value: activeConnections },
+    { name: 'Expired', value: expiredConnections },
+    { name: 'Other', value: Math.max(0, connections.length - activeConnections - expiredConnections) },
+  ].filter(item => item.value > 0)
+  const usageTrend = connections.slice(0, 6).map((conn, idx) => ({
+    name: `W${idx + 1}`,
+    requests: conn.scopes.length * (idx + 1) * 3,
+    spend: Number((billing.monthlySpend / Math.max(1, idx + 1)).toFixed(2)),
+  }))
 
   return (
     <AppShell role="buyer">
@@ -117,6 +129,26 @@ export default function BuyerDashboardPage() {
         )}
 
         {/* Recent Connections */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Connection Status</h2>
+            <PieChart
+              data={connectionStatus}
+              dataKey="value"
+              nameKey="name"
+            />
+          </Card>
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Usage Trend</h2>
+            <LineChart
+              data={usageTrend}
+              index="name"
+              categories={['requests', 'spend']}
+            />
+          </Card>
+        </div>
+
+        {/* Recent Connections */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Recent Connections</h2>
@@ -157,7 +189,7 @@ export default function BuyerDashboardPage() {
                   <div>
                     <p className="text-muted-foreground text-xs mb-1">Scopes</p>
                     <div className="flex flex-wrap gap-1">
-                      {conn.scopes.slice(0, 2).map(scope => (
+                      {conn.scopes.slice(0, 2).map((scope: string) => (
                         <span key={scope} className="text-xs bg-muted px-2 py-1 rounded">
                           {scope}
                         </span>

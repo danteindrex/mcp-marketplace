@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { TableToolbar } from '@/components/table-toolbar'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { fetchMerchantRevenue } from '@/lib/api-client'
+import { BarChart } from '@/components/retroui/charts/BarChart'
+import { AreaChart } from '@/components/retroui/charts/AreaChart'
+import { LineChart } from '@/components/retroui/charts/LineChart'
 
 export default function RevenuePage() {
   const [dateRange, setDateRange] = useState('6m')
@@ -40,18 +42,36 @@ export default function RevenuePage() {
 
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Revenue Trend</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.trend || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="month" stroke="var(--muted-foreground)" />
-              <YAxis stroke="var(--muted-foreground)" />
-              <Tooltip contentStyle={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }} />
-              <Legend />
-              <Bar dataKey="subscriptions" fill="var(--primary)" name="Subscriptions" stackId="a" />
-              <Bar dataKey="perCall" fill="var(--chart-2)" name="Per-Call Revenue" stackId="a" />
-            </BarChart>
-          </ResponsiveContainer>
+          <BarChart
+            data={data.trend || []}
+            index="month"
+            categories={['subscriptions', 'perCall']}
+            stacked
+          />
         </Card>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Cumulative Revenue</h2>
+            <AreaChart
+              data={(data.trend || []).map((row: any, idx: number) => ({
+                ...row,
+                total: Number(row.subscriptions || 0) + Number(row.perCall || 0) + idx * 40,
+              }))}
+              index="month"
+              categories={['total']}
+            />
+          </Card>
+
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Subscriptions vs Per-Call</h2>
+            <LineChart
+              data={data.trend || []}
+              index="month"
+              categories={['subscriptions', 'perCall']}
+            />
+          </Card>
+        </div>
 
         <div className="space-y-4">
           <h2 className="text-lg font-semibold mb-4">Revenue by Server</h2>

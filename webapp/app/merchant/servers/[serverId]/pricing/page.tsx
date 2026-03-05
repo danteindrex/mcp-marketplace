@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { use } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,12 +10,13 @@ import { AppShell } from '@/components/app-shell'
 import { fetchServerPricing } from '@/lib/api-client'
 import { toast } from 'sonner'
 
-export default function PricingPage({ params }: { params: { serverId: string } }) {
+export default function PricingPage({ params }: { params: Promise<{ serverId: string }> }) {
+  const { serverId } = use(params)
   const [data, setData] = useState<any>(null)
 
   useEffect(() => {
-    fetchServerPricing(params.serverId).then(setData)
-  }, [params.serverId])
+    fetchServerPricing(serverId).then(setData)
+  }, [serverId])
 
   if (!data) return <AppShell role="merchant"><div className="p-6">Loading...</div></AppShell>
 

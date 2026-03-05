@@ -1,27 +1,35 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { use } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { fetchServerObservability } from '@/lib/api-client'
+import { BarChart } from '@/components/retroui/charts/BarChart'
+import { LineChart } from '@/components/retroui/charts/LineChart'
 
-export default function ObservabilityPage({ params }: { params: { serverId: string } }) {
+export default function ObservabilityPage({ params }: { params: Promise<{ serverId: string }> }) {
+  const { serverId } = use(params)
   const [dateRange, setDateRange] = useState('24h')
   const [data, setData] = useState<any>(null)
 
   useEffect(() => {
-    fetchServerObservability(params.serverId).then(setData)
-  }, [params.serverId])
+    fetchServerObservability(serverId).then(setData)
+  }, [serverId])
 
   if (!data) return <AppShell role="merchant"><div className="p-6">Loading...</div></AppShell>
 
   const bars = [
     { p: 'p50', latency: data.metrics.p50LatencyMs },
     { p: 'p95', latency: data.metrics.p95LatencyMs },
+  ]
+  const trend = [
+    { window: 'T-3', errors: Math.max(0, data.metrics.insufficientScopeCount - 2), latency: data.metrics.p50LatencyMs - 6 },
+    { window: 'T-2', errors: Math.max(0, data.metrics.insufficientScopeCount - 1), latency: data.metrics.p50LatencyMs - 3 },
+    { window: 'T-1', errors: data.metrics.insufficientScopeCount, latency: data.metrics.p50LatencyMs },
   ]
 
   return (
@@ -42,15 +50,20 @@ export default function ObservabilityPage({ params }: { params: { serverId: stri
 
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Latency Percentiles</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={bars}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="p" stroke="var(--muted-foreground)" />
-              <YAxis stroke="var(--muted-foreground)" />
-              <Tooltip contentStyle={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }} />
-              <Bar dataKey="latency" fill="var(--primary)" name="Latency (ms)" />
-            </BarChart>
-          </ResponsiveContainer>
+          <BarChart
+            data={bars}
+            index="p"
+            categories={['latency']}
+          />
+        </Card>
+
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold mb-4">Recent Error/Latency Trend</h2>
+          <LineChart
+            data={trend}
+            index="window"
+            categories={['errors', 'latency']}
+          />
         </Card>
       </div>
     </AppShell>

@@ -16,15 +16,42 @@ import (
 )
 
 func newTestServer() http.Handler {
-	cfg := config.Config{Port: "8080", JWTSecret: "test-secret", BaseURL: "http://localhost:8080"}
-	st := store.NewMemoryStore()
+	cfg := config.Config{
+		Port:               "8080",
+		JWTSecret:          "test-secret",
+		BaseURL:            "http://localhost:8080",
+		SuperAdminEmail:    "admin@platform.local",
+		SuperAdminPassword: "admin-pass",
+	}
+	st := store.NewMemoryStore(cfg)
 	jwt := auth.NewJWTManager(cfg.JWTSecret)
 	return api.NewRouter(cfg, st, jwt)
 }
 
-func login(t *testing.T, h http.Handler, email string) string {
+func signup(t *testing.T, h http.Handler, email, password, role string) map[string]interface{} {
 	t.Helper()
-	payload, _ := json.Marshal(map[string]string{"email": email})
+	payload, _ := json.Marshal(map[string]string{
+		"email":      email,
+		"password":   password,
+		"name":       "Test User",
+		"role":       role,
+		"tenantName": role + " tenant",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/auth/signup", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusCreated {
+		t.Fatalf("signup failed: %d %s", res.Code, res.Body.String())
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(res.Body.Bytes(), &body)
+	return body
+}
+
+func login(t *testing.T, h http.Handler, email, password string) string {
+	t.Helper()
+	payload, _ := json.Marshal(map[string]string{"email": email, "password": password})
 	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
@@ -76,7 +103,8 @@ func TestPublicEndpoints(t *testing.T) {
 
 func TestBuyerFlowAndHub(t *testing.T) {
 	h := newTestServer()
-	buyerToken := login(t, h, "buyer@acme.local")
+	signup(t, h, "buyer@acme.local", "buyer-pass", "buyer")
+	buyerToken := login(t, h, "buyer@acme.local", "buyer-pass")
 
 	if res := call(t, h, http.MethodGet, "/v1/buyer/entitlements", buyerToken, nil); res.Code != http.StatusOK {
 		t.Fatalf("entitlements status %d", res.Code)
@@ -86,7 +114,7 @@ func TestBuyerFlowAndHub(t *testing.T) {
 	}
 
 	res := call(t, h, http.MethodPost, "/v1/buyer/connections", buyerToken, map[string]interface{}{
-		"client": "vscode", "resource": "https://mcp.marketplace.local/hub/tenant_acme/user_buyer", "grantedScopes": []string{"db:read"},
+		"client": "vscode", "resource": "https://mcp.marketplace.local/hub/self", "grantedScopes": []string{"db:read"},
 	})
 	if res.Code != http.StatusCreated {
 		t.Fatalf("create connection status %d body=%s", res.Code, res.Body.String())
@@ -106,8 +134,10 @@ func TestBuyerFlowAndHub(t *testing.T) {
 
 func TestMerchantAccessControl(t *testing.T) {
 	h := newTestServer()
-	buyerToken := login(t, h, "buyer@acme.local")
-	merchantToken := login(t, h, "merchant@dataflow.local")
+	signup(t, h, "buyer@acme.local", "buyer-pass", "buyer")
+	signup(t, h, "merchant@dataflow.local", "merchant-pass", "merchant")
+	buyerToken := login(t, h, "buyer@acme.local", "buyer-pass")
+	merchantToken := login(t, h, "merchant@dataflow.local", "merchant-pass")
 
 	if res := call(t, h, http.MethodGet, "/v1/merchant/servers", buyerToken, nil); res.Code != http.StatusForbidden {
 		t.Fatalf("buyer should be forbidden, got %d", res.Code)
@@ -139,8 +169,10 @@ func TestMerchantAccessControl(t *testing.T) {
 
 func TestAdminAndX402(t *testing.T) {
 	h := newTestServer()
-	adminToken := login(t, h, "admin@platform.local")
-	buyerToken := login(t, h, "buyer@acme.local")
+	buyerSignup := signup(t, h, "buyer@acme.local", "buyer-pass", "buyer")
+	adminToken := login(t, h, "admin@platform.local", "admin-pass")
+	buyerToken := login(t, h, "buyer@acme.local", "buyer-pass")
+	buyerUser := buyerSignup["user"].(map[string]interface{})
 
 	if res := call(t, h, http.MethodGet, "/v1/admin/tenants", adminToken, nil); res.Code != http.StatusOK {
 		t.Fatalf("admin tenants status %d", res.Code)
@@ -153,7 +185,7 @@ func TestAdminAndX402(t *testing.T) {
 	}
 
 	grant := call(t, h, http.MethodPost, "/v1/admin/entitlements", adminToken, map[string]interface{}{
-		"tenantId": "tenant_acme", "userId": "user_buyer", "serverId": "srv_doc", "allowedScopes": []string{"documents:read"}, "cloudAllowed": true, "localAllowed": true,
+		"tenantId": buyerUser["tenantId"], "userId": buyerUser["id"], "serverId": "srv_doc", "allowedScopes": []string{"documents:read"}, "cloudAllowed": true, "localAllowed": true,
 	})
 	if grant.Code != http.StatusCreated {
 		t.Fatalf("grant entitlement status %d body=%s", grant.Code, grant.Body.String())
@@ -182,6 +214,9 @@ func TestAdminAndX402(t *testing.T) {
 
 func TestOAuthAuthorizationCodePKCEFlow(t *testing.T) {
 	h := newTestServer()
+	buyerSignup := signup(t, h, "oauth-buyer@acme.local", "buyer-pass", "buyer")
+	buyerUser := buyerSignup["user"].(map[string]interface{})
+	resource := "https://mcp.marketplace.local/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
 
 	dcr := call(t, h, http.MethodPost, "/oauth/register", "", map[string]interface{}{
 		"client_name":                "Test Client",
@@ -199,7 +234,7 @@ func TestOAuthAuthorizationCodePKCEFlow(t *testing.T) {
 	verifier := "test-verifier-1234567890"
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
-	authorizePath := "/oauth/authorize?response_type=code&client_id=" + clientID + "&redirect_uri=http://127.0.0.1:33418&state=abc123&resource=https://mcp.marketplace.local/hub/tenant_acme/user_buyer&scope=db:read%20db:write&code_challenge=" + challenge + "&code_challenge_method=S256"
+	authorizePath := "/oauth/authorize?response_type=code&client_id=" + clientID + "&redirect_uri=http://127.0.0.1:33418&state=abc123&resource=" + resource + "&scope=db:read%20db:write&code_challenge=" + challenge + "&code_challenge_method=S256"
 	authRes := call(t, h, http.MethodGet, authorizePath, "", nil)
 	if authRes.Code != http.StatusOK {
 		t.Fatalf("authorize status %d body=%s", authRes.Code, authRes.Body.String())
@@ -208,7 +243,7 @@ func TestOAuthAuthorizationCodePKCEFlow(t *testing.T) {
 	_ = json.Unmarshal(authRes.Body.Bytes(), &authBody)
 	code := authBody["code"].(string)
 
-	form := "grant_type=authorization_code&client_id=" + clientID + "&code=" + code + "&redirect_uri=http://127.0.0.1:33418&code_verifier=" + verifier + "&resource=https://mcp.marketplace.local/hub/tenant_acme/user_buyer"
+	form := "grant_type=authorization_code&client_id=" + clientID + "&code=" + code + "&redirect_uri=http://127.0.0.1:33418&code_verifier=" + verifier + "&resource=" + resource
 	req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewBufferString(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	res := httptest.NewRecorder()

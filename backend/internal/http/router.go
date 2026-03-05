@@ -30,6 +30,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 	r.Use(app.securityHeaders)
 
 	r.Get("/health", app.health)
+	r.Post("/auth/signup", app.signup)
 	r.Post("/auth/login", app.login)
 	r.Get("/.well-known/oauth-protected-resource", app.oauthProtectedResourceMetadata)
 	r.Get("/.well-known/oauth-authorization-server", app.oauthAuthorizationServerMetadata)

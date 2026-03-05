@@ -12,7 +12,7 @@ import (
 
 func main() {
 	cfg := config.Load()
-	st := store.NewMemoryStore()
+	st := store.NewMemoryStore(cfg)
 	jwt := auth.NewJWTManager(cfg.JWTSecret)
 	router := api.NewRouter(cfg, st, jwt)
 

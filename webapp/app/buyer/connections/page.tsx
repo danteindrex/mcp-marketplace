@@ -175,7 +175,7 @@ export default function ConnectionsPage() {
                     <div>
                       <h4 className="text-sm text-muted-foreground mb-2">Scopes</h4>
                       <div className="flex flex-wrap gap-1">
-                        {conn.scopes.map(scope => (
+                        {conn.scopes.map((scope: string) => (
                           <span
                             key={scope}
                             className="text-xs bg-muted px-2 py-1 rounded border border-border"

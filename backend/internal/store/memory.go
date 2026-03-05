@@ -9,7 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yourorg/mcp-marketplace/backend/internal/config"
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type MemoryStore struct {
@@ -29,7 +31,7 @@ type MemoryStore struct {
 	seq          int
 }
 
-func NewMemoryStore() *MemoryStore {
+func NewMemoryStore(cfg config.Config) *MemoryStore {
 	now := time.Now().UTC()
 	s := &MemoryStore{
 		users:        map[string]models.User{},
@@ -47,49 +49,36 @@ func NewMemoryStore() *MemoryStore {
 	}
 
 	tAdmin := models.Tenant{ID: "tenant_platform", Name: "Platform", Slug: "platform", OwnerUserID: "user_admin", PlanTier: "enterprise", Status: "active", CreatedAt: now}
-	tSeller := models.Tenant{ID: "tenant_dataflow", Name: "DataFlow Inc", Slug: "dataflow", OwnerUserID: "user_merchant", PlanTier: "professional", Status: "active", CreatedAt: now}
-	tBuyer := models.Tenant{ID: "tenant_acme", Name: "Acme Corp", Slug: "acme", OwnerUserID: "user_buyer", PlanTier: "professional", Status: "active", CreatedAt: now}
+	tCatalog := models.Tenant{ID: "tenant_catalog", Name: "Catalog Servers", Slug: "catalog", OwnerUserID: "user_admin", PlanTier: "enterprise", Status: "active", CreatedAt: now}
 	s.tenants[tAdmin.ID] = tAdmin
-	s.tenants[tSeller.ID] = tSeller
-	s.tenants[tBuyer.ID] = tBuyer
+	s.tenants[tCatalog.ID] = tCatalog
 
-	uAdmin := models.User{ID: "user_admin", TenantID: tAdmin.ID, Email: "admin@platform.local", Name: "Owner Admin", Role: models.RoleAdmin, CreatedAt: now}
-	uMerchant := models.User{ID: "user_merchant", TenantID: tSeller.ID, Email: "merchant@dataflow.local", Name: "Seller One", Role: models.RoleMerchant, CreatedAt: now}
-	uBuyer := models.User{ID: "user_buyer", TenantID: tBuyer.ID, Email: "buyer@acme.local", Name: "Buyer One", Role: models.RoleBuyer, CreatedAt: now}
+	adminHash, _ := bcrypt.GenerateFromPassword([]byte(cfg.SuperAdminPassword), bcrypt.DefaultCost)
+	uAdmin := models.User{
+		ID:           "user_admin",
+		TenantID:     tAdmin.ID,
+		Email:        cfg.SuperAdminEmail,
+		Name:         "Owner Admin",
+		Role:         models.RoleAdmin,
+		PasswordHash: string(adminHash),
+		CreatedAt:    now,
+	}
 	s.putUser(uAdmin)
-	s.putUser(uMerchant)
-	s.putUser(uBuyer)
 
 	server1 := models.Server{
-		ID: "srv_postgres", TenantID: tSeller.ID, Author: "DataFlow Inc", Name: "PostgreSQL Assistant", Slug: "postgresql-assistant",
+		ID: "srv_postgres", TenantID: tCatalog.ID, Author: "Catalog", Name: "PostgreSQL Assistant", Slug: "postgresql-assistant",
 		Description: "Postgres operations", Category: "data", Version: "2.1.0", DockerImage: "dataflow/postgresql-assistant:2.1.0",
 		CanonicalResourceURI: "https://mcp.marketplace.local/resource/srv_postgres", RequiredScopes: []string{"db:read", "db:write"}, PricingType: "subscription", PricingAmount: 29,
 		Verified: true, Featured: true, InstallCount: 2300, Rating: 4.8, Status: "published", SupportsCloud: true, SupportsLocal: true, CreatedAt: now, UpdatedAt: now,
 	}
 	server2 := models.Server{
-		ID: "srv_doc", TenantID: tSeller.ID, Author: "DataFlow Inc", Name: "Document Analyzer", Slug: "document-analyzer",
+		ID: "srv_doc", TenantID: tCatalog.ID, Author: "Catalog", Name: "Document Analyzer", Slug: "document-analyzer",
 		Description: "AI extraction", Category: "ai", Version: "1.5.2", DockerImage: "docai/document-analyzer:1.5.2",
 		CanonicalResourceURI: "https://mcp.marketplace.local/resource/srv_doc", RequiredScopes: []string{"documents:read", "ai:inference"}, PricingType: "x402", PricingAmount: 0.02,
 		Verified: true, Featured: false, InstallCount: 1800, Rating: 4.6, Status: "published", SupportsCloud: true, SupportsLocal: true, CreatedAt: now, UpdatedAt: now,
 	}
 	s.servers[server1.ID] = server1
 	s.servers[server2.ID] = server2
-
-	e := models.Entitlement{
-		ID: "ent_buyer_postgres", TenantID: tBuyer.ID, UserID: uBuyer.ID, ServerID: server1.ID, AllowedScopes: []string{"db:read", "db:write"},
-		CloudAllowed: true, LocalAllowed: true, Status: "active", CreatedAt: now, UpdatedAt: now,
-	}
-	s.entitlements[e.ID] = e
-
-	h := models.HubProfile{
-		ID: "hub_buyer", TenantID: tBuyer.ID, UserID: uBuyer.ID, HubURL: "https://mcp.marketplace.local/hub/tenant_acme/user_buyer", CatalogVersion: 1,
-		CatalogHash: hashCatalog([]string{"srv_postgres"}), Status: "active", CreatedAt: now, UpdatedAt: now,
-	}
-	s.hubs[keyHub(tBuyer.ID, uBuyer.ID)] = h
-	s.hubRoutes[h.ID] = []models.HubRoute{{ID: "route1", HubID: h.ID, ServerID: server1.ID, ToolName: "query_postgres", UpstreamType: "cloud", Priority: 1, Enabled: true, UpdatedAt: now}}
-
-	s.security["sec_1"] = models.SecurityEvent{ID: "sec_1", TenantID: tBuyer.ID, Type: "token_reuse", Severity: "high", Description: "Refresh token reuse detected", Actor: uBuyer.ID, TargetID: server1.ID, Resolved: true, CreatedAt: now}
-	s.audit["aud_1"] = models.AuditLog{ID: "aud_1", TenantID: tBuyer.ID, ActorID: uBuyer.ID, Action: "server.connect", TargetType: "server", TargetID: server1.ID, Outcome: "success", Metadata: map[string]interface{}{"client": "vscode"}, CreatedAt: now}
 	return s
 }
 
@@ -131,6 +120,28 @@ func (s *MemoryStore) GetUserByID(id string) (models.User, bool) {
 	defer s.mu.RUnlock()
 	u, ok := s.users[id]
 	return u, ok
+}
+
+func (s *MemoryStore) CreateUser(user models.User) (models.User, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	email := strings.ToLower(user.Email)
+	if _, exists := s.usersByEmail[email]; exists {
+		return models.User{}, false
+	}
+	user.ID = s.next("user")
+	user.CreatedAt = time.Now().UTC()
+	s.putUser(user)
+	return user, true
+}
+
+func (s *MemoryStore) CreateTenant(tenant models.Tenant) models.Tenant {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tenant.ID = s.next("tenant")
+	tenant.CreatedAt = time.Now().UTC()
+	s.tenants[tenant.ID] = tenant
+	return tenant
 }
 
 func (s *MemoryStore) ListMarketplaceServers() []models.Server {

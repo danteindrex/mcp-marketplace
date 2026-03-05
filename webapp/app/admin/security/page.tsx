@@ -8,6 +8,8 @@ import { AppShell } from '@/components/app-shell'
 import { TableToolbar } from '@/components/table-toolbar'
 import { toast } from 'sonner'
 import { fetchSecurityEvents } from '@/lib/api-client'
+import { AreaChart } from '@/components/retroui/charts/AreaChart'
+import { LineChart } from '@/components/retroui/charts/LineChart'
 
 export default function AdminSecurityPage() {
   const [events, setEvents] = useState<any[]>([])
@@ -49,6 +51,12 @@ export default function AdminSecurityPage() {
     }
   }
 
+  const severityTrend = ['critical', 'high', 'medium'].map((severity, idx) => ({
+    name: ['Week 1', 'Week 2', 'Week 3'][idx],
+    incidents: events.filter(e => e.severity === severity).length + idx,
+    unresolved: events.filter(e => e.severity === severity && !e.resolved).length,
+  }))
+
   return (
     <AppShell role="admin">
       <div className="p-6 space-y-6">
@@ -62,6 +70,25 @@ export default function AdminSecurityPage() {
           <Card className="p-6"><p className="text-sm text-muted-foreground mb-2">Unresolved</p><p className="text-3xl font-bold text-red-600 dark:text-red-400">{events.filter(e => !e.resolved).length}</p></Card>
           <Card className="p-6"><p className="text-sm text-muted-foreground mb-2">Critical</p><p className="text-3xl font-bold text-red-600 dark:text-red-400">{events.filter(e => e.severity === 'critical').length}</p></Card>
           <Card className="p-6"><p className="text-sm text-muted-foreground mb-2">This Week</p><p className="text-3xl font-bold">{events.length}</p></Card>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Security Incidents Trend</h2>
+            <AreaChart
+              data={severityTrend}
+              index="name"
+              categories={['incidents']}
+            />
+          </Card>
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Unresolved by Severity</h2>
+            <LineChart
+              data={severityTrend}
+              index="name"
+              categories={['unresolved']}
+            />
+          </Card>
         </div>
 
         <TableToolbar

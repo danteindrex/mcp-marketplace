@@ -8,6 +8,8 @@ import { AppShell } from '@/components/app-shell'
 import { TableToolbar } from '@/components/table-toolbar'
 import { toast } from 'sonner'
 import { fetchTenants } from '@/lib/api-client'
+import { BarChart } from '@/components/retroui/charts/BarChart'
+import { PieChart } from '@/components/retroui/charts/PieChart'
 
 export default function AdminTenantsPage() {
   const [tenants, setTenants] = useState<any[]>([])
@@ -74,6 +76,17 @@ export default function AdminTenantsPage() {
     return 'text-red-600 dark:text-red-400 bg-red-500/10'
   }
 
+  const riskBands = [
+    { name: 'Low', value: tenants.filter(t => t.riskScore < 20).length },
+    { name: 'Medium', value: tenants.filter(t => t.riskScore >= 20 && t.riskScore < 50).length },
+    { name: 'High', value: tenants.filter(t => t.riskScore >= 50).length },
+  ].filter(item => item.value > 0)
+
+  const tenantInstallData = tenants.map(t => ({
+    name: t.name.slice(0, 12),
+    installs: t.installs,
+  }))
+
   return (
     <AppShell role="admin">
       <div className="p-6 space-y-6">
@@ -108,6 +121,25 @@ export default function AdminTenantsPage() {
             <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
               {tenants.filter(t => t.riskScore > 50).length}
             </p>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Tenant Install Distribution</h2>
+            <BarChart
+              data={tenantInstallData}
+              index="name"
+              categories={['installs']}
+            />
+          </Card>
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Risk Segment Split</h2>
+            <PieChart
+              data={riskBands}
+              dataKey="value"
+              nameKey="name"
+            />
           </Card>
         </div>
 

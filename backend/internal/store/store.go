@@ -5,6 +5,8 @@ import "github.com/yourorg/mcp-marketplace/backend/internal/models"
 type Store interface {
 	GetUserByEmail(email string) (models.User, bool)
 	GetUserByID(id string) (models.User, bool)
+	CreateUser(user models.User) (models.User, bool)
+	CreateTenant(tenant models.Tenant) models.Tenant
 	ListMarketplaceServers() []models.Server
 	GetServerBySlug(slug string) (models.Server, bool)
 	GetServerByID(id string) (models.Server, bool)

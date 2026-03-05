@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { use } from 'react'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { AppShell } from '@/components/app-shell'
@@ -8,12 +9,13 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { fetchServerBuilder } from '@/lib/api-client'
 
-export default function BuilderPage({ params }: { params: { serverId: string } }) {
+export default function BuilderPage({ params }: { params: Promise<{ serverId: string }> }) {
+  const { serverId } = use(params)
   const [data, setData] = useState<any>(null)
 
   useEffect(() => {
-    fetchServerBuilder(params.serverId).then(setData)
-  }, [params.serverId])
+    fetchServerBuilder(serverId).then(setData)
+  }, [serverId])
 
   if (!data) return <AppShell role="merchant"><div className="p-6">Loading...</div></AppShell>
 

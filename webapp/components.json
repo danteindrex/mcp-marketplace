@@ -10,13 +10,16 @@
     "cssVariables": true,
     "prefix": ""
   },
+  "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils",
     "ui": "@/components/ui",
     "lib": "@/lib",
-    "hooks": "@/hooks",
-    "@kokonutui": "@/components/kokonut"
+    "hooks": "@/hooks"
   },
-  "iconLibrary": "lucide"
+  "registries": {
+    "@kokonutui": "https://kokonutui.com/r/{name}.json",
+    "@boldkit": "https://boldkit.dev/r/{name}.json"
+  }
 }

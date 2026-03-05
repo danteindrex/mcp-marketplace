@@ -11,12 +11,13 @@ const (
 )
 
 type User struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenantId"`
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
-	Role      Role      `json:"role"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID           string    `json:"id"`
+	TenantID     string    `json:"tenantId"`
+	Email        string    `json:"email"`
+	Name         string    `json:"name"`
+	Role         Role      `json:"role"`
+	PasswordHash string    `json:"-"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 type Tenant struct {

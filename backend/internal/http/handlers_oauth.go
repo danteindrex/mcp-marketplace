@@ -86,6 +86,15 @@ func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_request"})
 		return
 	}
+	tenantID, userID, ok := parseResourceSubject(resource)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource"})
+		return
+	}
+	if user, exists := a.store.GetUserByID(userID); !exists || user.TenantID != tenantID {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource_subject"})
+		return
+	}
 	a.oauth.mu.Lock()
 	client, ok := a.oauth.clients[clientID]
 	if !ok || !containsString(client.RedirectURIs, redirectURI) {
@@ -97,8 +106,8 @@ func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	a.oauth.codes[code] = authCode{
 		Code:                code,
 		ClientID:            clientID,
-		UserID:              "user_buyer",
-		TenantID:            "tenant_acme",
+		UserID:              userID,
+		TenantID:            tenantID,
 		RedirectURI:         redirectURI,
 		Resource:            resource,
 		Scopes:              splitScopes(scope),
@@ -120,6 +129,20 @@ func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		"code":        code,
 		"state":       state,
 	})
+}
+
+func parseResourceSubject(resource string) (tenantID, userID string, ok bool) {
+	clean := strings.TrimSuffix(resource, "/")
+	parts := strings.Split(clean, "/")
+	if len(parts) < 2 {
+		return "", "", false
+	}
+	tenantID = parts[len(parts)-2]
+	userID = parts[len(parts)-1]
+	if tenantID == "" || userID == "" {
+		return "", "", false
+	}
+	return tenantID, userID, true
 }
 
 func (a *App) oauthToken(w http.ResponseWriter, r *http.Request) {

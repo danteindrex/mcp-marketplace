@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { use } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, AlertCircle, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,12 +10,13 @@ import { AppShell } from '@/components/app-shell'
 import { fetchServerAuth } from '@/lib/api-client'
 import { toast } from 'sonner'
 
-export default function AuthConfigPage({ params }: { params: { serverId: string } }) {
+export default function AuthConfigPage({ params }: { params: Promise<{ serverId: string }> }) {
+  const { serverId } = use(params)
   const [data, setData] = useState<any>(null)
 
   useEffect(() => {
-    fetchServerAuth(params.serverId).then(setData)
-  }, [params.serverId])
+    fetchServerAuth(serverId).then(setData)
+  }, [serverId])
 
   if (!data) return <AppShell role="merchant"><div className="p-6">Loading...</div></AppShell>
 

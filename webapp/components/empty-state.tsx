@@ -1,7 +1,10 @@
 'use client'
 
 import { LucideIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/retroui'
 
 export interface EmptyStateProps {
   icon?: LucideIcon
@@ -44,9 +47,21 @@ export interface LoadingStateProps {
 }
 
 export function LoadingState({ message = 'Loading...' }: LoadingStateProps) {
+  const { resolvedTheme } = useTheme()
+  const [progress, setProgress] = useState(13)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setProgress(66), 500)
+    return () => clearTimeout(timer)
+  }, [])
+
   return (
     <div className="flex flex-col items-center justify-center min-h-96 gap-4">
-      <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
+      {resolvedTheme === 'light' ? (
+        <Progress value={progress} className="w-[60%] max-w-xs" />
+      ) : (
+        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
+      )}
       <p className="text-muted-foreground">{message}</p>
     </div>
   )

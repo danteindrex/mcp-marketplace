@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { use } from 'react'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { AppShell } from '@/components/app-shell'
@@ -8,12 +9,13 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { fetchServerDeployments } from '@/lib/api-client'
 
-export default function DeploymentsPage({ params }: { params: { serverId: string } }) {
+export default function DeploymentsPage({ params }: { params: Promise<{ serverId: string }> }) {
+  const { serverId } = use(params)
   const [items, setItems] = useState<any[]>([])
 
   useEffect(() => {
-    fetchServerDeployments(params.serverId).then(r => setItems(r.items || []))
-  }, [params.serverId])
+    fetchServerDeployments(serverId).then(r => setItems(r.items || []))
+  }, [serverId])
 
   return (
     <AppShell role="merchant">

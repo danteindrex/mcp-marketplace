@@ -3,9 +3,11 @@ package config
 import "os"
 
 type Config struct {
-	Port      string
-	JWTSecret string
-	BaseURL   string
+	Port               string
+	JWTSecret          string
+	BaseURL            string
+	SuperAdminEmail    string
+	SuperAdminPassword string
 }
 
 func Load() Config {
@@ -21,5 +23,19 @@ func Load() Config {
 	if baseURL == "" {
 		baseURL = "http://localhost:" + port
 	}
-	return Config{Port: port, JWTSecret: secret, BaseURL: baseURL}
+	superAdminEmail := os.Getenv("SUPER_ADMIN_EMAIL")
+	if superAdminEmail == "" {
+		superAdminEmail = "admin@platform.local"
+	}
+	superAdminPassword := os.Getenv("SUPER_ADMIN_PASSWORD")
+	if superAdminPassword == "" {
+		superAdminPassword = "change-admin-password"
+	}
+	return Config{
+		Port:               port,
+		JWTSecret:          secret,
+		BaseURL:            baseURL,
+		SuperAdminEmail:    superAdminEmail,
+		SuperAdminPassword: superAdminPassword,
+	}
 }
