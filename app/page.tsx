@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { mockServers } from '@/lib/mock-data'
-import { TypeWriter, ScrollText, DynamicText, MouseEffectCard, SpotlightCard } from '@/components/kokonut'
+import { TypeWriter, ScrollText, DynamicText, MouseEffectCard, SpotlightCard, BeamsBackground } from '@/components/kokonut'
 
 const features = [
   {
@@ -45,9 +45,10 @@ export default function HomePage() {
   const [featuredServers, setFeaturedServers] = useState(mockServers.filter(s => s.featured))
 
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-b from-background to-background">
-      {/* Navigation */}
-      <nav className="border-b border-border sticky top-0 z-50 bg-background/95 backdrop-blur">
+    <BeamsBackground className="flex flex-col min-h-screen" intensity={0.4}>
+      <div className="flex flex-col min-h-screen bg-gradient-to-b from-background to-background">
+        {/* Navigation */}
+        <nav className="border-b border-border sticky top-0 z-50 bg-background/95 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-primary" />
@@ -239,6 +240,7 @@ export default function HomePage() {
           <p>&copy; 2025 MCP Marketplace. All rights reserved.</p>
         </div>
       </footer>
-    </div>
+      </div>
+    </BeamsBackground>
   )
 }
