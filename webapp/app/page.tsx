@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Sticker } from '@/components/ui/sticker'
 import { BurstShape, LightningShape, Star5Shape } from '@/components/ui/shapes'
 import { fetchFeaturedServers, type Server } from '@/lib/api-client'
-import { TypeWriter, ScrollText, MouseEffectCard, SpotlightCard, BeamsBackground } from '@/components/kokonut'
+import { TypeWriter, ScrollText, MouseEffectCard, SpotlightCard } from '@/components/kokonut'
 import { Accordion } from '@/components/animate-ui/accordion'
 import { LightModeOnly, DarkModeOnly } from '@/components/theme-aware'
 import { Button as RetroButton, Card as RetroCard, Badge as RetroBadge } from '@/components/retroui'
@@ -25,6 +25,8 @@ const features = [
 
 export default function HomePage() {
   const [featuredServers, setFeaturedServers] = useState<Server[]>([])
+  const orangeFillClass = '!bg-[hsl(var(--chart-3))] !text-black !border-black'
+  const orangeBrutalButtonClass = 'bg-[hsl(var(--chart-3))] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1'
   const landingChart = [
     { name: 'Jan', orders: 12 },
     { name: 'Feb', orders: 32 },
@@ -46,8 +48,7 @@ export default function HomePage() {
   ]
 
   return (
-    <BeamsBackground className="flex flex-col min-h-screen" intensity={0.4}>
-      <div className="flex flex-col min-h-screen bg-gradient-to-b from-background to-background">
+      <div className="landing-warp-grid-bg flex flex-col min-h-screen bg-gradient-to-b from-background to-background">
         <nav className="border-b border-border sticky top-0 z-50 bg-background/95 backdrop-blur">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <DarkModeOnly>
@@ -66,28 +67,28 @@ export default function HomePage() {
             </DarkModeOnly>
             <LightModeOnly>
               <div className="hidden md:flex items-center gap-2">
-                <RetroButton variant="outline" size="sm" asChild><Link href="/marketplace">Browse</Link></RetroButton>
-                <RetroButton variant="outline" size="sm" asChild><Link href="#features">Features</Link></RetroButton>
-                <RetroButton variant="outline" size="sm" asChild><Link href="#categories">Categories</Link></RetroButton>
+                <RetroButton variant="outline" size="sm" asChild className={orangeFillClass}><Link href="/marketplace">Browse</Link></RetroButton>
+                <RetroButton variant="outline" size="sm" asChild className={orangeFillClass}><Link href="#features">Features</Link></RetroButton>
+                <RetroButton variant="outline" size="sm" asChild className={orangeFillClass}><Link href="#categories">Categories</Link></RetroButton>
               </div>
             </LightModeOnly>
 
             <DarkModeOnly>
               <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" asChild><Link href="/login">Login</Link></Button>
-                <Button size="sm" asChild><Link href="/marketplace">Get Started</Link></Button>
+                <Button variant="outline" size="sm" asChild className={orangeBrutalButtonClass}><Link href="/login">Login</Link></Button>
+                <Button size="sm" asChild className={orangeBrutalButtonClass}><Link href="/marketplace">Get Started</Link></Button>
               </div>
             </DarkModeOnly>
             <LightModeOnly>
               <div className="flex items-center gap-2">
-                <RetroButton variant="outline" size="sm" asChild><Link href="/login">Login</Link></RetroButton>
-                <RetroButton size="sm" asChild><Link href="/marketplace">Get Started</Link></RetroButton>
+                <RetroButton variant="outline" size="sm" asChild className={orangeFillClass}><Link href="/login">Login</Link></RetroButton>
+                <RetroButton size="sm" asChild className={orangeFillClass}><Link href="/marketplace">Get Started</Link></RetroButton>
               </div>
             </LightModeOnly>
           </div>
         </nav>
 
-        <section className="relative px-4 sm:px-6 lg:px-8 py-20 sm:py-32 max-w-7xl mx-auto w-full overflow-hidden grid-pattern">
+        <section className="landing-warp-grid-hero relative px-4 sm:px-6 lg:px-8 py-20 sm:py-32 max-w-7xl mx-auto w-full overflow-hidden">
           <div className="pointer-events-none absolute -right-6 top-4 hidden lg:block">
             <BurstShape size={72} className="text-tertiary" />
           </div>
@@ -104,14 +105,14 @@ export default function HomePage() {
 
             <DarkModeOnly>
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                <Button size="lg" asChild className="w-full sm:w-auto"><Link href="/marketplace">Browse Marketplace <ArrowRight className="ml-2 w-4 h-4" /></Link></Button>
-                <Button size="lg" variant="outline" asChild className="w-full sm:w-auto"><Link href="/merchant/onboarding">Publish Server</Link></Button>
+                <Button size="lg" asChild className={`w-full sm:w-auto ${orangeBrutalButtonClass} button-orange-solid`}><Link href="/marketplace">Browse Marketplace <ArrowRight className="ml-2 w-4 h-4" /></Link></Button>
+                <Button size="lg" variant="outline" asChild className={`w-full sm:w-auto ${orangeBrutalButtonClass} button-orange-solid`}><Link href="/merchant/onboarding">Publish Server</Link></Button>
               </div>
             </DarkModeOnly>
             <LightModeOnly>
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                <RetroButton size="lg" asChild className="w-full sm:w-auto"><Link href="/marketplace">Browse Marketplace</Link></RetroButton>
-                <RetroButton variant="outline" size="lg" asChild className="w-full sm:w-auto !bg-[hsl(var(--tertiary))] !text-[hsl(var(--tertiary-foreground))]"><Link href="/merchant/onboarding">Publish Server</Link></RetroButton>
+                <RetroButton size="lg" asChild className={`w-full sm:w-auto ${orangeFillClass} button-orange-solid`}><Link href="/marketplace">Browse Marketplace</Link></RetroButton>
+                <RetroButton variant="outline" size="lg" asChild className={`w-full sm:w-auto ${orangeFillClass} button-orange-solid`}><Link href="/merchant/onboarding">Publish Server</Link></RetroButton>
               </div>
             </LightModeOnly>
           </div>
@@ -206,7 +207,7 @@ export default function HomePage() {
                 <p className="text-muted-foreground mb-8 max-w-xl mx-auto">Explore thousands of verified MCP servers and integrate them into your workflow in minutes.</p>
               </div>
             </ScrollText>
-            <Button size="lg" asChild className="bg-[hsl(var(--tertiary))] text-[hsl(var(--tertiary-foreground))] hover:opacity-90">
+            <Button size="lg" asChild className={orangeBrutalButtonClass}>
               <Link href="/marketplace">Explore Marketplace</Link>
             </Button>
           </Card>
@@ -237,7 +238,7 @@ export default function HomePage() {
                 </div>
                 <Input placeholder="Company / Tenant" />
                 <Textarea placeholder="What do you need help building?" className="min-h-28" />
-                <Button type="button" className="w-full bg-[hsl(var(--tertiary))] text-[hsl(var(--tertiary-foreground))] hover:opacity-90">Request Consultation</Button>
+                <Button type="button" className={`w-full ${orangeBrutalButtonClass}`}>Request Consultation</Button>
               </form>
             </Card>
           </div>
@@ -284,6 +285,5 @@ export default function HomePage() {
           </div>
         </footer>
       </div>
-    </BeamsBackground>
   )
 }

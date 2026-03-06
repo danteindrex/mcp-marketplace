@@ -163,3 +163,101 @@
     linear-gradient(90deg, hsl(var(--border) / 0.5) 2px, transparent 2px);
   background-size: 48px 48px;
 }
+
+.landing-warp-grid-bg {
+  position: relative;
+  background-color: #efefef;
+  overflow: hidden;
+}
+
+.landing-warp-grid-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(80, 80, 80, 0.42) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(80, 80, 80, 0.42) 1px, transparent 1px);
+  background-size: 96px 84px;
+  transform-origin: center 65%;
+  transform: perspective(1400px) rotateX(63deg) scale(1.48);
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.landing-warp-grid-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 55%, rgba(255, 255, 255, 0.16) 100%);
+  pointer-events: none;
+}
+
+.landing-warp-grid-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dark .landing-warp-grid-bg {
+  background-color: hsl(240 10% 12%);
+}
+
+.dark .landing-warp-grid-bg::before {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.18) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.18) 1px, transparent 1px);
+  opacity: 0.35;
+}
+
+.dark .landing-warp-grid-bg::after {
+  background: linear-gradient(to bottom, rgba(10, 10, 10, 0.22) 0%, rgba(10, 10, 10, 0.12) 55%, rgba(10, 10, 10, 0.25) 100%);
+}
+
+.landing-warp-grid-hero {
+  position: relative;
+}
+
+.landing-warp-grid-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(80, 80, 80, 0.5) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(80, 80, 80, 0.5) 1px, transparent 1px);
+  background-size: 88px 78px;
+  transform-origin: center 62%;
+  transform: perspective(1300px) rotateX(60deg) scale(1.52);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.landing-warp-grid-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dark .landing-warp-grid-hero::before {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.22) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.22) 1px, transparent 1px);
+  opacity: 0.34;
+}
+
+.button-orange-solid {
+  background-color: hsl(25 100% 55%) !important;
+  color: #000 !important;
+  border: 2px solid #000 !important;
+  box-shadow: 4px 4px 0 #000 !important;
+  opacity: 1 !important;
+}
+
+.button-orange-solid:hover {
+  background-color: hsl(25 100% 55%) !important;
+  color: #000 !important;
+  box-shadow: 2px 2px 0 #000 !important;
+  transform: translate(1px, 1px);
+}
+
+.button-orange-solid:active {
+  background-color: hsl(25 100% 55%) !important;
+  color: #000 !important;
+}
