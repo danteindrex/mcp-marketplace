@@ -207,6 +207,10 @@ func (a *App) handleStripeOnrampWebhook(w http.ResponseWriter, r *http.Request) 
 		topup.DestinationAmount = destAmount
 		topup.FulfilledAt = time.Now().UTC()
 		_ = a.store.UpdateWalletTopUp(topup)
+		if _, err := a.postTopUpAccounting(topup); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"received": true, "creditedUsdc": destAmount})
 		return
 	}

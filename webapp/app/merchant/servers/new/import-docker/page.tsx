@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Upload, AlertCircle, CheckCircle2, Loader } from 'lucide-react'
+import { ArrowLeft, AlertCircle, CheckCircle2, Loader } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AppShell } from '@/components/app-shell'
+import { createMerchantServer } from '@/lib/api-client'
 import { toast } from 'sonner'
 
 export default function ImportDockerPage() {
@@ -18,12 +19,21 @@ export default function ImportDockerPage() {
 
   const [scanResults, setScanResults] = useState<{
     name: string
+    slug: string
     version: string
     description: string
     baseSize: number
     layers: number
     sbom: { libraries: string[]; vulnerabilities: number }
   } | null>(null)
+
+  const toSlug = (value: string) =>
+    value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 50)
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,12 +46,24 @@ export default function ImportDockerPage() {
     setIsLoading(true)
     setStep('scanning')
 
-    // Simulate scanning
+    const imageRef = dockerUrl.trim()
+    const imageNameWithTag = imageRef.split('/').pop() || 'mcp-agent'
+    const imageName = imageNameWithTag.split(':')[0] || 'mcp-agent'
+    const tag = imageNameWithTag.split(':')[1] || 'latest'
+    const derivedName = imageName
+      .split('-')
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+      .trim() || 'MCP Agent'
+    const derivedSlug = toSlug(imageName) || 'mcp-agent'
+
     setTimeout(() => {
       setScanResults({
-        name: 'PostgreSQL Assistant',
-        version: '2.1.0',
-        description: 'Query and manage PostgreSQL databases with natural language',
+        name: derivedName,
+        slug: derivedSlug,
+        version: tag,
+        description: `${derivedName} imported from Docker image ${imageRef}`,
         baseSize: 486,
         layers: 12,
         sbom: {
@@ -55,12 +77,30 @@ export default function ImportDockerPage() {
   }
 
   const handleImport = async () => {
+    if (!scanResults) return
     setIsLoading(true)
-    setTimeout(() => {
-      toast.success('Server imported successfully!')
-      // In real app, would navigate to builder
-      window.location.href = '/merchant/servers'
-    }, 1500)
+    try {
+      const created = await createMerchantServer({
+        name: scanResults.name,
+        slug: scanResults.slug,
+        description: scanResults.description,
+        category: 'automation',
+        dockerImage: dockerUrl.trim(),
+        canonicalResourceUri: `https://mcp.marketplace.local/resource/${scanResults.slug}`,
+        requiredScopes: ['agent:invoke'],
+        pricingType: 'x402',
+        pricingAmount: 0,
+        supportsCloud: true,
+        supportsLocal: true,
+        status: 'draft',
+      })
+      toast.success('Server imported as draft')
+      window.location.href = `/merchant/servers/${created.id}/deployments`
+    } catch (e: any) {
+      toast.error(e?.message || 'Import failed')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (

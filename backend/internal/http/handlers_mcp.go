@@ -230,6 +230,20 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 					settled.PaymentMethod = "wallet_balance"
 					settled.VerificationStatus = "verified"
 					settled.VerificationNote = "debited from prepaid wallet balance"
+					accounted, aerr := a.postIntentAccounting(settled)
+					if aerr != nil {
+						writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+							JSONRPC: "2.0",
+							ID:      req.ID,
+							Error: &mcpJSONRPCError{
+								Code:    -32603,
+								Message: "failed to post payment accounting",
+								Data:    map[string]interface{}{"error": aerr.Error()},
+							},
+						})
+						return
+					}
+					settled = accounted
 					if settled.RemainingQuantity <= 0 {
 						settled.RemainingQuantity = 1
 					}
@@ -373,6 +387,20 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 						settled.VerificationStatus = "verified"
 						settled.VerificationNote = verifyRes.Note
 						settled.FacilitatorTx = verifyRes.TxHash
+						accounted, aerr := a.postIntentAccounting(settled)
+						if aerr != nil {
+							writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+								JSONRPC: "2.0",
+								ID:      req.ID,
+								Error: &mcpJSONRPCError{
+									Code:    -32603,
+									Message: "failed to post payment accounting",
+									Data:    map[string]interface{}{"error": aerr.Error()},
+								},
+							})
+							return
+						}
+						settled = accounted
 						if settled.RemainingQuantity <= 0 {
 							settled.RemainingQuantity = 1
 						}

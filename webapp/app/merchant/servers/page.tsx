@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
-import { Eye, Edit, Upload, Plus, TrendingUp, Users, Zap } from 'lucide-react'
+import { Eye, Edit, Plus, TrendingUp, Users, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
@@ -12,7 +12,7 @@ import { fetchMerchantServers, type Server } from '@/lib/api-client'
 const statusOptions = [
   { value: 'published', label: 'Published' },
   { value: 'draft', label: 'Draft' },
-  { value: 'deprecated', label: 'Deprecated' },
+  { value: 'archived', label: 'Archived' },
 ]
 
 export default function MerchantServersPage() {
@@ -41,13 +41,7 @@ export default function MerchantServersPage() {
     }
 
     if (selectedStatus) {
-      // Mock status - in real app would come from API
-      const statusMap: Record<string, string[]> = {
-        published: ['srv_001', 'srv_002', 'srv_003', 'srv_005'],
-        draft: ['srv_004'],
-        deprecated: [],
-      }
-      results = results.filter(s => statusMap[selectedStatus]?.includes(s.id))
+      results = results.filter(s => s.status === selectedStatus)
     }
 
     switch (sortBy) {
@@ -166,9 +160,7 @@ export default function MerchantServersPage() {
             </Card>
           ) : (
             filteredServers.map(server => {
-              const status = ['srv_001', 'srv_002', 'srv_003', 'srv_005'].includes(server.id)
-                ? 'published'
-                : 'draft'
+              const status = server.status || 'draft'
               const monthlyRevenue = server.pricingType !== 'free'
                 ? Math.floor(server.installCount * (server.pricingAmount || 0) * 0.3)
                 : 0
@@ -182,11 +174,14 @@ export default function MerchantServersPage() {
                       <div className="flex items-center gap-2">
                         <div
                           className={`w-2 h-2 rounded-full ${
-                            status === 'published' ? 'bg-green-500' : 'bg-amber-500'
+                            status === 'published' ? 'bg-green-500' : status === 'archived' ? 'bg-zinc-500' : 'bg-amber-500'
                           }`}
                         />
                         <span className="text-xs font-medium capitalize text-muted-foreground">
                           {status}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {server.deploymentStatus === 'deployed' ? 'deployed' : 'not deployed'}
                         </span>
                       </div>
                     </div>
@@ -227,7 +222,7 @@ export default function MerchantServersPage() {
                         asChild
                         title="Edit server"
                       >
-                        <Link href={`/merchant/servers/${server.id}/builder`}>
+                        <Link href={`/merchant/servers/${server.id}/deployments`}>
                           <Edit className="w-4 h-4" />
                         </Link>
                       </Button>

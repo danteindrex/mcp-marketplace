@@ -151,23 +151,29 @@ func (a *App) merchantPaymentsOverview(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	servers := a.store.ListMerchantServers(claims.TenantID)
 	serverName := map[string]string{}
+	serverByID := map[string]models.Server{}
 	serverSet := map[string]struct{}{}
 	for _, srv := range servers {
 		serverName[srv.ID] = srv.Name
+		serverByID[srv.ID] = srv
 		serverSet[srv.ID] = struct{}{}
 	}
 
 	all := a.store.ListAllX402Intents()
 	type row struct {
-		ServerID    string  `json:"serverId"`
-		ServerName  string  `json:"serverName"`
-		SettledUsdc float64 `json:"settledUsdc"`
-		SettledCnt  int     `json:"settledCount"`
-		PendingCnt  int     `json:"pendingCount"`
+		ServerID        string  `json:"serverId"`
+		ServerName      string  `json:"serverName"`
+		GrossUsdc       float64 `json:"grossUsdc"`
+		PlatformFeeUsdc float64 `json:"platformFeeUsdc"`
+		NetUsdc         float64 `json:"netUsdc"`
+		SettledCnt      int     `json:"settledCount"`
+		PendingCnt      int     `json:"pendingCount"`
 	}
 	rowsByServer := map[string]*row{}
 	methodBreakdown := map[string]int{}
-	total := 0.0
+	totalGross := 0.0
+	totalPlatform := 0.0
+	totalNet := 0.0
 	settledCount := 0
 	pendingCount := 0
 	for _, intent := range all {
@@ -189,9 +195,28 @@ func (a *App) merchantPaymentsOverview(w http.ResponseWriter, r *http.Request) {
 			rowsByServer[intent.ServerID] = rw
 		}
 		if intent.Status == "settled" {
-			total += intent.AmountUSDC
+			fee := roundUSDC(intent.PlatformFeeUSDC)
+			net := roundUSDC(intent.SellerNetUSDC)
+			if !intent.AccountingPosted || net <= 0 {
+				if server, ok := serverByID[intent.ServerID]; ok {
+					computedFee, computedNet := feeSplit(intent.AmountUSDC, a.effectiveFeePolicy(server))
+					fee = computedFee
+					net = computedNet
+				} else {
+					fee = roundUSDC(intent.AmountUSDC * float64(a.cfg.PlatformFeeBps) / 10000.0)
+					if fee > intent.AmountUSDC {
+						fee = intent.AmountUSDC
+					}
+					net = roundUSDC(intent.AmountUSDC - fee)
+				}
+			}
+			totalGross += intent.AmountUSDC
+			totalPlatform += fee
+			totalNet += net
 			settledCount++
-			rw.SettledUsdc += intent.AmountUSDC
+			rw.GrossUsdc += intent.AmountUSDC
+			rw.PlatformFeeUsdc += fee
+			rw.NetUsdc += net
 			rw.SettledCnt++
 		} else {
 			pendingCount++
@@ -200,18 +225,29 @@ func (a *App) merchantPaymentsOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := make([]row, 0, len(rowsByServer))
 	for _, r := range rowsByServer {
+		r.GrossUsdc = roundUSDC(r.GrossUsdc)
+		r.PlatformFeeUsdc = roundUSDC(r.PlatformFeeUsdc)
+		r.NetUsdc = roundUSDC(r.NetUsdc)
 		rows = append(rows, *r)
 	}
 	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].SettledUsdc > rows[j].SettledUsdc
+		return rows[i].NetUsdc > rows[j].NetUsdc
 	})
+	entries := a.store.ListLedgerEntries(claims.TenantID, 5000)
+	profile := a.effectiveSellerPayoutProfile(claims.TenantID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"totalSettledUsdc": total,
-		"settledCount":     settledCount,
-		"pendingCount":     pendingCount,
-		"byServer":         rows,
-		"methodBreakdown":  methodBreakdown,
-		"methods":          a.paymentMethodsCatalog(),
+		"totalSettledUsdc":     roundUSDC(totalGross),
+		"totalPlatformFeeUsdc": roundUSDC(totalPlatform),
+		"totalNetUsdc":         roundUSDC(totalNet),
+		"sellerPayableUsdc":    sellerPayableBalance(entries, claims.TenantID),
+		"settledCount":         settledCount,
+		"pendingCount":         pendingCount,
+		"byServer":             rows,
+		"methodBreakdown":      methodBreakdown,
+		"methods":              a.paymentMethodsCatalog(),
+		"payoutMethods":        a.payoutMethodsCatalog(),
+		"payoutProfile":        profile,
+		"recentPayouts":        a.store.ListPayoutRecords(claims.TenantID, 10),
 	})
 }
 
@@ -233,26 +269,74 @@ func (a *App) adminPaymentsOverview(w http.ResponseWriter, r *http.Request) {
 		case "settled":
 			settled++
 			total += intent.AmountUSDC
-			byTenant[intent.TenantID] += intent.AmountUSDC
+			server, ok := a.store.GetServerByID(intent.ServerID)
+			if ok {
+				byTenant[server.TenantID] += intent.AmountUSDC
+			}
 		case "failed":
 			failed++
 		default:
 			pending++
 		}
 	}
+	entries := a.store.ListLedgerEntries("", 10000)
+	platformRevenue := 0.0
+	sellerPayableByTenant := map[string]float64{}
+	for _, entry := range entries {
+		if entry.Account == accountPlatformRevenue {
+			if strings.EqualFold(entry.EntryType, "credit") {
+				platformRevenue += entry.AmountUSDC
+			} else {
+				platformRevenue -= entry.AmountUSDC
+			}
+		}
+		if strings.HasPrefix(entry.Account, accountSellerPayable+":") {
+			tenantID := strings.TrimPrefix(entry.Account, accountSellerPayable+":")
+			if strings.EqualFold(entry.EntryType, "credit") {
+				sellerPayableByTenant[tenantID] += entry.AmountUSDC
+			} else {
+				sellerPayableByTenant[tenantID] -= entry.AmountUSDC
+			}
+		}
+	}
+	for tenantID, amount := range sellerPayableByTenant {
+		if amount < 0 {
+			sellerPayableByTenant[tenantID] = 0
+			continue
+		}
+		sellerPayableByTenant[tenantID] = roundUSDC(amount)
+	}
+	payouts := a.store.ListPayoutRecords("", 2000)
+	byPayoutStatus := map[string]int{}
+	payoutNet := 0.0
+	for _, payout := range payouts {
+		byPayoutStatus[payout.Status]++
+		payoutNet += payout.NetUSDC
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"intentCount":       len(all),
-		"settledCount":      settled,
-		"pendingCount":      pending,
-		"failedCount":       failed,
-		"settledVolumeUsdc": total,
-		"byMethod":          byMethod,
-		"byTenant":          byTenant,
-		"methods":           a.paymentMethodsCatalog(),
+		"intentCount":           len(all),
+		"settledCount":          settled,
+		"pendingCount":          pending,
+		"failedCount":           failed,
+		"settledVolumeUsdc":     roundUSDC(total),
+		"platformRevenueUsdc":   roundUSDC(platformRevenue),
+		"sellerPayableByTenant": sellerPayableByTenant,
+		"byMethod":              byMethod,
+		"byTenant":              byTenant,
+		"methods":               a.paymentMethodsCatalog(),
+		"payouts": map[string]interface{}{
+			"count":       len(payouts),
+			"byStatus":    byPayoutStatus,
+			"netSentUsdc": roundUSDC(payoutNet),
+		},
+		"feePolicies": a.store.ListPaymentFeePolicies(),
 		"x402": map[string]interface{}{
 			"mode":           a.cfg.X402Mode,
 			"facilitatorUrl": a.cfg.X402FacilitatorURL,
 			"apiKeySet":      strings.TrimSpace(a.cfg.X402FacilitatorAPIKey) != "",
+		},
+		"stripeConnect": map[string]interface{}{
+			"configured": a.stripeConnect.configured(),
 		},
 	})
 }

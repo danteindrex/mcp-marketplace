@@ -1,6 +1,10 @@
 package store
 
-import "github.com/yourorg/mcp-marketplace/backend/internal/models"
+import (
+	"time"
+
+	"github.com/yourorg/mcp-marketplace/backend/internal/models"
+)
 
 type Store interface {
 	GetUserByEmail(email string) (models.User, bool)
@@ -14,6 +18,10 @@ type Store interface {
 	ListMerchantServers(tenantID string) []models.Server
 	CreateServer(server models.Server) models.Server
 	UpdateServer(server models.Server) bool
+	UpsertDeployTaskByServer(task models.DeployTask) models.DeployTask
+	GetDeployTaskByServer(serverID string) (models.DeployTask, bool)
+	ListDueDeployTasks(now time.Time, limit int) []models.DeployTask
+	UpdateDeployTask(task models.DeployTask) bool
 
 	ListEntitlements(tenantID, userID string) []models.Entitlement
 	GrantEntitlement(e models.Entitlement) models.Entitlement
@@ -44,6 +52,17 @@ type Store interface {
 	GetWalletTopUpByProviderSession(provider, providerSessionID string) (models.WalletTopUp, bool)
 	UpdateWalletTopUp(item models.WalletTopUp) bool
 	ListWalletTopUps(tenantID, userID string, limit int) []models.WalletTopUp
+	UpsertPaymentFeePolicy(policy models.PaymentFeePolicy) models.PaymentFeePolicy
+	GetPaymentFeePolicy(scope, tenantID, serverID string) (models.PaymentFeePolicy, bool)
+	ListPaymentFeePolicies() []models.PaymentFeePolicy
+	CreateLedgerEntries(entries []models.LedgerEntry) []models.LedgerEntry
+	ListLedgerEntries(tenantID string, limit int) []models.LedgerEntry
+	UpsertSellerPayoutProfile(profile models.SellerPayoutProfile) models.SellerPayoutProfile
+	GetSellerPayoutProfile(tenantID string) (models.SellerPayoutProfile, bool)
+	ListSellerPayoutProfiles() []models.SellerPayoutProfile
+	CreatePayoutRecord(record models.PayoutRecord) models.PayoutRecord
+	UpdatePayoutRecord(record models.PayoutRecord) bool
+	ListPayoutRecords(tenantID string, limit int) []models.PayoutRecord
 	ListLocalAgents(tenantID, userID string) []models.LocalAgent
 	UpsertLocalAgent(agent models.LocalAgent) models.LocalAgent
 	GetUserSettings(userID string) (models.UserSettings, bool)

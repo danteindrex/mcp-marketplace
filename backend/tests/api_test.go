@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/yourorg/mcp-marketplace/backend/internal/auth"
@@ -208,6 +209,7 @@ func TestMarketplaceInstallAndMCPHub(t *testing.T) {
 		"canonicalResourceUri": "https://mcp.marketplace.local/resource/installable-server",
 		"requiredScopes":       []string{"db:read", "db:write"},
 		"pricingType":          "free",
+		"status":               "published",
 		"supportsCloud":        true,
 		"supportsLocal":        true,
 	})
@@ -347,6 +349,145 @@ func TestMerchantAccessControl(t *testing.T) {
 	}
 	if res := call(t, h, http.MethodGet, "/v1/merchant/servers/"+id+"/observability", merchantToken, nil); res.Code != http.StatusOK {
 		t.Fatalf("observability status %d", res.Code)
+	}
+}
+
+func TestMerchantDeployThenPublishLifecycle(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "lifecycle-merchant@acme.local", "MerchantPass123!@", "merchant")
+	merchantToken := login(t, h, "lifecycle-merchant@acme.local", "MerchantPass123!@")
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Lifecycle Server",
+		"slug":                 "lifecycle-server",
+		"description":          "Lifecycle flow test",
+		"category":             "automation",
+		"dockerImage":          "tenant/lifecycle:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/lifecycle-server",
+		"requiredScopes":       []string{"db:read"},
+		"pricingType":          "x402",
+		"pricingAmount":        0.0,
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+	serverSlug := createdBody["slug"].(string)
+
+	publishBeforeDeploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/publish", merchantToken, nil)
+	if publishBeforeDeploy.Code != http.StatusConflict {
+		t.Fatalf("expected publish before deploy to fail with 409, got %d body=%s", publishBeforeDeploy.Code, publishBeforeDeploy.Body.String())
+	}
+
+	deploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/deploy", merchantToken, map[string]interface{}{
+		"deploymentTarget": "us-west-1",
+		"n8nWorkflowId":    "wf_123",
+	})
+	if deploy.Code != http.StatusOK {
+		t.Fatalf("deploy status %d body=%s", deploy.Code, deploy.Body.String())
+	}
+
+	publishWithoutPrice := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/publish", merchantToken, nil)
+	if publishWithoutPrice.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected publish without price to fail with 422, got %d body=%s", publishWithoutPrice.Code, publishWithoutPrice.Body.String())
+	}
+
+	updatePrice := call(t, h, http.MethodPut, "/v1/merchant/servers/"+serverID, merchantToken, map[string]interface{}{
+		"pricingType":   "x402",
+		"pricingAmount": 0.25,
+	})
+	if updatePrice.Code != http.StatusOK {
+		t.Fatalf("update price status %d body=%s", updatePrice.Code, updatePrice.Body.String())
+	}
+
+	publish := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/publish", merchantToken, nil)
+	if publish.Code != http.StatusOK {
+		t.Fatalf("publish status %d body=%s", publish.Code, publish.Body.String())
+	}
+
+	if res := call(t, h, http.MethodGet, "/v1/marketplace/servers/"+serverSlug, "", nil); res.Code != http.StatusOK {
+		t.Fatalf("marketplace detail should be available after publish, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestMerchantDeploySyncsWithN8NWhenConfigured(t *testing.T) {
+	var createCalls int32
+	var activateCalls int32
+
+	n8n := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/workflows":
+			atomic.AddInt32(&createCalls, 1)
+			write := map[string]interface{}{"id": "wf_test_123"}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(write)
+			return
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/workflows/wf_test_123/activate":
+			atomic.AddInt32(&activateCalls, 1)
+			write := map[string]interface{}{"id": "wf_test_123", "active": true}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(write)
+			return
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "not found"})
+			return
+		}
+	}))
+	defer n8n.Close()
+
+	cfg := config.Config{
+		Port:               "8080",
+		JWTSecret:          "test-secret",
+		BaseURL:            "http://localhost:8080",
+		N8NBaseURL:         n8n.URL,
+		SuperAdminEmail:    "admin@platform.local",
+		SuperAdminPassword: "admin-pass",
+	}
+	st := store.NewMemoryStore(cfg)
+	jwt := auth.NewJWTManager(cfg.JWTSecret)
+	h := api.NewRouter(cfg, st, jwt)
+
+	signup(t, h, "n8n-merchant@acme.local", "MerchantPass123!@", "merchant")
+	merchantToken := login(t, h, "n8n-merchant@acme.local", "MerchantPass123!@")
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "N8N Deploy Server",
+		"slug":                 "n8n-deploy-server",
+		"description":          "N8N deploy test",
+		"category":             "automation",
+		"dockerImage":          "tenant/n8n-deploy:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/n8n-deploy-server",
+		"requiredScopes":       []string{"agent:invoke"},
+		"pricingType":          "x402",
+		"pricingAmount":        0.0,
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+
+	deploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/deploy", merchantToken, nil)
+	if deploy.Code != http.StatusOK {
+		t.Fatalf("deploy status %d body=%s", deploy.Code, deploy.Body.String())
+	}
+
+	var deployBody map[string]interface{}
+	_ = json.Unmarshal(deploy.Body.Bytes(), &deployBody)
+	serverObj := deployBody["server"].(map[string]interface{})
+	if strings.TrimSpace(serverObj["n8nWorkflowId"].(string)) != "wf_test_123" {
+		t.Fatalf("expected n8n workflow id to be persisted, got body=%s", deploy.Body.String())
+	}
+	if atomic.LoadInt32(&createCalls) == 0 || atomic.LoadInt32(&activateCalls) == 0 {
+		t.Fatalf("expected n8n create+activate calls, got create=%d activate=%d", createCalls, activateCalls)
 	}
 }
 
@@ -869,5 +1010,102 @@ func TestBuyerWalletTopUpAndWalletBalanceSettle(t *testing.T) {
 	walletAfterSpend := afterSpendBody["wallet"].(map[string]interface{})
 	if walletAfterSpend["balanceUsdc"].(float64) >= 25.0 {
 		t.Fatalf("expected wallet balance to decrease after settle, got body=%s", afterSpend.Body.String())
+	}
+}
+
+func TestFeePolicyPayoutProfileAndPayoutRun(t *testing.T) {
+	h := newTestServer()
+	buyerSignup := signup(t, h, "payout-buyer@acme.local", "BuyerPass123!@", "buyer")
+	merchantSignup := signup(t, h, "payout-merchant@acme.local", "MerchantPass123!@", "merchant")
+	adminToken := login(t, h, "admin@platform.local", "admin-pass")
+	buyerToken := login(t, h, "payout-buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "payout-merchant@acme.local", "MerchantPass123!@")
+	buyerUser := buyerSignup["user"].(map[string]interface{})
+	merchantUser := merchantSignup["user"].(map[string]interface{})
+
+	feePolicy := call(t, h, http.MethodPut, "/v1/admin/payments/fee-policies", adminToken, map[string]interface{}{
+		"scope":          "global",
+		"platformFeeBps": 1000,
+		"enabled":        true,
+		"holdDays":       0,
+		"payoutCadence":  "manual",
+	})
+	if feePolicy.Code != http.StatusOK {
+		t.Fatalf("fee policy update status %d body=%s", feePolicy.Code, feePolicy.Body.String())
+	}
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Payout Test Server",
+		"slug":                 "payout-test-server",
+		"description":          "Payout test",
+		"category":             "ai",
+		"dockerImage":          "tenant/payout-test:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/payout-test-server",
+		"requiredScopes":       []string{"documents:read"},
+		"pricingType":          "x402",
+		"pricingAmount":        1.0,
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create merchant server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+
+	grant := call(t, h, http.MethodPost, "/v1/admin/entitlements", adminToken, map[string]interface{}{
+		"tenantId": buyerUser["tenantId"], "userId": buyerUser["id"], "serverId": serverID, "allowedScopes": []string{"documents:read"}, "cloudAllowed": true, "localAllowed": true,
+	})
+	if grant.Code != http.StatusCreated {
+		t.Fatalf("grant entitlement status %d body=%s", grant.Code, grant.Body.String())
+	}
+
+	intent := call(t, h, http.MethodPost, "/v1/billing/x402/intents", buyerToken, map[string]interface{}{
+		"serverId": serverID, "toolName": "run", "amount": 1.0,
+	})
+	if intent.Code != http.StatusPaymentRequired {
+		t.Fatalf("x402 intent status %d body=%s", intent.Code, intent.Body.String())
+	}
+	var intentBody map[string]interface{}
+	_ = json.Unmarshal(intent.Body.Bytes(), &intentBody)
+	intentObj := intentBody["intent"].(map[string]interface{})
+	intentID := intentObj["id"].(string)
+
+	settle := call(t, h, http.MethodPost, "/v1/billing/x402/intents/"+intentID+"/settle", buyerToken, map[string]interface{}{
+		"paymentResponse": map[string]interface{}{"paymentIdentifier": "pay_payout_test_1", "method": "x402_wallet"},
+	})
+	if settle.Code != http.StatusOK {
+		t.Fatalf("settle status %d body=%s", settle.Code, settle.Body.String())
+	}
+
+	updateProfile := call(t, h, http.MethodPut, "/v1/merchant/payments/payout-profile", merchantToken, map[string]interface{}{
+		"preferredMethod":   "stablecoin",
+		"stablecoinAddress": "0xmerchantwallet",
+		"minPayoutUsdc":     0,
+		"holdDays":          0,
+	})
+	if updateProfile.Code != http.StatusOK {
+		t.Fatalf("merchant payout profile update status %d body=%s", updateProfile.Code, updateProfile.Body.String())
+	}
+
+	run := call(t, h, http.MethodPost, "/v1/admin/payments/payouts/run", adminToken, map[string]interface{}{
+		"tenantId": merchantUser["tenantId"],
+		"method":   "stablecoin",
+		"force":    true,
+	})
+	if run.Code != http.StatusOK {
+		t.Fatalf("run payout status %d body=%s", run.Code, run.Body.String())
+	}
+	var runBody map[string]interface{}
+	_ = json.Unmarshal(run.Body.Bytes(), &runBody)
+	record, _ := runBody["record"].(map[string]interface{})
+	if record["status"] != "completed" {
+		t.Fatalf("expected payout record completed, got body=%s", run.Body.String())
+	}
+
+	merchantPayouts := call(t, h, http.MethodGet, "/v1/merchant/payments/payouts", merchantToken, nil)
+	if merchantPayouts.Code != http.StatusOK {
+		t.Fatalf("merchant payouts status %d body=%s", merchantPayouts.Code, merchantPayouts.Body.String())
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
 
 func (a *App) listMarketplaceServers(w http.ResponseWriter, r *http.Request) {
@@ -18,7 +19,12 @@ func (a *App) getMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}
-	if server.Status != "published" {
+	if server.Status != models.ServerStatusPublished {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	// Allow legacy records with empty deployment status while requiring deployed for new records.
+	if server.DeploymentStatus != "" && server.DeploymentStatus != models.ServerDeploymentDeployed {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}

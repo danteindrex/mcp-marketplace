@@ -3,7 +3,7 @@
 ## Repository layout
 - `backend/`: Go API service (auth, marketplace, buyer, merchant, admin, OAuth, x402).
 - `webapp/`: Next.js frontend wired to backend APIs.
-- `infra/docker-compose.yml`: local backend + webapp composition.
+- `infra/docker-compose.yml`: local backend + webapp + mongo + n8n composition.
 - `docs/`: API and implementation notes.
 - `mcp-servers/modelcontextprotocol-servers/`: external MCP server reference snapshot.
 
@@ -21,6 +21,9 @@ cd backend
 export MONGO_URI="mongodb://localhost:27017"
 export MONGO_DB_NAME="mcp_marketplace"
 export MONGO_REQUIRED="true"
+export N8N_BASE_URL="http://localhost:5678"
+export N8N_API_KEY="<n8n-api-key>" # optional but recommended for auto deploy
+export N8N_TIMEOUT_SECONDS="12"
 export SUPER_ADMIN_EMAIL="admin@platform.local"
 export SUPER_ADMIN_PASSWORD="<strong-password>"
 export JWT_SECRET="<strong-jwt-secret>"
@@ -58,6 +61,7 @@ go run ./cmd/server
 cd webapp
 npm ci
 export NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY="pk_live_..."
+export NEXT_PUBLIC_N8N_URL="http://localhost:5678"
 npm run lint
 npm run typecheck
 npm run dev

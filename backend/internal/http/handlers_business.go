@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
 
 func (a *App) getBuyerBilling(w http.ResponseWriter, r *http.Request) {
@@ -124,11 +125,39 @@ func (a *App) serverDeployments(w http.ResponseWriter, r *http.Request) {
 	if !a.ensureServerTenantAccess(w, r, server) {
 		return
 	}
-	items := []map[string]interface{}{
-		{"id": "dep_prod_" + id, "environment": "production", "region": "us-west-1", "replicas": 3, "status": "healthy", "transport": "sse", "version": server.Version, "updatedAt": time.Now().UTC()},
-		{"id": "dep_stg_" + id, "environment": "staging", "region": "us-west-2", "replicas": 1, "status": "healthy", "transport": "sse", "version": server.Version, "updatedAt": time.Now().UTC().Add(-24 * time.Hour)},
+	a.normalizeServerLifecycleForView(&server)
+	items := []map[string]interface{}{}
+	if server.DeploymentStatus == models.ServerDeploymentDeployed {
+		region := "us-west-1"
+		if server.DeploymentTarget != "" {
+			region = server.DeploymentTarget
+		}
+		items = append(items, map[string]interface{}{
+			"id":          "dep_prod_" + id,
+			"environment": "production",
+			"region":      region,
+			"replicas":    1,
+			"status":      "healthy",
+			"transport":   "sse",
+			"version":     server.Version,
+			"updatedAt":   server.UpdatedAt,
+		})
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "count": len(items)})
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"items": items,
+		"count": len(items),
+		"lifecycle": map[string]interface{}{
+			"marketplaceStatus": server.Status,
+			"deploymentStatus":  server.DeploymentStatus,
+			"canPublish":        server.DeploymentStatus == models.ServerDeploymentDeployed && server.PricingAmount > 0,
+			"priceSet":          server.PricingAmount > 0,
+			"deployedAt":        server.DeployedAt,
+		},
+		"n8n": map[string]interface{}{
+			"workflowId":  server.N8nWorkflowID,
+			"workflowUrl": server.N8nWorkflowURL,
+		},
+	})
 }
 
 func (a *App) serverBuilder(w http.ResponseWriter, r *http.Request) {

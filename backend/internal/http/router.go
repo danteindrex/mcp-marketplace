@@ -18,6 +18,8 @@ type App struct {
 	oauth          *oauthState
 	x402           *x402Service
 	stripeOnramp   *stripeOnrampService
+	stripeConnect  *stripeConnectService
+	n8n            *n8nService
 	allowedOrigins map[string]struct{}
 	rateLimiter    *ipRateLimiter
 	authLimiter    *ipRateLimiter
@@ -35,6 +37,8 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 		oauth:          newOAuthState(),
 		x402:           newX402Service(cfg),
 		stripeOnramp:   newStripeOnrampService(cfg),
+		stripeConnect:  newStripeConnectService(cfg),
+		n8n:            newN8NService(cfg),
 		allowedOrigins: allowedOrigins,
 		rateLimiter:    newIPRateLimiter(cfg.RateLimitPerMinute, cfg.RateLimitPerMinute/4),
 		authLimiter:    newIPRateLimiter(30, 10),
@@ -55,6 +59,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 	r.Get("/.well-known/oauth-protected-resource", app.oauthProtectedResourceMetadata)
 	r.Get("/.well-known/oauth-authorization-server", app.oauthAuthorizationServerMetadata)
 	r.Post("/webhooks/stripe/onramp", app.handleStripeOnrampWebhook)
+	r.Post("/webhooks/stripe/connect", app.handleStripeConnectWebhook)
 	r.Post("/oauth/register", app.oauthRegisterClient)
 	r.With(app.authenticate).Get("/oauth/authorize", app.oauthAuthorize)
 	r.Post("/oauth/token", app.oauthToken)
@@ -102,7 +107,10 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 				m.Use(app.requireRole("merchant", "admin"))
 				m.Get("/merchant/servers", app.listMerchantServers)
 				m.Post("/merchant/servers", app.createMerchantServer)
+				m.Get("/merchant/servers/{id}", app.getMerchantServer)
 				m.Put("/merchant/servers/{id}", app.updateMerchantServer)
+				m.Post("/merchant/servers/{id}/deploy", app.deployMerchantServer)
+				m.Post("/merchant/servers/{id}/publish", app.publishMerchantServer)
 				m.Get("/merchant/revenue", app.merchantRevenue)
 				m.Get("/merchant/servers/{id}/observability", app.serverObservability)
 				m.Get("/merchant/servers/{id}/auth", app.serverAuthConfig)
@@ -110,6 +118,12 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 				m.Get("/merchant/servers/{id}/deployments", app.serverDeployments)
 				m.Get("/merchant/servers/{id}/builder", app.serverBuilder)
 				m.Get("/merchant/payments/overview", app.merchantPaymentsOverview)
+				m.Get("/merchant/payments/payout-profile", app.merchantPayoutProfile)
+				m.Put("/merchant/payments/payout-profile", app.merchantPayoutProfile)
+				m.Post("/merchant/payments/payout-profile/stripe/onboarding-link", app.createMerchantStripeOnboardingLink)
+				m.Post("/merchant/payments/payout-profile/stripe/refresh-kyc", app.refreshMerchantStripeKYC)
+				m.Get("/merchant/payments/ledger", app.merchantLedger)
+				m.Get("/merchant/payments/payouts", app.merchantPayouts)
 				m.Get("/merchant/servers/{id}/payments/config", app.merchantServerPaymentConfig)
 				m.Put("/merchant/servers/{id}/payments/config", app.merchantServerPaymentConfig)
 			})
@@ -121,6 +135,14 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 				a.Get("/admin/audit-logs", app.listAuditLogs)
 				a.Get("/admin/client-compatibility", app.clientCompatibility)
 				a.Get("/admin/payments/overview", app.adminPaymentsOverview)
+				a.Get("/admin/payments/fee-policies", app.adminFeePolicies)
+				a.Put("/admin/payments/fee-policies", app.adminFeePolicies)
+				a.Get("/admin/payments/ledger", app.adminLedger)
+				a.Get("/admin/payments/reconciliation", app.adminReconciliation)
+				a.Get("/admin/payments/payout-profiles", app.adminPayoutProfiles)
+				a.Put("/admin/payments/payout-profiles/{tenantID}/block", app.adminSetPayoutBlock)
+				a.Get("/admin/payments/payouts", app.adminPayouts)
+				a.Post("/admin/payments/payouts/run", app.adminRunPayout)
 				a.Post("/admin/entitlements", app.adminGrantEntitlement)
 			})
 		})

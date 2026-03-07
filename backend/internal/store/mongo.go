@@ -35,6 +35,11 @@ type MongoStore struct {
 	x402         *mongo.Collection
 	paymentPol   *mongo.Collection
 	topups       *mongo.Collection
+	feePol       *mongo.Collection
+	ledger       *mongo.Collection
+	payoutProf   *mongo.Collection
+	payouts      *mongo.Collection
+	deployTasks  *mongo.Collection
 	agents       *mongo.Collection
 	userSettings *mongo.Collection
 }
@@ -75,6 +80,10 @@ func NewMongoStore(cfg config.Config) (*MongoStore, error) {
 		x402:         db.Collection("x402_intents"),
 		paymentPol:   db.Collection("payment_policies"),
 		topups:       db.Collection("wallet_topups"),
+		feePol:       db.Collection("payment_fee_policies"),
+		ledger:       db.Collection("ledger_entries"),
+		payoutProf:   db.Collection("seller_payout_profiles"),
+		payouts:      db.Collection("payout_records"),
 		agents:       db.Collection("local_agents"),
 		userSettings: db.Collection("user_settings"),
 	}
@@ -115,6 +124,7 @@ func (s *MongoStore) ensureIndexes() error {
 				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
 				{Keys: bson.D{{Key: "slug", Value: 1}}, Options: options.Index().SetUnique(true)},
 				{Keys: bson.D{{Key: "tenantId", Value: 1}, {Key: "status", Value: 1}}},
+				{Keys: bson.D{{Key: "tenantId", Value: 1}, {Key: "deploymentStatus", Value: 1}}},
 				{Keys: bson.D{{Key: "status", Value: 1}, {Key: "updatedAt", Value: ttlDesc}}},
 			},
 		},
@@ -183,6 +193,38 @@ func (s *MongoStore) ensureIndexes() error {
 				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
 				{Keys: bson.D{{Key: "tenantId", Value: 1}, {Key: "userId", Value: 1}, {Key: "createdAt", Value: ttlDesc}}},
 				{Keys: bson.D{{Key: "provider", Value: 1}, {Key: "providerSessionId", Value: 1}}, Options: options.Index().SetUnique(true)},
+			},
+		},
+		{
+			col: s.feePol,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "scope", Value: 1}, {Key: "tenantId", Value: 1}, {Key: "serverId", Value: 1}}, Options: options.Index().SetUnique(true)},
+			},
+		},
+		{
+			col: s.ledger,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "transactionId", Value: 1}, {Key: "createdAt", Value: ttlDesc}}},
+				{Keys: bson.D{{Key: "tenantId", Value: 1}, {Key: "createdAt", Value: ttlDesc}}},
+				{Keys: bson.D{{Key: "intentId", Value: 1}}},
+			},
+		},
+		{
+			col: s.payoutProf,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "tenantId", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "stripeAccountId", Value: 1}}},
+			},
+		},
+		{
+			col: s.payouts,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "tenantId", Value: 1}, {Key: "createdAt", Value: ttlDesc}}},
+				{Keys: bson.D{{Key: "status", Value: 1}, {Key: "createdAt", Value: ttlDesc}}},
 			},
 		},
 		{
@@ -467,6 +509,12 @@ func (s *MongoStore) CreateServer(server models.Server) models.Server {
 	defer cancel()
 	now := time.Now().UTC()
 	server.ID = newPrefixedID("srv")
+	if strings.TrimSpace(server.Status) == "" {
+		server.Status = models.ServerStatusDraft
+	}
+	if strings.TrimSpace(server.DeploymentStatus) == "" {
+		server.DeploymentStatus = models.ServerDeploymentPending
+	}
 	server.CreatedAt = now
 	server.UpdatedAt = now
 	_, _ = s.servers.InsertOne(ctx, server)
@@ -984,6 +1032,187 @@ func (s *MongoStore) ListWalletTopUps(tenantID, userID string, limit int) []mode
 	items, err := decodeAll[models.WalletTopUp](cur)
 	if err != nil {
 		return []models.WalletTopUp{}
+	}
+	return items
+}
+
+func (s *MongoStore) UpsertPaymentFeePolicy(policy models.PaymentFeePolicy) models.PaymentFeePolicy {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	if strings.TrimSpace(policy.ID) == "" {
+		policy.ID = newPrefixedID("feepol")
+	}
+	if policy.CreatedAt.IsZero() {
+		policy.CreatedAt = now
+	}
+	policy.UpdatedAt = now
+	filter := bson.M{
+		"scope":    strings.ToLower(strings.TrimSpace(policy.Scope)),
+		"tenantId": strings.TrimSpace(policy.TenantID),
+		"serverId": strings.TrimSpace(policy.ServerID),
+	}
+	_, _ = s.feePol.ReplaceOne(ctx, filter, policy, options.Replace().SetUpsert(true))
+	return policy
+}
+
+func (s *MongoStore) GetPaymentFeePolicy(scope, tenantID, serverID string) (models.PaymentFeePolicy, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var policy models.PaymentFeePolicy
+	err := s.feePol.FindOne(ctx, bson.M{
+		"scope":    strings.ToLower(strings.TrimSpace(scope)),
+		"tenantId": strings.TrimSpace(tenantID),
+		"serverId": strings.TrimSpace(serverID),
+	}).Decode(&policy)
+	if err != nil {
+		return models.PaymentFeePolicy{}, false
+	}
+	return policy, true
+}
+
+func (s *MongoStore) ListPaymentFeePolicies() []models.PaymentFeePolicy {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	cur, err := s.feePol.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}}))
+	if err != nil {
+		return []models.PaymentFeePolicy{}
+	}
+	items, err := decodeAll[models.PaymentFeePolicy](cur)
+	if err != nil {
+		return []models.PaymentFeePolicy{}
+	}
+	return items
+}
+
+func (s *MongoStore) CreateLedgerEntries(entries []models.LedgerEntry) []models.LedgerEntry {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	docs := make([]interface{}, 0, len(entries))
+	out := make([]models.LedgerEntry, 0, len(entries))
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.ID) == "" {
+			entry.ID = newPrefixedID("led")
+		}
+		if entry.CreatedAt.IsZero() {
+			entry.CreatedAt = now
+		}
+		docs = append(docs, entry)
+		out = append(out, entry)
+	}
+	if len(docs) > 0 {
+		_, _ = s.ledger.InsertMany(ctx, docs)
+	}
+	return out
+}
+
+func (s *MongoStore) ListLedgerEntries(tenantID string, limit int) []models.LedgerEntry {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	filter := bson.M{}
+	if strings.TrimSpace(tenantID) != "" {
+		filter["tenantId"] = strings.TrimSpace(tenantID)
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
+	if limit > 0 {
+		opts.SetLimit(int64(limit))
+	}
+	cur, err := s.ledger.Find(ctx, filter, opts)
+	if err != nil {
+		return []models.LedgerEntry{}
+	}
+	items, err := decodeAll[models.LedgerEntry](cur)
+	if err != nil {
+		return []models.LedgerEntry{}
+	}
+	return items
+}
+
+func (s *MongoStore) UpsertSellerPayoutProfile(profile models.SellerPayoutProfile) models.SellerPayoutProfile {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	if strings.TrimSpace(profile.ID) == "" {
+		profile.ID = newPrefixedID("payout_profile")
+	}
+	if profile.CreatedAt.IsZero() {
+		profile.CreatedAt = now
+	}
+	profile.UpdatedAt = now
+	_, _ = s.payoutProf.ReplaceOne(ctx, bson.M{"tenantId": profile.TenantID}, profile, options.Replace().SetUpsert(true))
+	return profile
+}
+
+func (s *MongoStore) GetSellerPayoutProfile(tenantID string) (models.SellerPayoutProfile, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var profile models.SellerPayoutProfile
+	err := s.payoutProf.FindOne(ctx, bson.M{"tenantId": strings.TrimSpace(tenantID)}).Decode(&profile)
+	if err != nil {
+		return models.SellerPayoutProfile{}, false
+	}
+	return profile, true
+}
+
+func (s *MongoStore) ListSellerPayoutProfiles() []models.SellerPayoutProfile {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	cur, err := s.payoutProf.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}}))
+	if err != nil {
+		return []models.SellerPayoutProfile{}
+	}
+	items, err := decodeAll[models.SellerPayoutProfile](cur)
+	if err != nil {
+		return []models.SellerPayoutProfile{}
+	}
+	return items
+}
+
+func (s *MongoStore) CreatePayoutRecord(record models.PayoutRecord) models.PayoutRecord {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	if strings.TrimSpace(record.ID) == "" {
+		record.ID = newPrefixedID("payout")
+	}
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = now
+	}
+	record.UpdatedAt = now
+	_, _ = s.payouts.InsertOne(ctx, record)
+	return record
+}
+
+func (s *MongoStore) UpdatePayoutRecord(record models.PayoutRecord) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	record.UpdatedAt = time.Now().UTC()
+	res, err := s.payouts.ReplaceOne(ctx, bson.M{"id": record.ID}, record)
+	if err != nil {
+		return false
+	}
+	return res.MatchedCount > 0
+}
+
+func (s *MongoStore) ListPayoutRecords(tenantID string, limit int) []models.PayoutRecord {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	filter := bson.M{}
+	if strings.TrimSpace(tenantID) != "" {
+		filter["tenantId"] = strings.TrimSpace(tenantID)
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
+	if limit > 0 {
+		opts.SetLimit(int64(limit))
+	}
+	cur, err := s.payouts.Find(ctx, filter, opts)
+	if err != nil {
+		return []models.PayoutRecord{}
+	}
+	items, err := decodeAll[models.PayoutRecord](cur)
+	if err != nil {
+		return []models.PayoutRecord{}
 	}
 	return items
 }

@@ -164,6 +164,11 @@ func (a *App) settleX402Intent(w http.ResponseWriter, r *http.Request) {
 			intent.RemainingQuantity = intent.Quantity
 		}
 		_ = a.store.UpdateX402Intent(intent)
+		intent, err = a.postIntentAccounting(intent)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 		a.ensurePaidEntitlement(intent)
 		writeJSON(w, http.StatusOK, intent)
 		return
@@ -212,6 +217,11 @@ func (a *App) settleX402Intent(w http.ResponseWriter, r *http.Request) {
 		intent.RemainingQuantity = intent.Quantity
 	}
 	_ = a.store.UpdateX402Intent(intent)
+	intent, err = a.postIntentAccounting(intent)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 	a.ensurePaidEntitlement(intent)
 	writeJSON(w, http.StatusOK, intent)
 }

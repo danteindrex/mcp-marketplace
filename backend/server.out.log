@@ -36,3 +36,5 @@
 2026/03/07 08:42:41 [DESKTOP-JFVG6LS/PLDMyA0B6K-000036] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:54717 - 200 23B in 0s
 2026/03/07 09:12:41 [DESKTOP-JFVG6LS/PLDMyA0B6K-000037] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:55300 - 200 23B in 0s
 2026/03/07 09:12:41 [DESKTOP-JFVG6LS/PLDMyA0B6K-000038] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:55301 - 200 23B in 0s
+2026/03/07 14:14:19 [DESKTOP-JFVG6LS/PLDMyA0B6K-000039] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:59122 - 200 23B in 527.9µs
+2026/03/07 14:14:19 [DESKTOP-JFVG6LS/PLDMyA0B6K-000040] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:59123 - 200 23B in 536.1µs

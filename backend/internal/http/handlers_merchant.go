@@ -2,6 +2,8 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -13,7 +15,48 @@ import (
 func (a *App) listMerchantServers(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	servers := a.store.ListMerchantServers(claims.TenantID)
+	for i := range servers {
+		a.normalizeServerLifecycleForView(&servers[i])
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": servers, "count": len(servers)})
+}
+
+func normalizeServerStatus(input, fallback string) (string, bool) {
+	value := strings.ToLower(strings.TrimSpace(input))
+	if value == "" {
+		return fallback, true
+	}
+	switch value {
+	case models.ServerStatusDraft, "build_draft", "marketplace_draft", "deployed_private":
+		return models.ServerStatusDraft, true
+	case models.ServerStatusPublished:
+		return models.ServerStatusPublished, true
+	case models.ServerStatusArchived:
+		return models.ServerStatusArchived, true
+	default:
+		return "", false
+	}
+}
+
+func (a *App) getMerchantServer(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	server, ok := a.store.GetServerByID(id)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	if !a.ensureServerTenantAccess(w, r, server) {
+		return
+	}
+	a.normalizeServerLifecycleForView(&server)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"server": server,
+		"lifecycle": map[string]interface{}{
+			"marketplaceStatus": server.Status,
+			"deploymentStatus":  server.DeploymentStatus,
+			"canPublish":        server.DeploymentStatus == models.ServerDeploymentDeployed && server.PricingAmount > 0,
+		},
+	})
 }
 
 type createServerRequest struct {
@@ -43,6 +86,12 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
+	status, ok := normalizeServerStatus(req.Status, models.ServerStatusDraft)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be draft, published, or archived"})
+		return
+	}
+	now := time.Now().UTC()
 	server := models.Server{
 		TenantID:             claims.TenantID,
 		Author:               claims.TenantID,
@@ -56,7 +105,8 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		RequiredScopes:       req.RequiredScopes,
 		PricingType:          req.PricingType,
 		PricingAmount:        req.PricingAmount,
-		Status:               "published",
+		Status:               status,
+		DeploymentStatus:     models.ServerDeploymentPending,
 		SupportsCloud:        req.SupportsCloud,
 		SupportsLocal:        req.SupportsLocal,
 		PaymentMethods:       normalizePaymentMethods(req.PaymentMethods),
@@ -64,20 +114,17 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		PerCallCapUSDC:       req.PerCallCapUSDC,
 		DailyCapUSDC:         req.DailyCapUSDC,
 		MonthlyCapUSDC:       req.MonthlyCapUSDC,
-		CreatedAt:            time.Now().UTC(),
-		UpdatedAt:            time.Now().UTC(),
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 	if len(server.PaymentMethods) == 0 {
 		server.PaymentMethods = a.supportedMethodsOrDefault()
 	}
-	switch req.Status {
-	case "", "published":
-		server.Status = "published"
-	case "draft", "archived":
-		server.Status = req.Status
-	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be draft, published, or archived"})
-		return
+	if status == models.ServerStatusPublished {
+		server.DeploymentStatus = models.ServerDeploymentDeployed
+		server.DeployedAt = now
+		server.DeployedBy = claims.UserID
+		server.PublishedAt = now
 	}
 	if tenant, ok := a.store.GetTenantByID(claims.TenantID); ok {
 		server.Author = tenant.Name
@@ -134,18 +181,197 @@ func (a *App) updateMerchantServer(w http.ResponseWriter, r *http.Request) {
 	if req.MonthlyCapUSDC > 0 {
 		server.MonthlyCapUSDC = req.MonthlyCapUSDC
 	}
-	switch req.Status {
-	case "":
-	case "draft", "published", "archived":
-		server.Status = req.Status
-	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be draft, published, or archived"})
+	if req.Status != "" {
+		normalizedStatus, ok := normalizeServerStatus(req.Status, server.Status)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be draft, published, or archived"})
+			return
+		}
+		server.Status = normalizedStatus
+	}
+	if server.Status == models.ServerStatusPublished && server.PricingAmount <= 0 {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "price must be set before publish"})
 		return
+	}
+	if server.Status == models.ServerStatusPublished && server.DeploymentStatus != models.ServerDeploymentDeployed {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "server must be deployed before publish"})
+		return
+	}
+	if server.Status == models.ServerStatusPublished && server.PublishedAt.IsZero() {
+		server.PublishedAt = time.Now().UTC()
+	}
+	if server.Status != models.ServerStatusPublished {
+		server.PublishedAt = time.Time{}
 	}
 	server.UpdatedAt = time.Now().UTC()
 	a.store.UpdateServer(server)
 	a.store.AddAuditLog(models.AuditLog{TenantID: claims.TenantID, ActorID: claims.UserID, Action: "server.update", TargetType: "server", TargetID: server.ID, Outcome: "success"})
 	writeJSON(w, http.StatusOK, server)
+}
+
+type deployServerRequest struct {
+	DeploymentTarget string `json:"deploymentTarget"`
+	N8nWorkflowID    string `json:"n8nWorkflowId"`
+	N8nWorkflowURL   string `json:"n8nWorkflowUrl"`
+}
+
+func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
+	claims, _ := getClaims(r.Context())
+	id := chi.URLParam(r, "id")
+	server, ok := a.store.GetServerByID(id)
+	if !ok || (server.TenantID != claims.TenantID && claims.Role != models.RoleAdmin) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	if server.Status == models.ServerStatusArchived {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "archived servers cannot be deployed"})
+		return
+	}
+	req := deployServerRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+	if strings.TrimSpace(req.DeploymentTarget) != "" {
+		server.DeploymentTarget = strings.TrimSpace(req.DeploymentTarget)
+	}
+	if strings.TrimSpace(req.N8nWorkflowID) != "" {
+		server.N8nWorkflowID = strings.TrimSpace(req.N8nWorkflowID)
+	}
+	if strings.TrimSpace(req.N8nWorkflowURL) != "" {
+		server.N8nWorkflowURL = strings.TrimSpace(req.N8nWorkflowURL)
+	}
+
+	n8nResult := n8nDeployResult{}
+	if a.n8n != nil && a.n8n.configured() {
+		result, err := a.n8n.deployWorkflow(r.Context(), server, req.N8nWorkflowID)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "failed to deploy workflow in n8n: " + err.Error(),
+			})
+			return
+		}
+		n8nResult = result
+		if strings.TrimSpace(result.WorkflowID) != "" {
+			server.N8nWorkflowID = strings.TrimSpace(result.WorkflowID)
+		}
+		if strings.TrimSpace(result.WorkflowURL) != "" {
+			server.N8nWorkflowURL = strings.TrimSpace(result.WorkflowURL)
+		}
+	}
+
+	now := time.Now().UTC()
+	server.DeploymentStatus = models.ServerDeploymentDeployed
+	server.DeployedAt = now
+	server.DeployedBy = claims.UserID
+	// Deploying exposes the agent endpoint while keeping marketplace listing as draft.
+	if server.Status != models.ServerStatusPublished {
+		server.Status = models.ServerStatusDraft
+		server.PublishedAt = time.Time{}
+	}
+	server.UpdatedAt = now
+	a.store.UpdateServer(server)
+	a.store.AddAuditLog(models.AuditLog{
+		TenantID:   claims.TenantID,
+		ActorID:    claims.UserID,
+		Action:     "server.deploy",
+		TargetType: "server",
+		TargetID:   server.ID,
+		Outcome:    "success",
+		Metadata: map[string]interface{}{
+			"deploymentStatus":  server.DeploymentStatus,
+			"marketplaceStatus": server.Status,
+			"workflowId":        server.N8nWorkflowID,
+			"workflowUrl":       server.N8nWorkflowURL,
+			"webhookPath":       n8nResult.WebhookPath,
+		},
+	})
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"server": server,
+		"lifecycle": map[string]interface{}{
+			"marketplaceStatus": server.Status,
+			"deploymentStatus":  server.DeploymentStatus,
+			"canPublish":        server.PricingAmount > 0,
+		},
+		"n8n": map[string]interface{}{
+			"configured":  a.n8n != nil && a.n8n.configured(),
+			"workflowId":  server.N8nWorkflowID,
+			"workflowUrl": server.N8nWorkflowURL,
+			"webhookPath": n8nResult.WebhookPath,
+		},
+	})
+}
+
+type publishServerRequest struct {
+	PricingType   string   `json:"pricingType"`
+	PricingAmount *float64 `json:"pricingAmount"`
+}
+
+func (a *App) publishMerchantServer(w http.ResponseWriter, r *http.Request) {
+	claims, _ := getClaims(r.Context())
+	id := chi.URLParam(r, "id")
+	server, ok := a.store.GetServerByID(id)
+	if !ok || (server.TenantID != claims.TenantID && claims.Role != models.RoleAdmin) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	if server.Status == models.ServerStatusArchived {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "archived servers cannot be published"})
+		return
+	}
+	req := publishServerRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+	if strings.TrimSpace(req.PricingType) != "" {
+		server.PricingType = strings.TrimSpace(req.PricingType)
+	}
+	if req.PricingAmount != nil {
+		server.PricingAmount = *req.PricingAmount
+	}
+	if server.DeploymentStatus != models.ServerDeploymentDeployed {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "deploy server before publishing to marketplace"})
+		return
+	}
+	if server.PricingAmount <= 0 {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "price must be set before publish"})
+		return
+	}
+	now := time.Now().UTC()
+	server.Status = models.ServerStatusPublished
+	server.PublishedAt = now
+	server.UpdatedAt = now
+	a.store.UpdateServer(server)
+	a.store.AddAuditLog(models.AuditLog{
+		TenantID:   claims.TenantID,
+		ActorID:    claims.UserID,
+		Action:     "server.publish",
+		TargetType: "server",
+		TargetID:   server.ID,
+		Outcome:    "success",
+		Metadata: map[string]interface{}{
+			"marketplaceStatus": server.Status,
+			"pricingAmount":     server.PricingAmount,
+		},
+	})
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"server": server,
+		"lifecycle": map[string]interface{}{
+			"marketplaceStatus": server.Status,
+			"deploymentStatus":  server.DeploymentStatus,
+			"canPublish":        true,
+		},
+	})
+}
+
+func (a *App) normalizeServerLifecycleForView(server *models.Server) {
+	if strings.TrimSpace(server.Status) == "" {
+		server.Status = models.ServerStatusDraft
+	}
+	if strings.TrimSpace(server.DeploymentStatus) == "" {
+		server.DeploymentStatus = models.ServerDeploymentPending
+	}
 }
 
 func (a *App) serverObservability(w http.ResponseWriter, r *http.Request) {
@@ -200,6 +426,7 @@ func (a *App) serverPricing(w http.ResponseWriter, r *http.Request) {
 	if !a.ensureServerTenantAccess(w, r, server) {
 		return
 	}
+	a.normalizeServerLifecycleForView(&server)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"serverId": server.ID,
 		"pricing": map[string]interface{}{
@@ -220,5 +447,10 @@ func (a *App) serverPricing(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		"supportedMethods": a.paymentMethodsCatalog(),
+		"lifecycle": map[string]interface{}{
+			"marketplaceStatus": server.Status,
+			"deploymentStatus":  server.DeploymentStatus,
+			"canPublish":        server.DeploymentStatus == models.ServerDeploymentDeployed && server.PricingAmount > 0,
+		},
 	})
 }

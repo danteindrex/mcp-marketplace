@@ -15,6 +15,7 @@ Base URL: `http://localhost:8080`
 - `POST /auth/signup`
 - `POST /auth/login`
 - `POST /webhooks/stripe/onramp`
+- `POST /webhooks/stripe/connect`
 - `GET /.well-known/oauth-protected-resource`
 - `GET /.well-known/oauth-authorization-server`
 - `POST /oauth/register`
@@ -66,7 +67,10 @@ Base URL: `http://localhost:8080`
 ## Merchant + admin routes
 - `GET /v1/merchant/servers`
 - `POST /v1/merchant/servers`
+- `GET /v1/merchant/servers/{id}`
 - `PUT /v1/merchant/servers/{id}`
+- `POST /v1/merchant/servers/{id}/deploy`
+- `POST /v1/merchant/servers/{id}/publish`
 - `GET /v1/merchant/revenue`
 - `GET /v1/merchant/servers/{id}/observability`
 - `GET /v1/merchant/servers/{id}/auth`
@@ -74,8 +78,20 @@ Base URL: `http://localhost:8080`
 - `GET /v1/merchant/servers/{id}/deployments`
 - `GET /v1/merchant/servers/{id}/builder`
 - `GET /v1/merchant/payments/overview`
+- `GET /v1/merchant/payments/payout-profile`
+- `PUT /v1/merchant/payments/payout-profile`
+- `POST /v1/merchant/payments/payout-profile/stripe/onboarding-link`
+- `POST /v1/merchant/payments/payout-profile/stripe/refresh-kyc`
+- `GET /v1/merchant/payments/ledger`
+- `GET /v1/merchant/payments/payouts`
 - `GET /v1/merchant/servers/{id}/payments/config`
 - `PUT /v1/merchant/servers/{id}/payments/config`
+
+### Merchant lifecycle notes
+- New servers default to marketplace `draft` and deployment `not_deployed`.
+- `POST /deploy` keeps listing in draft and marks deployment as active.
+- `POST /publish` requires deployment to be active and `pricingAmount > 0`.
+- Public marketplace endpoints only return `published` listings.
 
 ## Admin-only routes
 - `GET /v1/admin/tenants`
@@ -83,4 +99,12 @@ Base URL: `http://localhost:8080`
 - `GET /v1/admin/audit-logs`
 - `GET /v1/admin/client-compatibility`
 - `GET /v1/admin/payments/overview`
+- `GET /v1/admin/payments/fee-policies`
+- `PUT /v1/admin/payments/fee-policies`
+- `GET /v1/admin/payments/ledger`
+- `GET /v1/admin/payments/reconciliation`
+- `GET /v1/admin/payments/payout-profiles`
+- `PUT /v1/admin/payments/payout-profiles/{tenantID}/block`
+- `GET /v1/admin/payments/payouts`
+- `POST /v1/admin/payments/payouts/run`
 - `POST /v1/admin/entitlements`

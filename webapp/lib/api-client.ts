@@ -19,10 +19,45 @@ export interface Server {
   installCount: number
   rating: number
   status: string
+  deploymentStatus?: string
+  deploymentTarget?: string
+  deployedBy?: string
+  deployedAt?: string
+  n8nWorkflowId?: string
+  n8nWorkflowUrl?: string
+  publishedAt?: string
   supportsLocal: boolean
   supportsCloud: boolean
   updatedAt: string
   createdAt: string
+}
+
+export interface ServerLifecycle {
+  marketplaceStatus: string
+  deploymentStatus: string
+  canPublish: boolean
+  priceSet?: boolean
+  deployedAt?: string
+}
+
+export interface CreateMerchantServerPayload {
+  name: string
+  slug: string
+  description: string
+  category: string
+  dockerImage: string
+  canonicalResourceUri: string
+  requiredScopes: string[]
+  pricingType: string
+  pricingAmount: number
+  supportsLocal: boolean
+  supportsCloud: boolean
+  paymentMethods?: string[]
+  paymentAddress?: string
+  perCallCapUsdc?: number
+  dailyCapUsdc?: number
+  monthlyCapUsdc?: number
+  status?: string
 }
 
 export interface MarketplaceInstallMetadata {
@@ -174,6 +209,66 @@ export interface WalletTopUp {
   createdAt: string
   updatedAt?: string
   fulfilledAt?: string
+}
+
+export interface PaymentFeePolicy {
+  id: string
+  scope: 'global' | 'tenant' | 'server'
+  tenantId?: string
+  serverId?: string
+  platformFeeBps: number
+  minFeeUsdc?: number
+  maxFeeUsdc?: number
+  holdDays?: number
+  autoPayouts?: boolean
+  payoutCadence?: string
+  enabled: boolean
+  createdBy?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface SellerPayoutProfile {
+  id?: string
+  tenantId: string
+  preferredMethod: 'stablecoin' | 'stripe_connect'
+  stablecoinAddress?: string
+  stablecoinNetwork?: string
+  stripeAccountId?: string
+  stripeOnboardingUrl?: string
+  kycStatus?: string
+  kycDetailsSubmitted?: boolean
+  kycChargesEnabled?: boolean
+  kycPayoutsEnabled?: boolean
+  kycCurrentlyDue?: string[]
+  kycEventuallyDue?: string[]
+  kycDisabledReason?: string
+  kycLastCheckedAt?: string
+  payoutBlocked?: boolean
+  payoutBlockReason?: string
+  taxFormStatus?: string
+  riskLevel?: string
+  minPayoutUsdc?: number
+  holdDays?: number
+  updatedAt?: string
+  createdAt?: string
+}
+
+export interface PayoutRecord {
+  id: string
+  tenantId: string
+  method: string
+  status: string
+  amountUsdc: number
+  feeUsdc?: number
+  netUsdc?: number
+  stablecoinAddress?: string
+  stripeAccountId?: string
+  externalRef?: string
+  failureReason?: string
+  createdAt: string
+  updatedAt?: string
+  completedAt?: string
 }
 
 export interface SecurityEvent {
@@ -435,9 +530,92 @@ export async function fetchAdminPaymentsOverview() {
   return apiGet('/v1/admin/payments/overview', 'admin')
 }
 
+export async function fetchAdminFeePolicies(): Promise<{ default: PaymentFeePolicy; items: PaymentFeePolicy[] }> {
+  return apiGet('/v1/admin/payments/fee-policies', 'admin')
+}
+
+export async function upsertAdminFeePolicy(payload: {
+  scope: 'global' | 'tenant' | 'server'
+  tenantId?: string
+  serverId?: string
+  platformFeeBps?: number
+  minFeeUsdc?: number
+  maxFeeUsdc?: number
+  holdDays?: number
+  autoPayouts?: boolean
+  payoutCadence?: string
+  enabled?: boolean
+}) {
+  return apiPut('/v1/admin/payments/fee-policies', payload, 'admin')
+}
+
+export async function fetchAdminLedger(tenantId?: string, limit = 500) {
+  const params = new URLSearchParams()
+  if (tenantId) params.set('tenantId', tenantId)
+  params.set('limit', String(limit))
+  return apiGet(`/v1/admin/payments/ledger?${params.toString()}`, 'admin')
+}
+
+export async function fetchAdminReconciliation(tenantId?: string, limit = 2000) {
+  const params = new URLSearchParams()
+  if (tenantId) params.set('tenantId', tenantId)
+  params.set('limit', String(limit))
+  return apiGet(`/v1/admin/payments/reconciliation?${params.toString()}`, 'admin')
+}
+
+export async function fetchAdminPayoutProfiles() {
+  return apiGet<{ items: Array<{ profile: SellerPayoutProfile; payableUsdc: number; payoutCount: number }>; count: number }>(
+    '/v1/admin/payments/payout-profiles',
+    'admin',
+  )
+}
+
+export async function updateAdminPayoutBlock(tenantId: string, blocked: boolean, reason = '') {
+  return apiPut(`/v1/admin/payments/payout-profiles/${tenantId}/block`, { blocked, reason }, 'admin')
+}
+
+export async function fetchAdminPayouts(tenantId?: string, limit = 200) {
+  const params = new URLSearchParams()
+  if (tenantId) params.set('tenantId', tenantId)
+  params.set('limit', String(limit))
+  return apiGet(`/v1/admin/payments/payouts?${params.toString()}`, 'admin')
+}
+
+export async function runAdminPayout(payload: {
+  tenantId: string
+  amountUsdc?: number
+  method?: string
+  dryRun?: boolean
+  force?: boolean
+}) {
+  return apiPost('/v1/admin/payments/payouts/run', payload, 'admin')
+}
+
 export async function fetchMerchantServers(): Promise<Server[]> {
   const data = await apiGet<{ items: Server[] }>('/v1/merchant/servers', 'merchant')
   return data.items
+}
+
+export async function createMerchantServer(payload: CreateMerchantServerPayload): Promise<Server> {
+  return apiPost('/v1/merchant/servers', payload, 'merchant')
+}
+
+export async function fetchMerchantServer(id: string): Promise<{ server: Server; lifecycle: ServerLifecycle }> {
+  return apiGet(`/v1/merchant/servers/${id}`, 'merchant')
+}
+
+export async function deployMerchantServer(
+  id: string,
+  payload?: { deploymentTarget?: string; n8nWorkflowId?: string; n8nWorkflowUrl?: string },
+): Promise<{ server: Server; lifecycle: ServerLifecycle }> {
+  return apiPost(`/v1/merchant/servers/${id}/deploy`, payload || {}, 'merchant')
+}
+
+export async function publishMerchantServer(
+  id: string,
+  payload?: { pricingType?: string; pricingAmount?: number },
+): Promise<{ server: Server; lifecycle: ServerLifecycle }> {
+  return apiPost(`/v1/merchant/servers/${id}/publish`, payload || {}, 'merchant')
 }
 
 export async function fetchMerchantRevenue(): Promise<{ totalRevenue: number; totalCustomers: number; servers: Array<{ id: string; name: string; revenue: number; customers: number; trend: string }>; trend: Array<{ month: string; revenue: number; subscriptions: number; perCall: number }> }> {
@@ -446,6 +624,42 @@ export async function fetchMerchantRevenue(): Promise<{ totalRevenue: number; to
 
 export async function fetchMerchantPaymentsOverview() {
   return apiGet('/v1/merchant/payments/overview', 'merchant')
+}
+
+export async function fetchMerchantPayoutProfile(): Promise<{
+  profile: SellerPayoutProfile
+  payableUsdc: number
+  recentPayouts: PayoutRecord[]
+  payoutMethods: Array<{ id: string; displayName: string; configured: boolean; notes?: string }>
+}> {
+  return apiGet('/v1/merchant/payments/payout-profile', 'merchant')
+}
+
+export async function updateMerchantPayoutProfile(payload: {
+  preferredMethod?: 'stablecoin' | 'stripe_connect'
+  stablecoinAddress?: string
+  stablecoinNetwork?: string
+  minPayoutUsdc?: number
+  holdDays?: number
+  taxFormStatus?: string
+}) {
+  return apiPut('/v1/merchant/payments/payout-profile', payload, 'merchant')
+}
+
+export async function createMerchantStripeOnboardingLink() {
+  return apiPost('/v1/merchant/payments/payout-profile/stripe/onboarding-link', {}, 'merchant')
+}
+
+export async function refreshMerchantStripeKYC() {
+  return apiPost('/v1/merchant/payments/payout-profile/stripe/refresh-kyc', {}, 'merchant')
+}
+
+export async function fetchMerchantPayouts(limit = 100) {
+  return apiGet(`/v1/merchant/payments/payouts?limit=${limit}`, 'merchant')
+}
+
+export async function fetchMerchantLedger(limit = 200) {
+  return apiGet(`/v1/merchant/payments/ledger?limit=${limit}`, 'merchant')
 }
 
 export async function fetchMerchantServerPaymentConfig(id: string) {
@@ -475,7 +689,10 @@ export async function fetchServerObservability(id: string) {
 }
 
 export async function fetchServerDeployments(id: string) {
-  return apiGet<{ items: any[] }>(`/v1/merchant/servers/${id}/deployments`, 'merchant')
+  return apiGet<{ items: any[]; lifecycle?: ServerLifecycle; n8n?: { workflowId?: string; workflowUrl?: string } }>(
+    `/v1/merchant/servers/${id}/deployments`,
+    'merchant',
+  )
 }
 
 export async function fetchServerBuilder(id: string) {

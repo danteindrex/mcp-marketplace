@@ -34,28 +34,40 @@ type MemoryStore struct {
 	x402         map[string]models.X402Intent
 	paymentPol   map[string]models.PaymentPolicy
 	topups       map[string]models.WalletTopUp
+	feePol       map[string]models.PaymentFeePolicy
+	ledger       map[string]models.LedgerEntry
+	payoutProf   map[string]models.SellerPayoutProfile
+	payouts      map[string]models.PayoutRecord
+	deployTasks  map[string]models.DeployTask
+	deployBySrv  map[string]string
 	agents       map[string]models.LocalAgent
 	userSettings map[string]models.UserSettings
 	seq          int
 }
 
 type diskState struct {
-	Users        map[string]models.User          `json:"users"`
-	UsersByEmail map[string]string               `json:"usersByEmail"`
-	Tenants      map[string]models.Tenant        `json:"tenants"`
-	Servers      map[string]models.Server        `json:"servers"`
-	Entitlements map[string]models.Entitlement   `json:"entitlements"`
-	Hubs         map[string]models.HubProfile    `json:"hubs"`
-	HubRoutes    map[string][]models.HubRoute    `json:"hubRoutes"`
-	Connections  map[string]models.Connection    `json:"connections"`
-	Security     map[string]models.SecurityEvent `json:"security"`
-	Audit        map[string]models.AuditLog      `json:"audit"`
-	X402         map[string]models.X402Intent    `json:"x402"`
-	PaymentPol   map[string]models.PaymentPolicy `json:"paymentPolicies"`
-	TopUps       map[string]models.WalletTopUp   `json:"walletTopups"`
-	Agents       map[string]models.LocalAgent    `json:"agents"`
-	UserSettings map[string]models.UserSettings  `json:"userSettings"`
-	Seq          int                             `json:"seq"`
+	Users        map[string]models.User                `json:"users"`
+	UsersByEmail map[string]string                     `json:"usersByEmail"`
+	Tenants      map[string]models.Tenant              `json:"tenants"`
+	Servers      map[string]models.Server              `json:"servers"`
+	Entitlements map[string]models.Entitlement         `json:"entitlements"`
+	Hubs         map[string]models.HubProfile          `json:"hubs"`
+	HubRoutes    map[string][]models.HubRoute          `json:"hubRoutes"`
+	Connections  map[string]models.Connection          `json:"connections"`
+	Security     map[string]models.SecurityEvent       `json:"security"`
+	Audit        map[string]models.AuditLog            `json:"audit"`
+	X402         map[string]models.X402Intent          `json:"x402"`
+	PaymentPol   map[string]models.PaymentPolicy       `json:"paymentPolicies"`
+	TopUps       map[string]models.WalletTopUp         `json:"walletTopups"`
+	FeePol       map[string]models.PaymentFeePolicy    `json:"paymentFeePolicies"`
+	Ledger       map[string]models.LedgerEntry         `json:"ledgerEntries"`
+	PayoutProf   map[string]models.SellerPayoutProfile `json:"sellerPayoutProfiles"`
+	Payouts      map[string]models.PayoutRecord        `json:"payoutRecords"`
+	DeployTasks  map[string]models.DeployTask          `json:"deployTasks"`
+	DeployBySrv  map[string]string                     `json:"deployTasksByServer"`
+	Agents       map[string]models.LocalAgent          `json:"agents"`
+	UserSettings map[string]models.UserSettings        `json:"userSettings"`
+	Seq          int                                   `json:"seq"`
 }
 
 func (s *MemoryStore) snapshotLocked() diskState {
@@ -73,6 +85,12 @@ func (s *MemoryStore) snapshotLocked() diskState {
 		X402:         s.x402,
 		PaymentPol:   s.paymentPol,
 		TopUps:       s.topups,
+		FeePol:       s.feePol,
+		Ledger:       s.ledger,
+		PayoutProf:   s.payoutProf,
+		Payouts:      s.payouts,
+		DeployTasks:  s.deployTasks,
+		DeployBySrv:  s.deployBySrv,
 		Agents:       s.agents,
 		UserSettings: s.userSettings,
 		Seq:          s.seq,
@@ -149,6 +167,24 @@ func (s *MemoryStore) loadFromDisk() bool {
 	if state.TopUps == nil {
 		state.TopUps = map[string]models.WalletTopUp{}
 	}
+	if state.FeePol == nil {
+		state.FeePol = map[string]models.PaymentFeePolicy{}
+	}
+	if state.Ledger == nil {
+		state.Ledger = map[string]models.LedgerEntry{}
+	}
+	if state.PayoutProf == nil {
+		state.PayoutProf = map[string]models.SellerPayoutProfile{}
+	}
+	if state.Payouts == nil {
+		state.Payouts = map[string]models.PayoutRecord{}
+	}
+	if state.DeployTasks == nil {
+		state.DeployTasks = map[string]models.DeployTask{}
+	}
+	if state.DeployBySrv == nil {
+		state.DeployBySrv = map[string]string{}
+	}
 	if state.Agents == nil {
 		state.Agents = map[string]models.LocalAgent{}
 	}
@@ -169,6 +205,12 @@ func (s *MemoryStore) loadFromDisk() bool {
 	s.x402 = state.X402
 	s.paymentPol = state.PaymentPol
 	s.topups = state.TopUps
+	s.feePol = state.FeePol
+	s.ledger = state.Ledger
+	s.payoutProf = state.PayoutProf
+	s.payouts = state.Payouts
+	s.deployTasks = state.DeployTasks
+	s.deployBySrv = state.DeployBySrv
 	s.agents = state.Agents
 	s.userSettings = state.UserSettings
 	s.seq = state.Seq
@@ -192,6 +234,12 @@ func NewMemoryStore(cfg config.Config) *MemoryStore {
 		x402:         map[string]models.X402Intent{},
 		paymentPol:   map[string]models.PaymentPolicy{},
 		topups:       map[string]models.WalletTopUp{},
+		feePol:       map[string]models.PaymentFeePolicy{},
+		ledger:       map[string]models.LedgerEntry{},
+		payoutProf:   map[string]models.SellerPayoutProfile{},
+		payouts:      map[string]models.PayoutRecord{},
+		deployTasks:  map[string]models.DeployTask{},
+		deployBySrv:  map[string]string{},
 		agents:       map[string]models.LocalAgent{},
 		userSettings: map[string]models.UserSettings{},
 	}
@@ -263,6 +311,10 @@ func (s *MemoryStore) putUser(user models.User) {
 
 func keyHub(tenantID, userID string) string {
 	return tenantID + ":" + userID
+}
+
+func feePolicyKey(scope, tenantID, serverID string) string {
+	return strings.ToLower(strings.TrimSpace(scope)) + ":" + strings.TrimSpace(tenantID) + ":" + strings.TrimSpace(serverID)
 }
 
 func hashCatalog(items []string) string {
@@ -419,6 +471,12 @@ func (s *MemoryStore) CreateServer(server models.Server) models.Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	server.ID = s.next("srv")
+	if strings.TrimSpace(server.Status) == "" {
+		server.Status = models.ServerStatusDraft
+	}
+	if strings.TrimSpace(server.DeploymentStatus) == "" {
+		server.DeploymentStatus = models.ServerDeploymentPending
+	}
 	server.CreatedAt = time.Now().UTC()
 	server.UpdatedAt = server.CreatedAt
 	s.servers[server.ID] = server
@@ -434,6 +492,114 @@ func (s *MemoryStore) UpdateServer(server models.Server) bool {
 	}
 	server.UpdatedAt = time.Now().UTC()
 	s.servers[server.ID] = server
+	s.persistLocked()
+	return true
+}
+
+func (s *MemoryStore) UpsertDeployTaskByServer(task models.DeployTask) models.DeployTask {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	if existingID, exists := s.deployBySrv[task.ServerID]; exists {
+		if existing, ok := s.deployTasks[existingID]; ok {
+			if strings.TrimSpace(task.ID) == "" {
+				task.ID = existing.ID
+			}
+			if task.CreatedAt.IsZero() {
+				task.CreatedAt = existing.CreatedAt
+			}
+		}
+	}
+	if strings.TrimSpace(task.ID) == "" {
+		task.ID = s.next("dpl")
+	}
+	if task.CreatedAt.IsZero() {
+		task.CreatedAt = now
+	}
+	if task.MaxAttempts <= 0 {
+		task.MaxAttempts = 6
+	}
+	if task.NextAttemptAt.IsZero() {
+		task.NextAttemptAt = now
+	}
+	if strings.TrimSpace(task.Status) == "" {
+		task.Status = models.DeployTaskStatusPending
+	}
+	if task.Status == models.DeployTaskStatusPending {
+		task.CompletedAt = time.Time{}
+	}
+	task.UpdatedAt = now
+	s.deployTasks[task.ID] = task
+	s.deployBySrv[task.ServerID] = task.ID
+	s.persistLocked()
+	return task
+}
+
+func (s *MemoryStore) GetDeployTaskByServer(serverID string) (models.DeployTask, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if id, ok := s.deployBySrv[serverID]; ok {
+		if task, exists := s.deployTasks[id]; exists {
+			return task, true
+		}
+	}
+	for _, task := range s.deployTasks {
+		if task.ServerID == serverID {
+			return task, true
+		}
+	}
+	return models.DeployTask{}, false
+}
+
+func (s *MemoryStore) ListDueDeployTasks(now time.Time, limit int) []models.DeployTask {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]models.DeployTask, 0)
+	for _, task := range s.deployTasks {
+		if task.Status != models.DeployTaskStatusPending {
+			continue
+		}
+		if !task.NextAttemptAt.IsZero() && task.NextAttemptAt.After(now) {
+			continue
+		}
+		out = append(out, task)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.NextAttemptAt.Equal(b.NextAttemptAt) {
+			return a.CreatedAt.Before(b.CreatedAt)
+		}
+		if a.NextAttemptAt.IsZero() {
+			return true
+		}
+		if b.NextAttemptAt.IsZero() {
+			return false
+		}
+		return a.NextAttemptAt.Before(b.NextAttemptAt)
+	})
+	if limit > 0 && len(out) > limit {
+		return out[:limit]
+	}
+	return out
+}
+
+func (s *MemoryStore) UpdateDeployTask(task models.DeployTask) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.deployTasks[task.ID]; !ok {
+		return false
+	}
+	if task.UpdatedAt.IsZero() {
+		task.UpdatedAt = time.Now().UTC()
+	}
+	s.deployTasks[task.ID] = task
+	if strings.TrimSpace(task.ServerID) != "" {
+		s.deployBySrv[task.ServerID] = task.ID
+	}
 	s.persistLocked()
 	return true
 }
@@ -755,6 +921,162 @@ func (s *MemoryStore) ListWalletTopUps(tenantID, userID string, limit int) []mod
 	out := make([]models.WalletTopUp, 0)
 	for _, item := range s.topups {
 		if item.TenantID == tenantID && item.UserID == userID {
+			out = append(out, item)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if limit > 0 && len(out) > limit {
+		return out[:limit]
+	}
+	return out
+}
+
+func (s *MemoryStore) UpsertPaymentFeePolicy(policy models.PaymentFeePolicy) models.PaymentFeePolicy {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	if strings.TrimSpace(policy.ID) == "" {
+		policy.ID = s.next("feepol")
+	}
+	if policy.CreatedAt.IsZero() {
+		policy.CreatedAt = now
+	}
+	policy.UpdatedAt = now
+	key := feePolicyKey(policy.Scope, policy.TenantID, policy.ServerID)
+	s.feePol[key] = policy
+	s.persistLocked()
+	return policy
+}
+
+func (s *MemoryStore) GetPaymentFeePolicy(scope, tenantID, serverID string) (models.PaymentFeePolicy, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	item, ok := s.feePol[feePolicyKey(scope, tenantID, serverID)]
+	return item, ok
+}
+
+func (s *MemoryStore) ListPaymentFeePolicies() []models.PaymentFeePolicy {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.PaymentFeePolicy, 0, len(s.feePol))
+	for _, item := range s.feePol {
+		out = append(out, item)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+	return out
+}
+
+func (s *MemoryStore) CreateLedgerEntries(entries []models.LedgerEntry) []models.LedgerEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	out := make([]models.LedgerEntry, 0, len(entries))
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.ID) == "" {
+			entry.ID = s.next("led")
+		}
+		if entry.CreatedAt.IsZero() {
+			entry.CreatedAt = now
+		}
+		s.ledger[entry.ID] = entry
+		out = append(out, entry)
+	}
+	s.persistLocked()
+	return out
+}
+
+func (s *MemoryStore) ListLedgerEntries(tenantID string, limit int) []models.LedgerEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.LedgerEntry, 0)
+	for _, entry := range s.ledger {
+		if strings.TrimSpace(tenantID) == "" || entry.TenantID == tenantID {
+			out = append(out, entry)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if limit > 0 && len(out) > limit {
+		return out[:limit]
+	}
+	return out
+}
+
+func (s *MemoryStore) UpsertSellerPayoutProfile(profile models.SellerPayoutProfile) models.SellerPayoutProfile {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	if strings.TrimSpace(profile.ID) == "" {
+		profile.ID = s.next("payout_profile")
+	}
+	if profile.CreatedAt.IsZero() {
+		profile.CreatedAt = now
+	}
+	profile.UpdatedAt = now
+	s.payoutProf[profile.TenantID] = profile
+	s.persistLocked()
+	return profile
+}
+
+func (s *MemoryStore) GetSellerPayoutProfile(tenantID string) (models.SellerPayoutProfile, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	item, ok := s.payoutProf[tenantID]
+	return item, ok
+}
+
+func (s *MemoryStore) ListSellerPayoutProfiles() []models.SellerPayoutProfile {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.SellerPayoutProfile, 0, len(s.payoutProf))
+	for _, item := range s.payoutProf {
+		out = append(out, item)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+	return out
+}
+
+func (s *MemoryStore) CreatePayoutRecord(record models.PayoutRecord) models.PayoutRecord {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	if strings.TrimSpace(record.ID) == "" {
+		record.ID = s.next("payout")
+	}
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = now
+	}
+	record.UpdatedAt = now
+	s.payouts[record.ID] = record
+	s.persistLocked()
+	return record
+}
+
+func (s *MemoryStore) UpdatePayoutRecord(record models.PayoutRecord) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.payouts[record.ID]; !ok {
+		return false
+	}
+	record.UpdatedAt = time.Now().UTC()
+	s.payouts[record.ID] = record
+	s.persistLocked()
+	return true
+}
+
+func (s *MemoryStore) ListPayoutRecords(tenantID string, limit int) []models.PayoutRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.PayoutRecord, 0)
+	for _, item := range s.payouts {
+		if strings.TrimSpace(tenantID) == "" || item.TenantID == tenantID {
 			out = append(out, item)
 		}
 	}

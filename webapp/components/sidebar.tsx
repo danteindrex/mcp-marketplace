@@ -18,16 +18,17 @@ interface AppSidebarProps {
 
 const buyerNavigation = [
   { label: 'Main', items: [{ name: 'Home', href: '/', icon: Home }, { name: 'Marketplace', href: '/marketplace', icon: ShoppingCart }] },
-  { label: 'My Account', items: [{ name: 'Dashboard', href: '/buyer/dashboard', icon: BarChart3 }, { name: 'Connections', href: '/buyer/connections', icon: Zap }, { name: 'Billing', href: '/buyer/billing', icon: TrendingUp }] },
+  { label: 'My Account', items: [{ name: 'Dashboard', href: '/buyer/dashboard', icon: BarChart3 }, { name: 'Connections', href: '/buyer/connections', icon: Zap }, { name: 'Billing', href: '/buyer/billing', icon: TrendingUp }, { name: 'Agent Builder', href: '/settings/agent-builder', icon: Workflow }] },
 ]
 
 const merchantNavigation = [
   { label: 'Publish', items: [{ name: 'Dashboard', href: '/merchant/servers', icon: Home }, { name: 'New Server', href: '/merchant/servers/new/import-docker', icon: Package }, { name: 'Onboarding', href: '/merchant/onboarding', icon: Workflow }] },
   { label: 'Revenue', items: [{ name: 'Dashboard', href: '/merchant/revenue', icon: TrendingUp }] },
+  { label: 'Automation', items: [{ name: 'Agent Builder', href: '/settings/agent-builder', icon: Workflow }] },
 ]
 
 const adminNavigation = [
-  { label: 'Administration', items: [{ name: 'Tenants', href: '/admin/tenants', icon: Users }, { name: 'Security Events', href: '/admin/security', icon: Shield }, { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText }, { name: 'Client Compatibility', href: '/admin/client-compatibility', icon: Grid }, { name: 'Payments', href: '/admin/payments', icon: TrendingUp }] },
+  { label: 'Administration', items: [{ name: 'Tenants', href: '/admin/tenants', icon: Users }, { name: 'Security Events', href: '/admin/security', icon: Shield }, { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText }, { name: 'Client Compatibility', href: '/admin/client-compatibility', icon: Grid }, { name: 'Payments', href: '/admin/payments', icon: TrendingUp }, { name: 'Agent Builder', href: '/settings/agent-builder', icon: Workflow }] },
 ]
 
 function dicebearAvatar(seed: string, style: 'avataaars' | 'shapes'): string {

@@ -107,12 +107,6 @@ func (s *stripeOnrampService) createSession(ctx context.Context, in stripeCreate
 	if strings.TrimSpace(in.CustomerIP) != "" {
 		form.Set("customer_ip_address", strings.TrimSpace(in.CustomerIP))
 	}
-	if s.returnURL != "" {
-		form.Set("redirect_url", s.returnURL)
-	}
-	if s.refreshURL != "" {
-		form.Set("refresh_url", s.refreshURL)
-	}
 	form.Set("metadata[tenant_id]", in.TenantID)
 	form.Set("metadata[user_id]", in.UserID)
 

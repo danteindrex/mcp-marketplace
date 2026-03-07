@@ -18,6 +18,9 @@ services:
       MONGO_URI: "mongodb://mongo:27017"
       MONGO_DB_NAME: "mcp_marketplace"
       MONGO_REQUIRED: "true"
+      N8N_BASE_URL: "http://n8n:5678"
+      N8N_API_KEY: "${N8N_API_KEY:-}"
+      N8N_TIMEOUT_SECONDS: "12"
       SUPER_ADMIN_EMAIL: "admin@platform.local"
       SUPER_ADMIN_PASSWORD: "ChangeMe123!dev"
     ports:
@@ -31,10 +34,25 @@ services:
       dockerfile: webapp/Dockerfile
     environment:
       NEXT_PUBLIC_API_BASE_URL: "http://localhost:8080"
+      NEXT_PUBLIC_N8N_URL: "http://localhost:5678"
     ports:
       - "3000:3000"
     depends_on:
       - backend
 
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_HOST: "localhost"
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: "http"
+      WEBHOOK_URL: "http://localhost:5678/"
+      GENERIC_TIMEZONE: "America/Los_Angeles"
+    volumes:
+      - n8n-data:/home/node/.n8n
+
 volumes:
   mongo-data:
+  n8n-data:

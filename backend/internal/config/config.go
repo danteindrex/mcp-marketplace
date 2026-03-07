@@ -8,29 +8,39 @@ import (
 )
 
 type Config struct {
-	Port                   string
-	JWTSecret              string
-	BaseURL                string
-	X402FacilitatorURL     string
-	X402FacilitatorAPIKey  string
-	X402Mode               string
-	SupportedPayMethods    []string
-	StripeSecretKey        string
-	StripeWebhookSecret    string
-	StripeOnrampReturnURL  string
-	StripeOnrampRefreshURL string
-	StripeOnrampMinUSD     float64
-	StripeOnrampDefaultUSD float64
-	MongoURI               string
-	MongoDBName            string
-	MongoRequired          bool
-	SuperAdminEmail        string
-	SuperAdminPassword     string
-	DataFilePath           string
-	CORSAllowedOrigins     []string
-	RateLimitPerMinute     int
-	TrustProxyHeaders      bool
-	AllowInsecureDefaults  bool
+	Port                       string
+	JWTSecret                  string
+	BaseURL                    string
+	N8NBaseURL                 string
+	N8NAPIKey                  string
+	N8NTimeoutSeconds          int
+	X402FacilitatorURL         string
+	X402FacilitatorAPIKey      string
+	X402Mode                   string
+	SupportedPayMethods        []string
+	StripeSecretKey            string
+	StripeWebhookSecret        string
+	StripeOnrampReturnURL      string
+	StripeOnrampRefreshURL     string
+	StripeOnrampMinUSD         float64
+	StripeOnrampDefaultUSD     float64
+	StripeConnectReturnURL     string
+	StripeConnectRefreshURL    string
+	StripeConnectWebhookSecret string
+	PlatformFeeBps             int
+	PlatformMinFeeUSDC         float64
+	PlatformMaxFeeUSDC         float64
+	PlatformHoldDays           int
+	MongoURI                   string
+	MongoDBName                string
+	MongoRequired              bool
+	SuperAdminEmail            string
+	SuperAdminPassword         string
+	DataFilePath               string
+	CORSAllowedOrigins         []string
+	RateLimitPerMinute         int
+	TrustProxyHeaders          bool
+	AllowInsecureDefaults      bool
 }
 
 func Load() Config {
@@ -47,6 +57,9 @@ func Load() Config {
 	if baseURL == "" {
 		baseURL = "http://localhost:" + port
 	}
+	n8nBaseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("N8N_BASE_URL")), "/")
+	n8nAPIKey := strings.TrimSpace(os.Getenv("N8N_API_KEY"))
+	n8nTimeoutSeconds := parsePositiveInt(os.Getenv("N8N_TIMEOUT_SECONDS"), 12)
 	x402Mode := strings.ToLower(trimASCII(os.Getenv("X402_MODE")))
 	if x402Mode == "" {
 		x402Mode = "mock"
@@ -64,6 +77,13 @@ func Load() Config {
 	stripeOnrampRefreshURL := strings.TrimSpace(os.Getenv("STRIPE_ONRAMP_REFRESH_URL"))
 	stripeOnrampMinUSD := parsePositiveFloat(os.Getenv("STRIPE_ONRAMP_MIN_USD"), 10.0)
 	stripeOnrampDefaultUSD := parsePositiveFloat(os.Getenv("STRIPE_ONRAMP_DEFAULT_USD"), 50.0)
+	stripeConnectReturnURL := strings.TrimSpace(os.Getenv("STRIPE_CONNECT_RETURN_URL"))
+	stripeConnectRefreshURL := strings.TrimSpace(os.Getenv("STRIPE_CONNECT_REFRESH_URL"))
+	stripeConnectWebhookSecret := strings.TrimSpace(os.Getenv("STRIPE_CONNECT_WEBHOOK_SECRET"))
+	platformFeeBps := parsePositiveInt(os.Getenv("PLATFORM_FEE_BPS"), 1000)
+	platformMinFeeUSDC := parseNonNegativeFloat(os.Getenv("PLATFORM_MIN_FEE_USDC"), 0)
+	platformMaxFeeUSDC := parseNonNegativeFloat(os.Getenv("PLATFORM_MAX_FEE_USDC"), 0)
+	platformHoldDays := parseNonNegativeInt(os.Getenv("PLATFORM_HOLD_DAYS"), 0)
 	mongoURI := strings.TrimSpace(os.Getenv("MONGO_URI"))
 	mongoDBName := strings.TrimSpace(os.Getenv("MONGO_DB_NAME"))
 	if mongoDBName == "" {
@@ -100,29 +120,39 @@ func Load() Config {
 	rateLimit := parsePositiveInt(os.Getenv("RATE_LIMIT_PER_MINUTE"), 240)
 	trustProxyHeaders := parseBool(os.Getenv("TRUST_PROXY_HEADERS"), false)
 	return Config{
-		Port:                   port,
-		JWTSecret:              secret,
-		BaseURL:                baseURL,
-		X402FacilitatorURL:     facilitatorURL,
-		X402FacilitatorAPIKey:  facilitatorAPIKey,
-		X402Mode:               x402Mode,
-		SupportedPayMethods:    supportedPayMethods,
-		StripeSecretKey:        stripeSecretKey,
-		StripeWebhookSecret:    stripeWebhookSecret,
-		StripeOnrampReturnURL:  stripeOnrampReturnURL,
-		StripeOnrampRefreshURL: stripeOnrampRefreshURL,
-		StripeOnrampMinUSD:     stripeOnrampMinUSD,
-		StripeOnrampDefaultUSD: stripeOnrampDefaultUSD,
-		MongoURI:               mongoURI,
-		MongoDBName:            mongoDBName,
-		MongoRequired:          mongoRequired,
-		SuperAdminEmail:        superAdminEmail,
-		SuperAdminPassword:     superAdminPassword,
-		DataFilePath:           dataFilePath,
-		CORSAllowedOrigins:     corsOrigins,
-		RateLimitPerMinute:     rateLimit,
-		TrustProxyHeaders:      trustProxyHeaders,
-		AllowInsecureDefaults:  allowInsecureDefaults,
+		Port:                       port,
+		JWTSecret:                  secret,
+		BaseURL:                    baseURL,
+		N8NBaseURL:                 n8nBaseURL,
+		N8NAPIKey:                  n8nAPIKey,
+		N8NTimeoutSeconds:          n8nTimeoutSeconds,
+		X402FacilitatorURL:         facilitatorURL,
+		X402FacilitatorAPIKey:      facilitatorAPIKey,
+		X402Mode:                   x402Mode,
+		SupportedPayMethods:        supportedPayMethods,
+		StripeSecretKey:            stripeSecretKey,
+		StripeWebhookSecret:        stripeWebhookSecret,
+		StripeOnrampReturnURL:      stripeOnrampReturnURL,
+		StripeOnrampRefreshURL:     stripeOnrampRefreshURL,
+		StripeOnrampMinUSD:         stripeOnrampMinUSD,
+		StripeOnrampDefaultUSD:     stripeOnrampDefaultUSD,
+		StripeConnectReturnURL:     stripeConnectReturnURL,
+		StripeConnectRefreshURL:    stripeConnectRefreshURL,
+		StripeConnectWebhookSecret: stripeConnectWebhookSecret,
+		PlatformFeeBps:             platformFeeBps,
+		PlatformMinFeeUSDC:         platformMinFeeUSDC,
+		PlatformMaxFeeUSDC:         platformMaxFeeUSDC,
+		PlatformHoldDays:           platformHoldDays,
+		MongoURI:                   mongoURI,
+		MongoDBName:                mongoDBName,
+		MongoRequired:              mongoRequired,
+		SuperAdminEmail:            superAdminEmail,
+		SuperAdminPassword:         superAdminPassword,
+		DataFilePath:               dataFilePath,
+		CORSAllowedOrigins:         corsOrigins,
+		RateLimitPerMinute:         rateLimit,
+		TrustProxyHeaders:          trustProxyHeaders,
+		AllowInsecureDefaults:      allowInsecureDefaults,
 	}
 }
 
@@ -137,6 +167,9 @@ func (c Config) Validate() error {
 	case "", "mock", "facilitator":
 	default:
 		return fmt.Errorf("X402_MODE must be one of: mock, facilitator")
+	}
+	if c.PlatformFeeBps < 0 || c.PlatformFeeBps > 10000 {
+		return fmt.Errorf("PLATFORM_FEE_BPS must be between 0 and 10000")
 	}
 	if strings.TrimSpace(c.MongoURI) == "" {
 		return fmt.Errorf("MONGO_URI must be set (in-memory fallback is disabled)")
@@ -221,4 +254,26 @@ func parsePositiveFloat(raw string, fallback float64) float64 {
 		return fallback
 	}
 	return v
+}
+
+func parseNonNegativeFloat(raw string, fallback float64) float64 {
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.ParseFloat(trimASCII(raw), 64)
+	if err != nil || v < 0 {
+		return fallback
+	}
+	return v
+}
+
+func parseNonNegativeInt(raw string, fallback int) int {
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(trimASCII(raw))
+	if err != nil || n < 0 {
+		return fallback
+	}
+	return n
 }
