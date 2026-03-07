@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import { TrendingUp, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { AppShell } from '@/components/app-shell'
 import { TableToolbar } from '@/components/table-toolbar'
-import { fetchMerchantRevenue } from '@/lib/api-client'
+import { fetchMerchantPaymentsOverview, fetchMerchantRevenue, fetchMerchantServerPaymentConfig, fetchMerchantServers, updateMerchantServerPaymentConfig } from '@/lib/api-client'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { AreaChart } from '@/components/retroui/charts/AreaChart'
 import { LineChart } from '@/components/retroui/charts/LineChart'
@@ -15,10 +16,27 @@ export default function RevenuePage() {
   const [dateRange, setDateRange] = useState('6m')
   const [searchQuery, setSearchQuery] = useState('')
   const [data, setData] = useState<any>({ totalRevenue: 0, totalCustomers: 0, servers: [], trend: [] })
+  const [payments, setPayments] = useState<any>({ methodBreakdown: {}, byServer: [] })
+  const [selectedServerId, setSelectedServerId] = useState('')
+  const [serverConfig, setServerConfig] = useState<any>(null)
+  const [isSavingConfig, setIsSavingConfig] = useState(false)
 
   useEffect(() => {
-    fetchMerchantRevenue().then(setData)
+    Promise.all([fetchMerchantRevenue(), fetchMerchantPaymentsOverview(), fetchMerchantServers()]).then(
+      ([rev, pay, servers]) => {
+        setData(rev as any)
+        setPayments(pay as any)
+        if (servers.length > 0) {
+          setSelectedServerId(servers[0].id)
+        }
+      },
+    )
   }, [])
+
+  useEffect(() => {
+    if (!selectedServerId) return
+    fetchMerchantServerPaymentConfig(selectedServerId).then(setServerConfig)
+  }, [selectedServerId])
 
   const filteredServers = (data.servers || []).filter((s: any) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
 
@@ -49,6 +67,74 @@ export default function RevenuePage() {
             stacked
           />
         </Card>
+
+        <Card className="p-6 space-y-4">
+          <h2 className="text-lg font-semibold">x402 Payment Monitoring</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div><p className="text-xs text-muted-foreground">Settled Volume</p><p className="text-2xl font-bold">${Number(payments.totalSettledUsdc || 0).toFixed(2)}</p></div>
+            <div><p className="text-xs text-muted-foreground">Settled Intents</p><p className="text-2xl font-bold">{payments.settledCount || 0}</p></div>
+            <div><p className="text-xs text-muted-foreground">Pending Intents</p><p className="text-2xl font-bold">{payments.pendingCount || 0}</p></div>
+          </div>
+          <div>
+            <p className="text-sm font-semibold mb-2">Method Breakdown</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {Object.entries(payments.methodBreakdown || {}).map(([method, count]: [string, any]) => (
+                <div key={method} className="border border-border rounded-md p-3">
+                  <p className="font-semibold text-sm">{method}</p>
+                  <p className="text-xs text-muted-foreground">{count} intents</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        {serverConfig && (
+          <Card className="p-6 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-end gap-3">
+              <div className="min-w-48">
+                <p className="text-xs text-muted-foreground mb-1">Server</p>
+                <select
+                  value={selectedServerId}
+                  onChange={e => setSelectedServerId(e.target.value)}
+                  className="px-3 py-2 rounded-md border border-input bg-background text-sm w-full"
+                >
+                  {(data.servers || []).map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-3 gap-2 w-full">
+                <div><p className="text-xs text-muted-foreground mb-1">Per Call Cap</p><Input type="number" value={serverConfig.config?.perCallCapUsdc || 0} onChange={e => setServerConfig((prev: any) => ({ ...prev, config: { ...prev.config, perCallCapUsdc: Number(e.target.value || 0) } }))} /></div>
+                <div><p className="text-xs text-muted-foreground mb-1">Daily Cap</p><Input type="number" value={serverConfig.config?.dailyCapUsdc || 0} onChange={e => setServerConfig((prev: any) => ({ ...prev, config: { ...prev.config, dailyCapUsdc: Number(e.target.value || 0) } }))} /></div>
+                <div><p className="text-xs text-muted-foreground mb-1">Monthly Cap</p><Input type="number" value={serverConfig.config?.monthlyCapUsdc || 0} onChange={e => setServerConfig((prev: any) => ({ ...prev, config: { ...prev.config, monthlyCapUsdc: Number(e.target.value || 0) } }))} /></div>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Payment Address</p>
+              <Input value={serverConfig.config?.paymentAddress || ''} onChange={e => setServerConfig((prev: any) => ({ ...prev, config: { ...prev.config, paymentAddress: e.target.value } }))} />
+            </div>
+            <Button
+              disabled={isSavingConfig}
+              onClick={async () => {
+                setIsSavingConfig(true)
+                try {
+                  const updated = await updateMerchantServerPaymentConfig(selectedServerId, {
+                    paymentAddress: serverConfig.config?.paymentAddress || '',
+                    perCallCapUsdc: Number(serverConfig.config?.perCallCapUsdc || 0),
+                    dailyCapUsdc: Number(serverConfig.config?.dailyCapUsdc || 0),
+                    monthlyCapUsdc: Number(serverConfig.config?.monthlyCapUsdc || 0),
+                    paymentMethods: serverConfig.config?.paymentMethods || [],
+                  })
+                  setServerConfig(updated)
+                } finally {
+                  setIsSavingConfig(false)
+                }
+              }}
+            >
+              {isSavingConfig ? 'Saving...' : 'Save Payment Config'}
+            </Button>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <Card className="p-6">

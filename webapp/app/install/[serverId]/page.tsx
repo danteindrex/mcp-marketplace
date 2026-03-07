@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Check, ChevronRight, Copy, Check as CheckIcon } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, Copy, ExternalLink, Check as CheckIcon, Terminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -10,7 +10,13 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { createConnection, fetchServerBySlug, type Server } from '@/lib/api-client'
+import {
+  fetchServerBySlug,
+  installMarketplaceServer,
+  type InstallAction,
+  type InstallSession,
+  type Server,
+} from '@/lib/api-client'
 
 interface PageProps {
   params: Promise<{ serverId: string }>
@@ -30,7 +36,8 @@ const clientOptions = [
   { value: 'vscode', label: 'VS Code', description: 'Full support with native extension' },
   { value: 'cursor', label: 'Cursor', description: 'Built-in MCP support' },
   { value: 'claude', label: 'Claude', description: 'Desktop application' },
-  { value: 'codex', label: 'OpenAI Codex', description: 'Legacy support' },
+  { value: 'codex', label: 'OpenAI Codex', description: 'CLI MCP install flow' },
+  { value: 'chatgpt', label: 'ChatGPT', description: 'Connector setup for remote MCP' },
 ]
 
 export default function InstallWizardPage({ params }: PageProps) {
@@ -40,6 +47,9 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [authReady, setAuthReady] = useState(false)
   const [acceptedScopes, setAcceptedScopes] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
+  const [showBridgeHelp, setShowBridgeHelp] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const [installSession, setInstallSession] = useState<InstallSession | null>(null)
   const [server, setServer] = useState<Server | null>(null)
 
   useEffect(() => {
@@ -57,14 +67,29 @@ export default function InstallWizardPage({ params }: PageProps) {
 
   const currentStepIndex = steps.findIndex(s => s.id === currentStep)
   const currentStepData = steps[currentStepIndex]
+  const selectedAction: InstallAction | null = installSession?.install?.selected || null
+  const bridgeInstallCommand = 'powershell -ExecutionPolicy Bypass -File backend\\scripts\\install-local-bridge.ps1'
+  const installActionLabel = (() => {
+    if (selectedAction?.requiresLocalExec && selectedAction?.launchUrl) return 'Run One-Click Install'
+    if (selectedAction?.requiresLocalExec) return 'Run Install Command'
+    return 'Open Installer'
+  })()
 
   const handleNext = async () => {
     if (currentStep === 'connect') {
-      await createConnection({
-        client: selectedClient,
-        resource: `https://mcp.marketplace.local/hub/tenant_acme/user_buyer`,
-        grantedScopes: server.requiredScopes,
-      })
+      try {
+        setInstalling(true)
+        const session = await installMarketplaceServer(server.slug, {
+          client: selectedClient,
+          grantedScopes: server.requiredScopes,
+        })
+        setInstallSession(session)
+      } catch (error: any) {
+        toast.error(error?.message || 'Failed to prepare install')
+        return
+      } finally {
+        setInstalling(false)
+      }
       setCurrentStep('complete')
       return
     }
@@ -93,8 +118,36 @@ export default function InstallWizardPage({ params }: PageProps) {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
     setCopiedCode(true)
-    toast.success('Configuration copied to clipboard')
+    toast.success('Copied to clipboard')
     setTimeout(() => setCopiedCode(false), 2000)
+  }
+
+  const runInstallAction = (action: InstallAction) => {
+    setShowBridgeHelp(false)
+    if (action.launchUrl) {
+      window.location.href = action.launchUrl
+      if (action.requiresLocalExec && action.launchUrl.startsWith('mcp-marketplace://')) {
+        window.setTimeout(() => {
+          if (!document.hidden) {
+            setShowBridgeHelp(true)
+            toast.info('If nothing opened, install MCP Local Bridge once')
+          }
+        }, 1600)
+      }
+      return
+    }
+    if (action.openUrl) {
+      window.open(action.openUrl, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (action.command) {
+      copyToClipboard(action.command)
+      toast.info('Run the copied command in your local terminal')
+      return
+    }
+    if (action.fallbackCopy) {
+      copyToClipboard(action.fallbackCopy)
+    }
   }
 
   return (
@@ -163,28 +216,103 @@ export default function InstallWizardPage({ params }: PageProps) {
 
               {currentStep === 'connect' && (
                 <div className="space-y-6">
-                  <Card className="bg-muted p-6 border-border">
-                    <h3 className="font-semibold mb-4">Configuration Snippet</h3>
-                    <div className="bg-background rounded p-4 mb-4 font-mono text-xs overflow-x-auto">
-                      <pre className="text-foreground/70">{`{"server":"${server.name}","client":"${selectedClient}"}`}</pre>
+                  <Card className="bg-muted p-6 border-border space-y-4">
+                    <h3 className="font-semibold">One-Click Install Ready</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Next will create your server connection and generate a client-specific install action.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Client</p>
+                        <p className="font-medium uppercase">{selectedClient}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Permissions</p>
+                        <p className="font-medium">{server.requiredScopes.length} scopes</p>
+                      </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => copyToClipboard(JSON.stringify({ server: server.name, client: selectedClient }))}><Copy className="w-4 h-4 mr-2" />{copiedCode ? 'Copied!' : 'Copy Config'}</Button>
                   </Card>
+                  {installing && (
+                    <p className="text-sm text-muted-foreground">Preparing install session...</p>
+                  )}
                 </div>
               )}
 
               {currentStep === 'complete' && (
                 <div className="text-center space-y-6">
                   <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto"><Check className="w-8 h-8 text-green-600 dark:text-green-400" /></div>
-                  <h3 className="text-2xl font-bold">Installation Complete!</h3>
+                  <h3 className="text-2xl font-bold">Installation Session Created</h3>
                   <div className="flex flex-wrap gap-2 justify-center">{server.requiredScopes.map(scope => <Badge key={scope} variant="outline">{scope}</Badge>)}</div>
+
+                  {selectedAction && (
+                    <Card className="text-left p-6 space-y-4">
+                      <p className="font-semibold">{selectedAction.label}</p>
+                      {selectedAction.description && (
+                        <p className="text-sm text-muted-foreground">{selectedAction.description}</p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <Button onClick={() => runInstallAction(selectedAction)}>
+                          {selectedAction.requiresLocalExec ? (
+                            <Terminal className="w-4 h-4 mr-2" />
+                          ) : (
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                          )}
+                          {installActionLabel}
+                        </Button>
+                        {selectedAction.fallbackCopy && (
+                          <Button
+                            variant="outline"
+                            onClick={() => copyToClipboard(selectedAction.fallbackCopy || '')}
+                          >
+                            <Copy className="w-4 h-4 mr-2" />
+                            {copiedCode ? 'Copied!' : 'Copy Fallback'}
+                          </Button>
+                        )}
+                      </div>
+                      {selectedAction.command && (
+                        <div className="bg-background rounded p-4 font-mono text-xs overflow-x-auto">
+                          <pre className="text-foreground/80">{selectedAction.command}</pre>
+                        </div>
+                      )}
+                    </Card>
+                  )}
+
+                  {showBridgeHelp && selectedAction?.requiresLocalExec && selectedAction.launchUrl?.startsWith('mcp-marketplace://') && (
+                    <Card className="text-left p-6 space-y-4 border-dashed">
+                      <p className="font-semibold">Install MCP Local Bridge (one-time)</p>
+                      <p className="text-sm text-muted-foreground">
+                        One-click local command execution needs the local bridge registered once on this machine.
+                      </p>
+                      <div className="bg-background rounded p-4 font-mono text-xs overflow-x-auto">
+                        <pre className="text-foreground/80">{bridgeInstallCommand}</pre>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={() => copyToClipboard(bridgeInstallCommand)}>
+                          <Copy className="w-4 h-4 mr-2" />
+                          Copy Bridge Install Command
+                        </Button>
+                        <Button onClick={() => runInstallAction(selectedAction)}>
+                          Retry One-Click Install
+                        </Button>
+                      </div>
+                    </Card>
+                  )}
+
+                  {installSession?.connection?.id && (
+                    <p className="text-sm text-muted-foreground">
+                      Connection ID: {installSession.connection.id}
+                    </p>
+                  )}
+                  <Button asChild>
+                    <Link href="/buyer/connections">Go to Connections</Link>
+                  </Button>
                 </div>
               )}
 
               <div className="flex items-center justify-between gap-4 mt-8 pt-6 border-t border-border">
                 <Button variant="outline" onClick={handleBack} disabled={currentStepIndex === 0}>Back</Button>
                 <div className="text-sm text-muted-foreground">Step {currentStepIndex + 1} of {steps.length}</div>
-                <Button onClick={handleNext} disabled={!canProceed()}>{currentStep === 'complete' ? 'Done' : 'Next'}{currentStep !== 'complete' && <ChevronRight className="ml-2 w-4 h-4" />}</Button>
+                <Button onClick={handleNext} disabled={!canProceed() || installing}>{currentStep === 'complete' ? 'Done' : installing ? 'Preparing...' : 'Next'}{currentStep !== 'complete' && !installing && <ChevronRight className="ml-2 w-4 h-4" />}</Button>
               </div>
             </Card>
           </div>

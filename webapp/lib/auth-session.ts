@@ -12,19 +12,23 @@ export function getDashboardPath(role: AppRole): string {
   return roleDashboard[role]
 }
 
-export function setAuthSession(role: AppRole, token: string) {
+export function setAuthSession(role: AppRole) {
   if (typeof window === 'undefined') return
   const oneWeek = 60 * 60 * 24 * 7
   document.cookie = `mcp_active_role=${role}; Path=/; Max-Age=${oneWeek}; SameSite=Lax`
-  document.cookie = `mcp_access_token=${token}; Path=/; Max-Age=${oneWeek}; SameSite=Lax`
   localStorage.setItem(activeRoleKey, role)
 }
 
-export function clearAuthSession() {
+export async function clearAuthSession() {
   if (typeof window === 'undefined') return
+  try {
+    await fetch('/api/session/logout', {
+      method: 'POST',
+      credentials: 'include',
+    })
+  } catch {
+    // Best-effort session cleanup on client logout.
+  }
   document.cookie = 'mcp_active_role=; Path=/; Max-Age=0; SameSite=Lax'
-  document.cookie = 'mcp_access_token=; Path=/; Max-Age=0; SameSite=Lax'
   localStorage.removeItem(activeRoleKey)
-  localStorage.removeItem('mcp_demo_tokens')
 }
-

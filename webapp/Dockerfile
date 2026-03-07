@@ -1,8 +1,8 @@
 FROM node:22-alpine
 WORKDIR /app
-COPY webapp/package.json webapp/pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+COPY webapp/package.json webapp/package-lock.json ./
+RUN npm ci
 COPY webapp/ ./
-RUN pnpm build
+RUN npm run build
 EXPOSE 3000
-CMD ["pnpm", "start"]
+CMD ["npm", "run", "start"]

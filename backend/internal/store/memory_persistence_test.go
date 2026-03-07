@@ -46,4 +46,3 @@ func TestMemoryStorePersistsUsersToDisk(t *testing.T) {
 		t.Fatalf("expected same user id after reload: got %s want %s", user.ID, created.ID)
 	}
 }
-

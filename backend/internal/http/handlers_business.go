@@ -22,15 +22,36 @@ func (a *App) getBuyerBilling(w http.ResponseWriter, r *http.Request) {
 	if len(entitlements) > 0 {
 		plan = "pro"
 	}
+	policy := a.effectivePaymentPolicy(claims.TenantID, claims.UserID)
+	dailySpend, monthlySpendCalc := settledSpendForWindow(intents, time.Now().UTC())
+	if monthlySpendCalc > monthlySpend {
+		monthlySpend = monthlySpendCalc
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":              "bill_" + claims.UserID,
 		"userId":          claims.UserID,
 		"plan":            plan,
 		"monthlySpend":    monthlySpend,
-		"currentBalance":  0.0,
+		"dailySpend":      dailySpend,
+		"currentBalance":  policy.WalletBalanceUSDC,
 		"nextBillingDate": time.Now().UTC().AddDate(0, 1, 0),
-		"paymentMethod":   "",
-		"status":          "active",
+		"paymentMethod":   firstMethod(policy.AllowedMethods),
+		"allowedMethods":  policy.AllowedMethods,
+		"caps": map[string]float64{
+			"perCallCapUsdc":      policy.PerCallCapUSDC,
+			"dailySpendCapUsdc":   policy.DailySpendCapUSDC,
+			"monthlySpendCapUsdc": policy.MonthlySpendCapUSDC,
+			"minimumBalanceUsdc":  policy.MinimumBalanceUSDC,
+		},
+		"wallet": map[string]interface{}{
+			"balanceUsdc":        policy.WalletBalanceUSDC,
+			"minimumBalanceUsdc": policy.MinimumBalanceUSDC,
+			"hardStopOnLowFunds": policy.HardStopOnLowFunds,
+			"fundingMethod":      policy.FundingMethod,
+			"walletAddress":      policy.WalletAddress,
+			"lastTopUpAt":        policy.LastTopUpAt,
+		},
+		"status": "active",
 	})
 }
 
@@ -100,6 +121,9 @@ func (a *App) serverDeployments(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}
+	if !a.ensureServerTenantAccess(w, r, server) {
+		return
+	}
 	items := []map[string]interface{}{
 		{"id": "dep_prod_" + id, "environment": "production", "region": "us-west-1", "replicas": 3, "status": "healthy", "transport": "sse", "version": server.Version, "updatedAt": time.Now().UTC()},
 		{"id": "dep_stg_" + id, "environment": "staging", "region": "us-west-2", "replicas": 1, "status": "healthy", "transport": "sse", "version": server.Version, "updatedAt": time.Now().UTC().Add(-24 * time.Hour)},
@@ -112,6 +136,9 @@ func (a *App) serverBuilder(w http.ResponseWriter, r *http.Request) {
 	server, ok := a.store.GetServerByID(id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	if !a.ensureServerTenantAccess(w, r, server) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -127,10 +154,11 @@ func (a *App) serverBuilder(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) clientCompatibility(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]interface{}{
-		{"client": "codex", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "Hub-based one-click supported"},
-		{"client": "vscode", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "Requires localhost and vscode.dev redirects"},
-		{"client": "cursor", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "OAuth public client flow"},
-		{"client": "claude", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "Remote MCP with OAuth"},
+		{"client": "codex", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "One-line CLI install command"},
+		{"client": "vscode", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "vscode:mcp/install deep-link action"},
+		{"client": "cursor", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "CLI install command when Cursor CLI is available"},
+		{"client": "claude", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "One-line CLI install command"},
+		{"client": "chatgpt", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "Connector settings flow with remote MCP URL"},
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i]["client"].(string) < items[j]["client"].(string) })
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "count": len(items)})

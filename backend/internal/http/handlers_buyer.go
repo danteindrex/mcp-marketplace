@@ -3,20 +3,39 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
 
+func entitlementForServer(entitlements []models.Entitlement, serverID string) (models.Entitlement, bool) {
+	for _, ent := range entitlements {
+		if ent.ServerID == serverID && ent.Status == "active" {
+			return ent, true
+		}
+	}
+	return models.Entitlement{}, false
+}
+
 func (a *App) listBuyerConnections(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	connections := a.store.ListConnections(claims.TenantID, claims.UserID)
+	for i := range connections {
+		if connections[i].ServerName == "" && connections[i].ServerID != "" {
+			if srv, ok := a.store.GetServerByID(connections[i].ServerID); ok {
+				connections[i].ServerName = srv.Name
+				connections[i].ServerSlug = srv.Slug
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": connections, "count": len(connections)})
 }
 
 type createConnectionRequest struct {
 	Client        string   `json:"client"`
+	ServerID      string   `json:"serverId"`
 	Resource      string   `json:"resource"`
 	GrantedScopes []string `json:"grantedScopes"`
 }
@@ -24,31 +43,78 @@ type createConnectionRequest struct {
 func (a *App) createBuyerConnection(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	var req createConnectionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Client == "" || req.Resource == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Client == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
-	hub, ok := a.store.GetHubProfile(claims.TenantID, claims.UserID)
-	if !ok {
-		hub = a.store.UpsertHubProfile(models.HubProfile{
-			TenantID: claims.TenantID,
-			UserID:   claims.UserID,
-			HubURL:   a.cfg.BaseURL + "/mcp/hub/" + claims.TenantID + "/" + claims.UserID,
-			Status:   "active",
-		})
+	hub := a.ensureHubProfile(claims.TenantID, claims.UserID)
+	resource := req.Resource
+	serverID := ""
+	serverSlug := ""
+	serverName := ""
+	grantedScopes := req.GrantedScopes
+	if strings.TrimSpace(req.ServerID) != "" {
+		server, ok := a.store.GetServerByID(strings.TrimSpace(req.ServerID))
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+			return
+		}
+		if claims.Role != models.RoleAdmin && claims.TenantID != server.TenantID && server.Status != "published" {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+			return
+		}
+		allowedScopes := server.RequiredScopes
+		if claims.Role != models.RoleAdmin && claims.TenantID != server.TenantID {
+			entitlements := a.store.ListEntitlements(claims.TenantID, claims.UserID)
+			entitlement, hasEntitlement := entitlementForServer(entitlements, server.ID)
+			if !hasEntitlement {
+				if server.Status == "published" && server.PricingType == "free" {
+					entitlement = a.store.GrantEntitlement(models.Entitlement{
+						TenantID:      claims.TenantID,
+						UserID:        claims.UserID,
+						ServerID:      server.ID,
+						AllowedScopes: server.RequiredScopes,
+						CloudAllowed:  true,
+						LocalAllowed:  true,
+					})
+					hasEntitlement = true
+				}
+			}
+			if !hasEntitlement {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "entitlement required"})
+				return
+			}
+			if len(entitlement.AllowedScopes) > 0 {
+				allowedScopes = entitlement.AllowedScopes
+			}
+		}
+		serverID = server.ID
+		serverSlug = server.Slug
+		serverName = server.Name
+		if len(grantedScopes) == 0 {
+			grantedScopes = allowedScopes
+		} else {
+			grantedScopes = filterGranted(allowedScopes, grantedScopes)
+		}
+	}
+	if strings.TrimSpace(resource) == "" {
+		resource = hub.HubURL
 	}
 	conn := a.store.UpsertConnection(models.Connection{
 		TenantID:       claims.TenantID,
 		UserID:         claims.UserID,
+		ServerID:       serverID,
+		ServerSlug:     serverSlug,
+		ServerName:     serverName,
 		HubID:          hub.ID,
-		Client:         req.Client,
+		Client:         normalizeClientName(req.Client),
 		Status:         "active",
-		Resource:       req.Resource,
-		GrantedScopes:  req.GrantedScopes,
+		Resource:       resource,
+		GrantedScopes:  grantedScopes,
 		TokenExpiresAt: time.Now().UTC().Add(8 * time.Hour),
 		CatalogVersion: hub.CatalogVersion,
 	})
-	a.store.AddAuditLog(models.AuditLog{TenantID: claims.TenantID, ActorID: claims.UserID, Action: "connection.create", TargetType: "connection", TargetID: conn.ID, Outcome: "success", Metadata: map[string]interface{}{"client": req.Client}})
+	a.store.AddAuditLog(models.AuditLog{TenantID: claims.TenantID, ActorID: claims.UserID, Action: "connection.create", TargetType: "connection", TargetID: conn.ID, Outcome: "success", Metadata: map[string]interface{}{"client": req.Client, "serverId": serverID}})
 	writeJSON(w, http.StatusCreated, conn)
 }
 
@@ -60,15 +126,7 @@ func (a *App) listBuyerEntitlements(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) getBuyerHub(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
-	hub, ok := a.store.GetHubProfile(claims.TenantID, claims.UserID)
-	if !ok {
-		hub = a.store.UpsertHubProfile(models.HubProfile{
-			TenantID: claims.TenantID,
-			UserID:   claims.UserID,
-			HubURL:   a.cfg.BaseURL + "/mcp/hub/" + claims.TenantID + "/" + claims.UserID,
-			Status:   "active",
-		})
-	}
+	hub := a.ensureHubProfile(claims.TenantID, claims.UserID)
 	routes := a.store.ListHubRoutes(hub.ID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"hub":    hub,

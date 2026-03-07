@@ -27,7 +27,7 @@ const merchantNavigation = [
 ]
 
 const adminNavigation = [
-  { label: 'Administration', items: [{ name: 'Tenants', href: '/admin/tenants', icon: Users }, { name: 'Security Events', href: '/admin/security', icon: Shield }, { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText }, { name: 'Client Compatibility', href: '/admin/client-compatibility', icon: Grid }] },
+  { label: 'Administration', items: [{ name: 'Tenants', href: '/admin/tenants', icon: Users }, { name: 'Security Events', href: '/admin/security', icon: Shield }, { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText }, { name: 'Client Compatibility', href: '/admin/client-compatibility', icon: Grid }, { name: 'Payments', href: '/admin/payments', icon: TrendingUp }] },
 ]
 
 function dicebearAvatar(seed: string, style: 'avataaars' | 'shapes'): string {
@@ -118,13 +118,13 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
                           className={cn(
                             'w-full justify-start gap-2 text-sm border-2',
                             isActive(item.href)
-                              ? '!bg-[hsl(var(--tertiary))] !text-[hsl(var(--tertiary-foreground))] !border-black'
+                              ? '!bg-[var(--tertiary)] !text-[var(--tertiary-foreground)] !border-black'
                               : '!bg-white !text-black !border-black',
                           )}
                         >
                           <Link href={item.href} className="flex items-center gap-2 w-full">
-                            <Icon className={cn('w-4 h-4', isActive(item.href) ? 'text-[hsl(var(--tertiary-foreground))]' : 'text-black')} />
-                            <span className={cn('text-sm font-bold', isActive(item.href) ? 'text-[hsl(var(--tertiary-foreground))]' : 'text-black')}>{item.name}</span>
+                            <Icon className={cn('w-4 h-4', isActive(item.href) ? 'text-[var(--tertiary-foreground)]' : 'text-black')} />
+                            <span className={cn('text-sm font-bold', isActive(item.href) ? 'text-[var(--tertiary-foreground)]' : 'text-black')}>{item.name}</span>
                           </Link>
                         </RetroButton>
                       </div>
@@ -150,7 +150,7 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem><TeamSelector teams={teams} selectedTeam={selectedTeam} onTeamChange={() => {}} onCreateTeam={() => {}} /></SidebarMenuItem>
-          <SidebarMenuItem><ProfileSelector profile={profile} onSettings={() => router.push('/settings')} onLogout={() => { clearAuthSession(); router.push('/login') }} /></SidebarMenuItem>
+          <SidebarMenuItem><ProfileSelector profile={profile} onSettings={() => router.push('/settings')} onLogout={async () => { await clearAuthSession(); router.push('/login') }} /></SidebarMenuItem>
           <SidebarMenuItem>
             {resolvedTheme === 'light' ? (
               <RetroButton asChild variant="outline" className="w-full justify-start"><Link href="/settings"><Settings className="w-4 h-4" /><Text variant="small">Settings</Text></Link></RetroButton>

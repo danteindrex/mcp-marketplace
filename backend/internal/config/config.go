@@ -1,37 +1,81 @@
 package config
 
-import "os"
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
 
 type Config struct {
-	Port               string
-	JWTSecret          string
-	BaseURL            string
-	SuperAdminEmail    string
-	SuperAdminPassword string
-	DataFilePath       string
-	CORSAllowedOrigins []string
-	RateLimitPerMinute int
+	Port                   string
+	JWTSecret              string
+	BaseURL                string
+	X402FacilitatorURL     string
+	X402FacilitatorAPIKey  string
+	X402Mode               string
+	SupportedPayMethods    []string
+	StripeSecretKey        string
+	StripeWebhookSecret    string
+	StripeOnrampReturnURL  string
+	StripeOnrampRefreshURL string
+	StripeOnrampMinUSD     float64
+	StripeOnrampDefaultUSD float64
+	MongoURI               string
+	MongoDBName            string
+	MongoRequired          bool
+	SuperAdminEmail        string
+	SuperAdminPassword     string
+	DataFilePath           string
+	CORSAllowedOrigins     []string
+	RateLimitPerMinute     int
+	TrustProxyHeaders      bool
+	AllowInsecureDefaults  bool
 }
 
 func Load() Config {
+	allowInsecureDefaults := parseBool(os.Getenv("ALLOW_INSECURE_DEFAULTS"), false)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
+	if secret == "" && allowInsecureDefaults {
 		secret = "change-me-in-production"
 	}
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
 		baseURL = "http://localhost:" + port
 	}
+	x402Mode := strings.ToLower(trimASCII(os.Getenv("X402_MODE")))
+	if x402Mode == "" {
+		x402Mode = "mock"
+	}
+	facilitatorURL := strings.TrimSpace(os.Getenv("X402_FACILITATOR_URL"))
+	facilitatorAPIKey := strings.TrimSpace(os.Getenv("X402_FACILITATOR_API_KEY"))
+	payMethodsCSV := os.Getenv("SUPPORTED_PAYMENT_METHODS")
+	if payMethodsCSV == "" {
+		payMethodsCSV = "x402_wallet,wallet_balance,coinbase_commerce,stripe"
+	}
+	supportedPayMethods := splitAndTrim(payMethodsCSV)
+	stripeSecretKey := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
+	stripeWebhookSecret := strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET"))
+	stripeOnrampReturnURL := strings.TrimSpace(os.Getenv("STRIPE_ONRAMP_RETURN_URL"))
+	stripeOnrampRefreshURL := strings.TrimSpace(os.Getenv("STRIPE_ONRAMP_REFRESH_URL"))
+	stripeOnrampMinUSD := parsePositiveFloat(os.Getenv("STRIPE_ONRAMP_MIN_USD"), 10.0)
+	stripeOnrampDefaultUSD := parsePositiveFloat(os.Getenv("STRIPE_ONRAMP_DEFAULT_USD"), 50.0)
+	mongoURI := strings.TrimSpace(os.Getenv("MONGO_URI"))
+	mongoDBName := strings.TrimSpace(os.Getenv("MONGO_DB_NAME"))
+	if mongoDBName == "" {
+		mongoDBName = "mcp_marketplace"
+	}
+	mongoRequired := parseBool(os.Getenv("MONGO_REQUIRED"), !allowInsecureDefaults)
 	superAdminEmail := os.Getenv("SUPER_ADMIN_EMAIL")
 	if superAdminEmail == "" {
 		superAdminEmail = "admin@platform.local"
 	}
 	superAdminPassword := os.Getenv("SUPER_ADMIN_PASSWORD")
-	if superAdminPassword == "" {
+	if superAdminPassword == "" && allowInsecureDefaults {
 		superAdminPassword = "change-admin-password"
 	}
 	dataFilePath := os.Getenv("DATA_FILE_PATH")
@@ -54,16 +98,59 @@ func Load() Config {
 	}
 
 	rateLimit := parsePositiveInt(os.Getenv("RATE_LIMIT_PER_MINUTE"), 240)
+	trustProxyHeaders := parseBool(os.Getenv("TRUST_PROXY_HEADERS"), false)
 	return Config{
-		Port:               port,
-		JWTSecret:          secret,
-		BaseURL:            baseURL,
-		SuperAdminEmail:    superAdminEmail,
-		SuperAdminPassword: superAdminPassword,
-		DataFilePath:       dataFilePath,
-		CORSAllowedOrigins: corsOrigins,
-		RateLimitPerMinute: rateLimit,
+		Port:                   port,
+		JWTSecret:              secret,
+		BaseURL:                baseURL,
+		X402FacilitatorURL:     facilitatorURL,
+		X402FacilitatorAPIKey:  facilitatorAPIKey,
+		X402Mode:               x402Mode,
+		SupportedPayMethods:    supportedPayMethods,
+		StripeSecretKey:        stripeSecretKey,
+		StripeWebhookSecret:    stripeWebhookSecret,
+		StripeOnrampReturnURL:  stripeOnrampReturnURL,
+		StripeOnrampRefreshURL: stripeOnrampRefreshURL,
+		StripeOnrampMinUSD:     stripeOnrampMinUSD,
+		StripeOnrampDefaultUSD: stripeOnrampDefaultUSD,
+		MongoURI:               mongoURI,
+		MongoDBName:            mongoDBName,
+		MongoRequired:          mongoRequired,
+		SuperAdminEmail:        superAdminEmail,
+		SuperAdminPassword:     superAdminPassword,
+		DataFilePath:           dataFilePath,
+		CORSAllowedOrigins:     corsOrigins,
+		RateLimitPerMinute:     rateLimit,
+		TrustProxyHeaders:      trustProxyHeaders,
+		AllowInsecureDefaults:  allowInsecureDefaults,
 	}
+}
+
+func (c Config) Validate() error {
+	if strings.TrimSpace(c.Port) == "" {
+		return fmt.Errorf("PORT must be set")
+	}
+	if strings.TrimSpace(c.SuperAdminEmail) == "" {
+		return fmt.Errorf("SUPER_ADMIN_EMAIL must be set")
+	}
+	switch strings.ToLower(strings.TrimSpace(c.X402Mode)) {
+	case "", "mock", "facilitator":
+	default:
+		return fmt.Errorf("X402_MODE must be one of: mock, facilitator")
+	}
+	if strings.TrimSpace(c.MongoURI) == "" {
+		return fmt.Errorf("MONGO_URI must be set (in-memory fallback is disabled)")
+	}
+	if c.AllowInsecureDefaults {
+		return nil
+	}
+	if strings.TrimSpace(c.JWTSecret) == "" || c.JWTSecret == "change-me-in-production" {
+		return fmt.Errorf("JWT_SECRET must be set to a secure value")
+	}
+	if strings.TrimSpace(c.SuperAdminPassword) == "" || c.SuperAdminPassword == "change-admin-password" {
+		return fmt.Errorf("SUPER_ADMIN_PASSWORD must be set to a secure value")
+	}
+	return nil
 }
 
 func splitAndTrim(csv string) []string {
@@ -109,4 +196,29 @@ func parsePositiveInt(raw string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func parseBool(raw string, fallback bool) bool {
+	if raw == "" {
+		return fallback
+	}
+	switch strings.ToLower(trimASCII(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func parsePositiveFloat(raw string, fallback float64) float64 {
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.ParseFloat(trimASCII(raw), 64)
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return v
 }

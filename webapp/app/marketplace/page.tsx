@@ -6,7 +6,7 @@ import { LayoutGrid, List, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { TableToolbar } from '@/components/table-toolbar'
-import { fetchServers, type Server } from '@/lib/api-client'
+import { fetchCurrentUser, fetchServers, type CurrentUser, type Server } from '@/lib/api-client'
 import { Breadcrumb, Button as RetroButton } from '@/components/retroui'
 import { LightModeOnly, DarkModeOnly } from '@/components/theme-aware'
 
@@ -29,17 +29,27 @@ const pricingOptions = [
 
 export default function MarketplacePage() {
   const [view, setView] = useState<ViewMode>('grid')
+  const [isLoading, setIsLoading] = useState(true)
   const [servers, setServers] = useState<Server[]>([])
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedPricing, setSelectedPricing] = useState('')
   const [sortBy, setSortBy] = useState('installs')
 
   useEffect(() => {
+    setIsLoading(true)
     fetchServers().then(setServers)
       .catch(() => {
         setServers([])
       })
+      .finally(() => {
+        setIsLoading(false)
+      })
+  }, [])
+
+  useEffect(() => {
+    fetchCurrentUser().then(setCurrentUser)
   }, [])
 
   // Filter and search servers
@@ -86,14 +96,27 @@ export default function MarketplacePage() {
     return results
   }, [searchQuery, selectedCategory, selectedPricing, sortBy])
 
+  const hasActiveFilters = Boolean(searchQuery || selectedCategory || selectedPricing)
+  const resultSummary = isLoading
+    ? 'Loading servers...'
+    : hasActiveFilters
+      ? `Showing ${filteredServers.length} results (${servers.length} total)`
+      : `Showing ${servers.length} servers`
+  const dashboardPath =
+    currentUser?.role === 'admin'
+      ? '/admin/tenants'
+      : currentUser?.role === 'merchant'
+        ? '/merchant/onboarding'
+        : '/buyer/dashboard'
+
   return (
     <div className="flex flex-col min-h-screen grid-pattern bg-background">
       {/* Page Header */}
       <div className="border-b-2 border-foreground bg-background/90 backdrop-blur sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <Breadcrumb>
-              <Breadcrumb.List>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <Breadcrumb>
+                <Breadcrumb.List>
                 <Breadcrumb.Item>
                   <Breadcrumb.Link asChild>
                     <Link href="/">Home</Link>
@@ -105,16 +128,20 @@ export default function MarketplacePage() {
                 </Breadcrumb.Item>
               </Breadcrumb.List>
             </Breadcrumb>
-            <DarkModeOnly>
-              <Button asChild size="sm" className="button-coral-solid">
-                <Link href="/">Return Home</Link>
+            <div className="flex items-center gap-2">
+              {currentUser ? (
+                <span className="hidden md:inline text-xs font-semibold text-muted-foreground">
+                  Signed in as {currentUser.email}
+                </span>
+              ) : (
+                <Button asChild size="sm" variant="outline" className="whitespace-nowrap">
+                  <Link href="/login">Login</Link>
+                </Button>
+              )}
+              <Button asChild size="sm" className="button-coral-solid whitespace-nowrap">
+                <Link href={currentUser ? dashboardPath : '/'}>{currentUser ? 'Dashboard' : 'Return Home'}</Link>
               </Button>
-            </DarkModeOnly>
-            <LightModeOnly>
-              <RetroButton asChild size="sm" className="button-coral-solid">
-                <Link href="/">Return Home</Link>
-              </RetroButton>
-            </LightModeOnly>
+            </div>
           </div>
           <h1 className="text-4xl font-black uppercase mb-2">MCP Marketplace</h1>
           <p className="text-muted-foreground font-medium">Discover and install verified MCP servers</p>
@@ -219,9 +246,7 @@ export default function MarketplacePage() {
           </div>
 
           {/* Results */}
-          <div className="text-sm text-muted-foreground font-semibold">
-            Showing {filteredServers.length} of {servers.length} servers
-          </div>
+          <div className="text-sm text-muted-foreground font-semibold">{resultSummary}</div>
 
           {/* Servers Grid */}
           {filteredServers.length === 0 ? (

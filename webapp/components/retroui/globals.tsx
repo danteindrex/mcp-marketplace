@@ -33,7 +33,7 @@ export function RetroUIGlobalProvider({ children }: { children: React.ReactNode 
             --retro-shadow-sm: 2px 2px 0px 0px rgba(0, 0, 0, 0.2);
           }
 
-          /* Text styling for light mode */
+          /* Keep typographic weight without forcing color overrides */
           .retroui-light-theme h1,
           .retroui-light-theme h2,
           .retroui-light-theme h3,
@@ -43,13 +43,6 @@ export function RetroUIGlobalProvider({ children }: { children: React.ReactNode 
             font-family: inherit;
             font-weight: 900;
             letter-spacing: -0.02em;
-            color: #000;
-          }
-
-          .retroui-light-theme p,
-          .retroui-light-theme span,
-          .retroui-light-theme div {
-            color: #000;
           }
 
           /* Button styling */

@@ -1,0 +1,17 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend local artifacts
+backend/.gocache/
+backend/.gomodcache/
+backend/.gopath/
+backend/data/
+backend/*.log
+backend/*.exe
+
+# Webapp local artifacts
+webapp/.next/
+webapp/node_modules/
+webapp/*.log
+webapp/*.tsbuildinfo

@@ -25,6 +25,49 @@ export interface Server {
   createdAt: string
 }
 
+export interface MarketplaceInstallMetadata {
+  oneClick: boolean
+  hubStrategy: string
+  clients: string[]
+  installEndpoint?: string
+  supportsCommands?: boolean
+}
+
+export interface InstallAction {
+  client: string
+  label: string
+  launchUrl?: string
+  openUrl?: string
+  command?: string
+  fallbackCopy?: string
+  description?: string
+  requiresLocalExec?: boolean
+}
+
+export interface InstallSession {
+  server: Server
+  hub: {
+    id: string
+    tenantId: string
+    userId: string
+    hubUrl: string
+    catalogVersion: number
+  }
+  resource: string
+  connection: {
+    id: string
+    serverId?: string
+    serverName?: string
+    client: string
+    status: string
+    tokenExpiresAt?: string
+  }
+  install: {
+    selected: InstallAction
+    actions: InstallAction[]
+  }
+}
+
 export interface Connection {
   id: string
   userId: string
@@ -42,10 +85,95 @@ export interface Billing {
   userId: string
   plan: string
   monthlySpend: number
+  dailySpend?: number
   currentBalance: number
   nextBillingDate: Date
   paymentMethod?: string
+  allowedMethods?: string[]
+  caps?: {
+    perCallCapUsdc?: number
+    dailySpendCapUsdc?: number
+    monthlySpendCapUsdc?: number
+    minimumBalanceUsdc?: number
+  }
+  wallet?: {
+    balanceUsdc?: number
+    minimumBalanceUsdc?: number
+    hardStopOnLowFunds?: boolean
+    fundingMethod?: string
+    walletAddress?: string
+    lastTopUpAt?: string
+  }
   status: string
+}
+
+export interface PaymentMethodCatalogItem {
+  id: string
+  displayName: string
+  enabled: boolean
+  configured: boolean
+  integration: string
+  docs?: string
+  notes?: string
+  network?: string
+  asset?: string
+}
+
+export interface BuyerPaymentControls {
+  policy: {
+    monthlySpendCapUsdc: number
+    dailySpendCapUsdc: number
+    perCallCapUsdc: number
+    allowedMethods: string[]
+    siwxWallet?: string
+    walletBalanceUsdc?: number
+    minimumBalanceUsdc?: number
+    hardStopOnLowFunds?: boolean
+    autoTopUpEnabled?: boolean
+    autoTopUpAmountUsd?: number
+    autoTopUpTriggerUsd?: number
+    fundingMethod?: string
+    walletAddress?: string
+    lastTopUpAt?: string
+  }
+  methods: PaymentMethodCatalogItem[]
+  dailySpendUsdc: number
+  monthlySpendUsdc: number
+  dailyRemaining: number
+  monthlyRemaining: number
+  facilitatorMode: string
+  facilitatorTarget?: string
+  wallet?: {
+    balanceUsdc: number
+    minimumBalanceUsdc: number
+    hardStopOnLowFunds: boolean
+    autoTopUpEnabled: boolean
+    autoTopUpAmountUsd: number
+    autoTopUpTriggerUsd: number
+    fundingMethod: string
+    walletAddress?: string
+    lastTopUpAt?: string
+  }
+  topups?: WalletTopUp[]
+}
+
+export interface WalletTopUp {
+  id: string
+  provider: string
+  providerSessionId?: string
+  status: string
+  sourceCurrency?: string
+  sourceAmount?: number
+  destinationAsset?: string
+  destinationNetwork?: string
+  destinationAmount?: number
+  paymentMethod?: string
+  walletAddress?: string
+  hostedUrl?: string
+  failureReason?: string
+  createdAt: string
+  updatedAt?: string
+  fulfilledAt?: string
 }
 
 export interface SecurityEvent {
@@ -87,6 +215,11 @@ export interface UserNotificationSettings {
   weeklyDigest: boolean
 }
 
+export interface MFAStatus {
+  mfaEnabled: boolean
+  method: '' | 'totp'
+}
+
 export interface TenantRecord {
   id: string
   name: string
@@ -95,6 +228,15 @@ export interface TenantRecord {
   planTier: string
   status: string
   createdAt: string
+}
+
+export interface CurrentUser {
+  id: string
+  tenantId: string
+  email: string
+  name: string
+  role: AppRole
+  mfaEnabled?: boolean
 }
 
 function requireActiveRole(): AppRole {
@@ -108,10 +250,30 @@ export async function fetchServers(): Promise<Server[]> {
   return data.items
 }
 
+export async function fetchCurrentUser(): Promise<CurrentUser | null> {
+  try {
+    return await apiGet<CurrentUser>('/v1/me')
+  } catch {
+    return null
+  }
+}
+
 export async function fetchServerBySlug(slug: string): Promise<Server | null> {
   try {
     const data = await apiGet<{ server: Server }>(`/v1/marketplace/servers/${slug}`)
     return data.server
+  } catch {
+    return null
+  }
+}
+
+export async function fetchServerDetailBySlug(
+  slug: string,
+): Promise<{ server: Server; install?: MarketplaceInstallMetadata } | null> {
+  try {
+    return await apiGet<{ server: Server; install?: MarketplaceInstallMetadata }>(
+      `/v1/marketplace/servers/${slug}`,
+    )
   } catch {
     return null
   }
@@ -141,6 +303,21 @@ export async function createConnection(payload: { client: string; resource: stri
   return apiPost('/v1/buyer/connections', payload, 'buyer')
 }
 
+export async function installMarketplaceServer(
+  slug: string,
+  payload: { client: string; grantedScopes?: string[] },
+): Promise<InstallSession> {
+  return apiPost(`/v1/marketplace/servers/${slug}/install`, payload, 'buyer')
+}
+
+export async function fetchBuyerHub() {
+  return apiGet<{ hub: any; routes: any[]; strategy: any }>('/v1/buyer/hub', 'buyer')
+}
+
+export async function fetchLocalAgents() {
+  return apiGet<{ items: any[]; count: number }>('/v1/buyer/local-agents', 'buyer')
+}
+
 export async function rotateToken(connectionId: string): Promise<void> {
   await apiPost(`/v1/buyer/connections/${connectionId}/rotate`, {}, 'buyer')
 }
@@ -156,9 +333,13 @@ export async function fetchBilling(): Promise<Billing> {
     userId: data.userId,
     plan: data.plan,
     monthlySpend: data.monthlySpend,
+    dailySpend: data.dailySpend,
     currentBalance: data.currentBalance,
     nextBillingDate: new Date(data.nextBillingDate),
     paymentMethod: data.paymentMethod,
+    allowedMethods: data.allowedMethods || [],
+    caps: data.caps,
+    wallet: data.wallet,
     status: data.status,
   }
 }
@@ -171,6 +352,45 @@ export async function fetchInvoices(): Promise<Array<{ id: string; date: Date; a
     amount: Number(inv.amount || 0),
     status: inv.status || 'paid',
   }))
+}
+
+export async function fetchBuyerPaymentControls(): Promise<BuyerPaymentControls> {
+  return apiGet('/v1/buyer/payments/controls', 'buyer')
+}
+
+export async function updateBuyerPaymentControls(payload: {
+  monthlySpendCapUsdc?: number
+  dailySpendCapUsdc?: number
+  perCallCapUsdc?: number
+  allowedMethods?: string[]
+  siwxWallet?: string
+  minimumBalanceUsdc?: number
+  hardStopOnLowFunds?: boolean
+  autoTopUpEnabled?: boolean
+  autoTopUpAmountUsd?: number
+  autoTopUpTriggerUsd?: number
+  fundingMethod?: string
+  walletAddress?: string
+}) {
+  return apiPut('/v1/buyer/payments/controls', payload, 'buyer')
+}
+
+export async function fetchBuyerWalletTopUps(): Promise<{
+  items: WalletTopUp[]
+  count: number
+  minimumTopUpUsd: number
+  defaultTopUpUsd: number
+  stripeConfigured: boolean
+}> {
+  return apiGet('/v1/buyer/payments/topups', 'buyer')
+}
+
+export async function createStripeTopUpSession(payload: {
+  amountUsd: number
+  walletAddress?: string
+  paymentMethod?: string
+}) {
+  return apiPost('/v1/buyer/payments/topups/stripe/session', payload, 'buyer')
 }
 
 export async function fetchSecurityEvents(severity?: string): Promise<SecurityEvent[]> {
@@ -211,6 +431,10 @@ export async function fetchClientCompatibility(): Promise<Array<{ client: string
   return data.items
 }
 
+export async function fetchAdminPaymentsOverview() {
+  return apiGet('/v1/admin/payments/overview', 'admin')
+}
+
 export async function fetchMerchantServers(): Promise<Server[]> {
   const data = await apiGet<{ items: Server[] }>('/v1/merchant/servers', 'merchant')
   return data.items
@@ -218,6 +442,24 @@ export async function fetchMerchantServers(): Promise<Server[]> {
 
 export async function fetchMerchantRevenue(): Promise<{ totalRevenue: number; totalCustomers: number; servers: Array<{ id: string; name: string; revenue: number; customers: number; trend: string }>; trend: Array<{ month: string; revenue: number; subscriptions: number; perCall: number }> }> {
   return apiGet('/v1/merchant/revenue', 'merchant')
+}
+
+export async function fetchMerchantPaymentsOverview() {
+  return apiGet('/v1/merchant/payments/overview', 'merchant')
+}
+
+export async function fetchMerchantServerPaymentConfig(id: string) {
+  return apiGet(`/v1/merchant/servers/${id}/payments/config`, 'merchant')
+}
+
+export async function updateMerchantServerPaymentConfig(id: string, payload: {
+  paymentMethods?: string[]
+  paymentAddress?: string
+  perCallCapUsdc?: number
+  dailyCapUsdc?: number
+  monthlyCapUsdc?: number
+}) {
+  return apiPut(`/v1/merchant/servers/${id}/payments/config`, payload, 'merchant')
 }
 
 export async function fetchServerAuth(id: string) {
@@ -266,6 +508,34 @@ export async function changeUserPassword(payload: {
 }): Promise<void> {
   const role = requireActiveRole()
   await apiPut('/v1/settings/security/password', payload, role)
+}
+
+export async function fetchMFAStatus(): Promise<MFAStatus> {
+  const role = requireActiveRole()
+  return apiGet<MFAStatus>('/v1/settings/security/mfa', role)
+}
+
+export async function setupMFATOTP(): Promise<{
+  secret: string
+  otpauthURL: string
+  issuer: string
+  accountName: string
+}> {
+  const role = requireActiveRole()
+  return apiPost('/v1/settings/security/mfa/totp/setup', {}, role)
+}
+
+export async function verifyMFATOTP(code: string): Promise<MFAStatus> {
+  const role = requireActiveRole()
+  return apiPost('/v1/settings/security/mfa/totp/verify', { code }, role)
+}
+
+export async function disableMFATOTP(payload: {
+  currentPassword: string
+  code: string
+}): Promise<MFAStatus> {
+  const role = requireActiveRole()
+  return apiPost('/v1/settings/security/mfa/totp/disable', payload, role)
 }
 
 export async function fetchUserPreferencesSettings(): Promise<UserPreferencesSettings> {

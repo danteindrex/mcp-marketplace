@@ -1,15 +1,29 @@
 version: "3.9"
 services:
+  mongo:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     environment:
       PORT: "8080"
-      JWT_SECRET: "dev-secret"
+      JWT_SECRET: "dev-secret-change-before-production"
       BASE_URL: "http://localhost:8080"
+      MONGO_URI: "mongodb://mongo:27017"
+      MONGO_DB_NAME: "mcp_marketplace"
+      MONGO_REQUIRED: "true"
+      SUPER_ADMIN_EMAIL: "admin@platform.local"
+      SUPER_ADMIN_PASSWORD: "ChangeMe123!dev"
     ports:
       - "8080:8080"
+    depends_on:
+      - mongo
 
   webapp:
     build:
@@ -21,3 +35,6 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+
+volumes:
+  mongo-data:

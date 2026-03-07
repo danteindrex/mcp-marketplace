@@ -16,6 +16,7 @@ jobs:
         working-directory: backend
         run: |
           go test ./...
+          go vet ./...
           go build ./...
 
   webapp:
@@ -29,4 +30,6 @@ jobs:
         working-directory: webapp
         run: |
           npm ci
+          npm run lint
+          npm run typecheck
           npm run build

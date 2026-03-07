@@ -8,7 +8,7 @@ const stickerVariants = cva(
     variants: {
       variant: {
         default: 'bg-accent text-accent-foreground',
-        primary: 'bg-primary text-primary-foreground',
+        primary: 'bg-tertiary text-tertiary-foreground',
         secondary: 'bg-secondary text-secondary-foreground',
         destructive: 'bg-destructive text-destructive-foreground',
         outline: 'bg-background text-foreground',
@@ -33,9 +33,9 @@ const stickerVariants = cva(
         none: '',
         default: 'shadow-[4px_4px_0px_hsl(var(--shadow-color))]',
         colored:
-          'shadow-[4px_4px_0px_hsl(var(--primary))]',
+          'shadow-[4px_4px_0px_var(--primary)]',
         double:
-          'shadow-[3px_3px_0px_hsl(var(--primary)),6px_6px_0px_hsl(var(--shadow-color))]',
+          'shadow-[3px_3px_0px_var(--primary),6px_6px_0px_hsl(var(--shadow-color))]',
       },
     },
     defaultVariants: {
@@ -98,7 +98,7 @@ const stampVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground',
+        default: 'bg-tertiary text-tertiary-foreground',
         secondary: 'bg-secondary text-secondary-foreground',
         accent: 'bg-accent text-accent-foreground',
         destructive: 'bg-destructive text-destructive-foreground',
@@ -158,7 +158,7 @@ const stickyNoteVariants = cva(
     variants: {
       variant: {
         yellow: 'bg-accent text-accent-foreground',
-        pink: 'bg-primary text-primary-foreground',
+        pink: 'bg-tertiary text-tertiary-foreground',
         blue: 'bg-info text-info-foreground',
         green: 'bg-success text-success-foreground',
         purple: 'bg-secondary text-secondary-foreground',

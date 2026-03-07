@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Sticker } from '@/components/ui/sticker'
 import { BurstShape, LightningShape, Star5Shape } from '@/components/ui/shapes'
-import { cacheRoleToken, loginWithCredentials, signupWithCredentials, type AppRole } from '@/lib/api'
+import { loginWithCredentials, signupWithCredentials, type AppRole } from '@/lib/api'
 import { getDashboardPath, setAuthSession } from '@/lib/auth-session'
 
 type Mode = 'login' | 'signup'
@@ -21,6 +21,8 @@ export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
+  const [showMFA, setShowMFA] = useState(false)
   const [name, setName] = useState('')
   const [tenantName, setTenantName] = useState('')
   const [role, setRole] = useState<'buyer' | 'merchant'>('buyer')
@@ -34,9 +36,8 @@ export default function LoginPage() {
     setNextPath(params.get('next'))
   }, [])
 
-  const finalizeAuth = async (accessToken: string, userRole: AppRole) => {
-    await cacheRoleToken(userRole, accessToken)
-    setAuthSession(userRole, accessToken)
+  const finalizeAuth = async (userRole: AppRole) => {
+    setAuthSession(userRole)
     router.push(nextPath || getDashboardPath(userRole))
   }
 
@@ -46,13 +47,19 @@ export default function LoginPage() {
     try {
       if (mode === 'signup') {
         const data = await signupWithCredentials({ email, password, name, role, tenantName })
-        await finalizeAuth(data.accessToken, data.user.role)
+        await finalizeAuth(data.user.role)
       } else {
-        const data = await loginWithCredentials(email, password)
-        await finalizeAuth(data.accessToken, data.user.role)
+        const data = await loginWithCredentials(email, password, showMFA ? mfaCode : undefined)
+        await finalizeAuth(data.user.role)
       }
     } catch (e: any) {
-      setError(e?.message || 'Authentication failed')
+      const message = e?.message || 'Authentication failed'
+      if (mode === 'login' && message === 'mfa_required') {
+        setShowMFA(true)
+        setError('Enter your authenticator code to continue.')
+      } else {
+        setError(message)
+      }
     } finally {
       setLoading(false)
     }
@@ -64,7 +71,13 @@ export default function LoginPage() {
         <div className="grid min-h-[calc(100vh-5rem)] overflow-hidden border-2 border-foreground bg-card shadow-[8px_8px_0px_hsl(var(--shadow-color))] lg:grid-cols-2">
           <section className="relative hidden overflow-hidden border-r-2 border-foreground bg-accent lg:flex lg:flex-col lg:justify-between lg:p-10">
             <div className="space-y-5">
-              <Sticker variant="primary" rotation="slight-right" className="w-fit">MCP Marketplace</Sticker>
+              <Sticker
+                variant="primary"
+                rotation="slight-right"
+                className="w-fit !bg-[var(--tertiary)] !text-[var(--tertiary-foreground)]"
+              >
+                MCP Marketplace
+              </Sticker>
               <h2 className="max-w-lg text-4xl font-black uppercase tracking-tight">
                 Build and sell MCP servers with one secure account.
               </h2>
@@ -98,8 +111,24 @@ export default function LoginPage() {
               {error && <div className="mb-4 rounded-none border-2 border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
               <div className="mb-4 grid grid-cols-2 gap-2">
-                <Button variant={mode === 'login' ? 'default' : 'outline'} onClick={() => setMode('login')}>Login</Button>
-                <Button variant={mode === 'signup' ? 'default' : 'outline'} onClick={() => setMode('signup')}>Signup</Button>
+                <Button
+                  variant={mode === 'login' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setMode('login')
+                  }}
+                >
+                  Login
+                </Button>
+                <Button
+                  variant={mode === 'signup' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setMode('signup')
+                    setShowMFA(false)
+                    setMfaCode('')
+                  }}
+                >
+                  Signup
+                </Button>
               </div>
 
               <form
@@ -117,6 +146,18 @@ export default function LoginPage() {
                   <Label htmlFor="password">Password</Label>
                   <Input id="password" type="password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} />
                 </div>
+                {mode === 'login' && showMFA && (
+                  <div className="space-y-2">
+                    <Label htmlFor="mfaCode">Authenticator code</Label>
+                    <Input
+                      id="mfaCode"
+                      placeholder="123456"
+                      inputMode="numeric"
+                      value={mfaCode}
+                      onChange={e => setMfaCode(e.target.value)}
+                    />
+                  </div>
+                )}
 
                 {mode === 'signup' && (
                   <>

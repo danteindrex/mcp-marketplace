@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -27,6 +28,12 @@ type createServerRequest struct {
 	PricingAmount        float64  `json:"pricingAmount"`
 	SupportsLocal        bool     `json:"supportsLocal"`
 	SupportsCloud        bool     `json:"supportsCloud"`
+	PaymentMethods       []string `json:"paymentMethods"`
+	PaymentAddress       string   `json:"paymentAddress"`
+	PerCallCapUSDC       float64  `json:"perCallCapUsdc"`
+	DailyCapUSDC         float64  `json:"dailyCapUsdc"`
+	MonthlyCapUSDC       float64  `json:"monthlyCapUsdc"`
+	Status               string   `json:"status"`
 }
 
 func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
@@ -49,11 +56,28 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		RequiredScopes:       req.RequiredScopes,
 		PricingType:          req.PricingType,
 		PricingAmount:        req.PricingAmount,
-		Status:               "draft",
+		Status:               "published",
 		SupportsCloud:        req.SupportsCloud,
 		SupportsLocal:        req.SupportsLocal,
+		PaymentMethods:       normalizePaymentMethods(req.PaymentMethods),
+		PaymentAddress:       strings.TrimSpace(req.PaymentAddress),
+		PerCallCapUSDC:       req.PerCallCapUSDC,
+		DailyCapUSDC:         req.DailyCapUSDC,
+		MonthlyCapUSDC:       req.MonthlyCapUSDC,
 		CreatedAt:            time.Now().UTC(),
 		UpdatedAt:            time.Now().UTC(),
+	}
+	if len(server.PaymentMethods) == 0 {
+		server.PaymentMethods = a.supportedMethodsOrDefault()
+	}
+	switch req.Status {
+	case "", "published":
+		server.Status = "published"
+	case "draft", "archived":
+		server.Status = req.Status
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be draft, published, or archived"})
+		return
 	}
 	if tenant, ok := a.store.GetTenantByID(claims.TenantID); ok {
 		server.Author = tenant.Name
@@ -95,6 +119,29 @@ func (a *App) updateMerchantServer(w http.ResponseWriter, r *http.Request) {
 		server.PricingType = req.PricingType
 		server.PricingAmount = req.PricingAmount
 	}
+	if len(req.PaymentMethods) > 0 {
+		server.PaymentMethods = normalizePaymentMethods(req.PaymentMethods)
+	}
+	if strings.TrimSpace(req.PaymentAddress) != "" {
+		server.PaymentAddress = strings.TrimSpace(req.PaymentAddress)
+	}
+	if req.PerCallCapUSDC > 0 {
+		server.PerCallCapUSDC = req.PerCallCapUSDC
+	}
+	if req.DailyCapUSDC > 0 {
+		server.DailyCapUSDC = req.DailyCapUSDC
+	}
+	if req.MonthlyCapUSDC > 0 {
+		server.MonthlyCapUSDC = req.MonthlyCapUSDC
+	}
+	switch req.Status {
+	case "":
+	case "draft", "published", "archived":
+		server.Status = req.Status
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be draft, published, or archived"})
+		return
+	}
 	server.UpdatedAt = time.Now().UTC()
 	a.store.UpdateServer(server)
 	a.store.AddAuditLog(models.AuditLog{TenantID: claims.TenantID, ActorID: claims.UserID, Action: "server.update", TargetType: "server", TargetID: server.ID, Outcome: "success"})
@@ -106,6 +153,9 @@ func (a *App) serverObservability(w http.ResponseWriter, r *http.Request) {
 	server, ok := a.store.GetServerByID(id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	if !a.ensureServerTenantAccess(w, r, server) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -126,6 +176,9 @@ func (a *App) serverAuthConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}
+	if !a.ensureServerTenantAccess(w, r, server) {
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"serverId": server.ID,
 		"oauth": map[string]interface{}{
@@ -144,6 +197,9 @@ func (a *App) serverPricing(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}
+	if !a.ensureServerTenantAccess(w, r, server) {
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"serverId": server.ID,
 		"pricing": map[string]interface{}{
@@ -155,6 +211,14 @@ func (a *App) serverPricing(w http.ResponseWriter, r *http.Request) {
 				"asset":   "USDC",
 				"caip2":   "eip155:8453",
 			},
+			"methods":        server.PaymentMethods,
+			"paymentAddress": server.PaymentAddress,
+			"caps": map[string]float64{
+				"perCallCapUsdc": server.PerCallCapUSDC,
+				"dailyCapUsdc":   server.DailyCapUSDC,
+				"monthlyCapUsdc": server.MonthlyCapUSDC,
+			},
 		},
+		"supportedMethods": a.paymentMethodsCatalog(),
 	})
 }

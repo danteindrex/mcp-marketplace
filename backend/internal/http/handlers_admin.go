@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
@@ -39,11 +40,36 @@ func (a *App) adminGrantEntitlement(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown tenant"})
 		return
 	}
+	user, ok := a.store.GetUserByID(req.UserID)
+	if !ok || user.TenantID != req.TenantID {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown user for tenant"})
+		return
+	}
+	server, ok := a.store.GetServerByID(req.ServerID)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown server"})
+		return
+	}
+	if len(req.AllowedScopes) == 0 {
+		req.AllowedScopes = server.RequiredScopes
+	}
+	filteredScopes := make([]string, 0, len(req.AllowedScopes))
+	for _, scope := range req.AllowedScopes {
+		scope = strings.TrimSpace(scope)
+		if scope == "" || !hasScope(server.RequiredScopes, scope) {
+			continue
+		}
+		filteredScopes = append(filteredScopes, scope)
+	}
+	if len(filteredScopes) == 0 && len(server.RequiredScopes) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "allowedScopes must include valid server scopes"})
+		return
+	}
 	ent := a.store.GrantEntitlement(models.Entitlement{
 		TenantID:      req.TenantID,
 		UserID:        req.UserID,
 		ServerID:      req.ServerID,
-		AllowedScopes: req.AllowedScopes,
+		AllowedScopes: filteredScopes,
 		CloudAllowed:  req.CloudAllowed,
 		LocalAllowed:  req.LocalAllowed,
 	})

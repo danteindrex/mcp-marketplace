@@ -83,10 +83,13 @@ func (a *App) rateLimit(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ip := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
-		if ip != "" {
-			parts := strings.Split(ip, ",")
-			ip = strings.TrimSpace(parts[0])
+		ip := ""
+		if a.cfg.TrustProxyHeaders {
+			ip = strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+			if ip != "" {
+				parts := strings.Split(ip, ",")
+				ip = strings.TrimSpace(parts[0])
+			}
 		}
 		if ip == "" {
 			host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -119,6 +122,7 @@ func (a *App) cors(next http.Handler) http.Handler {
 		if origin != "" {
 			if _, ok := a.allowedOrigins[origin]; ok {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Vary", "Origin")
 			} else if r.Method == http.MethodOptions {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
@@ -147,12 +151,11 @@ func (a *App) securityHeaders(next http.Handler) http.Handler {
 
 func (a *App) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		token := tokenFromRequest(r)
+		if token == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
 			return
 		}
-		token := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := a.jwt.Parse(token)
 		if err != nil {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
@@ -165,6 +168,22 @@ func (a *App) authenticate(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), claimsKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func tokenFromRequest(r *http.Request) string {
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+		if token != "" {
+			return token
+		}
+	}
+	if c, err := r.Cookie("mcp_access_token"); err == nil {
+		if v := strings.TrimSpace(c.Value); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (a *App) requireRole(roles ...string) func(http.Handler) http.Handler {

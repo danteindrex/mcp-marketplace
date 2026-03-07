@@ -32,8 +32,18 @@ type Store interface {
 	ListAuditLogs() []models.AuditLog
 	AddAuditLog(log models.AuditLog)
 	CreateX402Intent(intent models.X402Intent) models.X402Intent
+	GetX402Intent(id string) (models.X402Intent, bool)
 	SettleX402Intent(id string) (models.X402Intent, bool)
 	ListX402Intents(tenantID, userID string) []models.X402Intent
+	ListAllX402Intents() []models.X402Intent
+	UpdateX402Intent(intent models.X402Intent) bool
+	GetPaymentPolicy(tenantID, userID string) (models.PaymentPolicy, bool)
+	UpsertPaymentPolicy(policy models.PaymentPolicy) models.PaymentPolicy
+	CreateWalletTopUp(item models.WalletTopUp) models.WalletTopUp
+	GetWalletTopUp(id string) (models.WalletTopUp, bool)
+	GetWalletTopUpByProviderSession(provider, providerSessionID string) (models.WalletTopUp, bool)
+	UpdateWalletTopUp(item models.WalletTopUp) bool
+	ListWalletTopUps(tenantID, userID string, limit int) []models.WalletTopUp
 	ListLocalAgents(tenantID, userID string) []models.LocalAgent
 	UpsertLocalAgent(agent models.LocalAgent) models.LocalAgent
 	GetUserSettings(userID string) (models.UserSettings, bool)

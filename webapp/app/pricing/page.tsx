@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +11,14 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Sticker } from '@/components/ui/sticker'
 import { Marquee } from '@/components/ui/marquee'
 import { ExplosionShape, ZigzagBanner, Star5Shape, ShieldShape } from '@/components/ui/shapes'
+import { SEO } from '@/components/SEO'
 import { Check, X, Sparkles, ArrowRight, Zap, Crown, Building2, HelpCircle, Mail, MessageSquare, Moon, Sun } from 'lucide-react'
+import { useTheme } from '@/hooks/use-theme'
+
+// ============================================
+// PRICING TEMPLATE - NEUBRUTALISM STYLE
+// ============================================
+// A 3-tier pricing comparison with feature table and FAQ
 
 interface PricingTierProps {
   name: string
@@ -28,24 +34,20 @@ interface PricingTierProps {
 function PricingTier({ name, price, yearlyPrice, description, features, popular, enterprise, isYearly }: PricingTierProps) {
   const displayPrice = isYearly ? yearlyPrice : price
   const monthlyEquivalent = isYearly ? Math.round(yearlyPrice / 12) : price
-  const ctaClass = popular
-    ? 'button-orange-solid'
-    : enterprise
-      ? 'button-mint-solid'
-      : 'button-coral-solid'
+  const ctaLabel = enterprise ? 'Contact Sales' : 'Get Started'
 
   return (
     <Card
       className={`relative transition-all duration-300 ${
         popular
-          ? 'border-black bg-[hsl(var(--chart-3))] text-black lg:scale-105 lg:-translate-y-2 shadow-[8px_8px_0px_hsl(var(--shadow-color))]'
+          ? 'border-primary bg-primary/5 lg:scale-105 lg:-translate-y-2 shadow-[8px_8px_0px_hsl(var(--primary))]'
           : ''
       }`}
     >
       {popular && (
         <>
-          <Sticker className="absolute -top-3 -right-3 z-10 bg-[hsl(var(--chart-3))] text-black border-2 border-black shadow-[3px_3px_0px_#000]">
-            Popular
+          <Sticker variant="primary" className="absolute -top-3 -right-3 z-10">
+            Most Popular
           </Sticker>
           <div className="absolute -top-6 left-1/2 -translate-x-1/2">
             <ZigzagBanner size={60} className="text-warning" />
@@ -53,7 +55,7 @@ function PricingTier({ name, price, yearlyPrice, description, features, popular,
         </>
       )}
 
-      <CardHeader className={`${popular ? 'bg-[hsl(var(--chart-3))] text-black' : enterprise ? 'bg-foreground text-background' : 'bg-muted'} relative overflow-hidden`}>
+      <CardHeader className={`${popular ? 'bg-primary text-primary-foreground' : enterprise ? 'bg-foreground text-background' : 'bg-muted'} relative overflow-hidden`}>
         {enterprise && (
           <Crown className="absolute top-4 right-4 h-8 w-8 text-warning" />
         )}
@@ -63,16 +65,16 @@ function PricingTier({ name, price, yearlyPrice, description, features, popular,
         </div>
         <div className="flex items-baseline gap-1">
           <span className="text-5xl font-black">${monthlyEquivalent}</span>
-          <span className={`${popular ? 'text-black/70' : enterprise ? 'text-background/70' : 'text-muted-foreground'}`}>
+          <span className={`${popular ? 'text-primary-foreground/70' : enterprise ? 'text-background/70' : 'text-muted-foreground'}`}>
             /month
           </span>
         </div>
         {isYearly && (
-          <p className={`text-sm ${popular ? 'text-black/70' : enterprise ? 'text-background/70' : 'text-muted-foreground'}`}>
+          <p className={`text-sm ${popular ? 'text-primary-foreground/70' : enterprise ? 'text-background/70' : 'text-muted-foreground'}`}>
             Billed ${displayPrice}/year
           </p>
         )}
-        <CardDescription className={popular ? 'text-black/80' : enterprise ? 'text-background/80' : ''}>
+        <CardDescription className={popular ? 'text-primary-foreground/80' : enterprise ? 'text-background/80' : ''}>
           {description}
         </CardDescription>
       </CardHeader>
@@ -95,10 +97,30 @@ function PricingTier({ name, price, yearlyPrice, description, features, popular,
           ))}
         </ul>
 
-        <Button className={`w-full gap-2 ${ctaClass}`} size="lg">
-          {enterprise ? 'Contact Sales' : 'Get Started'}
-          <ArrowRight className="h-4 w-4" />
+        <Button
+          variant={popular ? 'default' : enterprise ? 'secondary' : 'outline'}
+          className="w-full gap-2"
+          size="lg"
+          asChild
+        >
+          {enterprise ? (
+            <a href="mailto:sales@mcp-marketplace.local">
+              {ctaLabel}
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          ) : (
+            <Link href="/marketplace">
+              {ctaLabel}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          )}
         </Button>
+
+        {popular && (
+          <p className="text-center text-sm text-muted-foreground mt-3">
+            No credit card required
+          </p>
+        )}
       </CardContent>
     </Card>
   )
@@ -109,25 +131,32 @@ const tiers = [
     name: 'Starter',
     price: 0,
     yearlyPrice: 0,
-    description: 'Perfect for trying out',
+    description: 'Perfect for individuals and small projects',
     features: [
-      { name: '5 projects', included: true },
+      { name: '3 projects', included: true },
       { name: '1 team member', included: true },
       { name: 'Basic analytics', included: true },
       { name: 'Email support', included: true },
+      { name: 'Custom domains', included: false },
+      { name: 'Advanced integrations', included: false },
+      { name: 'Priority support', included: false },
+      { name: 'Custom branding', included: false },
     ],
   },
   {
     name: 'Pro',
     price: 29,
     yearlyPrice: 290,
-    description: 'Best for growing teams',
+    description: 'Best for growing teams and businesses',
     features: [
       { name: 'Unlimited projects', included: true },
       { name: '10 team members', included: true },
       { name: 'Advanced analytics', included: true },
       { name: 'Priority support', included: true },
-      { name: 'Custom integrations', included: true },
+      { name: 'Custom domains', included: true },
+      { name: 'Advanced integrations', included: true },
+      { name: 'API access', included: true },
+      { name: 'Custom branding', included: false },
     ],
     popular: true,
   },
@@ -135,61 +164,72 @@ const tiers = [
     name: 'Enterprise',
     price: 99,
     yearlyPrice: 990,
-    description: 'For large organizations',
+    description: 'For large organizations with custom needs',
     features: [
-      { name: 'Everything in Pro', included: true },
+      { name: 'Unlimited everything', included: true },
       { name: 'Unlimited team members', included: true },
-      { name: 'Dedicated account manager', included: true },
-      { name: 'Custom SLA', included: true },
-      { name: 'On-premise option', included: true },
+      { name: 'Enterprise analytics', included: true },
+      { name: 'Dedicated support', included: true },
+      { name: 'Custom domains', included: true },
+      { name: 'Custom integrations', included: true },
+      { name: 'Full API access', included: true },
+      { name: 'Custom branding', included: true },
     ],
     enterprise: true,
   },
 ]
 
 const comparisonFeatures = [
-  { name: 'Projects', starter: '5', pro: 'Unlimited', enterprise: 'Unlimited' },
+  { name: 'Projects', starter: '3', pro: 'Unlimited', enterprise: 'Unlimited' },
   { name: 'Team members', starter: '1', pro: '10', enterprise: 'Unlimited' },
   { name: 'Storage', starter: '1 GB', pro: '50 GB', enterprise: 'Unlimited' },
   { name: 'API calls', starter: '1K/month', pro: '100K/month', enterprise: 'Unlimited' },
   { name: 'Analytics', starter: 'Basic', pro: 'Advanced', enterprise: 'Enterprise' },
   { name: 'Support', starter: 'Email', pro: 'Priority', enterprise: 'Dedicated' },
-  { name: 'Custom integrations', starter: false, pro: true, enterprise: true },
-  { name: 'On-premise option', starter: false, pro: false, enterprise: true },
+  { name: 'Custom domain', starter: false, pro: true, enterprise: true },
+  { name: 'Integrations', starter: false, pro: true, enterprise: true },
+  { name: 'SSO', starter: false, pro: false, enterprise: true },
+  { name: 'SLA', starter: false, pro: false, enterprise: true },
 ]
 
 const faqs = [
   {
     question: 'Can I change plans at any time?',
-    answer: "Yes. You can upgrade or downgrade at any time and we'll prorate billing.",
-  },
-  {
-    question: 'Is there a free trial?',
-    answer: 'Yes. Paid plans include a free trial period before billing starts.',
+    answer: 'Yes! You can upgrade or downgrade your plan at any time. When upgrading, you\'ll be charged the prorated difference. When downgrading, the remaining balance will be credited to your account.',
   },
   {
     question: 'What payment methods do you accept?',
-    answer: 'Major cards and invoicing for enterprise customers.',
+    answer: 'We accept all major credit cards (Visa, Mastercard, American Express), PayPal, and bank transfers for Enterprise plans. All payments are processed securely through Stripe.',
   },
   {
-    question: 'Do you support refunds?',
-    answer: 'Contact support for billing issues and refund requests.',
+    question: 'Is there a free trial?',
+    answer: 'Yes! All paid plans come with a 14-day free trial. No credit card required. You\'ll have full access to all features during the trial period.',
+  },
+  {
+    question: 'Do you offer refunds?',
+    answer: 'We offer a 30-day money-back guarantee for all paid plans. If you\'re not satisfied, contact our support team for a full refund.',
+  },
+  {
+    question: 'What happens when I reach my limits?',
+    answer: 'We\'ll notify you when you\'re approaching your limits. You can upgrade your plan at any time to continue using the service without interruption.',
+  },
+  {
+    question: 'Do you offer discounts for nonprofits?',
+    answer: 'Yes! We offer a 50% discount for verified nonprofit organizations. Contact our sales team to learn more about our nonprofit program.',
   },
 ]
 
 const trustedLogos = ['Acme Corp', 'Globex', 'Umbrella', 'Massive Dynamic', 'Stark Industries', 'Wayne Enterprises']
 
-export default function PricingPage() {
+export function PricingTemplate() {
   const [isYearly, setIsYearly] = useState(false)
   const { resolvedTheme, setTheme } = useTheme()
   const [isThemeAnimating, setIsThemeAnimating] = useState(false)
 
-  const currentTheme = resolvedTheme === 'dark' ? 'dark' : 'light'
-
   const handleThemeToggle = () => {
     setIsThemeAnimating(true)
     setTimeout(() => {
-      setTheme(currentTheme === 'dark' ? 'light' : 'dark')
+      setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
       setTimeout(() => {
         setIsThemeAnimating(false)
       }, 200)
@@ -198,30 +238,45 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Theme Transition Overlay */}
       <div
         className={`fixed inset-0 z-[100] pointer-events-none bg-foreground transition-opacity duration-200 ${
           isThemeAnimating ? 'opacity-100' : 'opacity-0'
         }`}
       />
 
+      {/* Floating Theme Toggle */}
       <button
         onClick={handleThemeToggle}
         className="fixed bottom-6 right-6 z-[9999] h-14 w-14 rounded-full border-4 border-foreground bg-background shadow-[4px_4px_0px_hsl(var(--foreground))] flex items-center justify-center hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--foreground))] transition-all"
         aria-label="Toggle theme"
       >
-        {currentTheme === 'dark' ? <Sun className="h-6 w-6" /> : <Moon className="h-6 w-6" />}
+        {resolvedTheme === 'dark' ? <Sun className="h-6 w-6" /> : <Moon className="h-6 w-6" />}
       </button>
 
+      <SEO
+        title="Pricing Template"
+        description="A 3-tier pricing page template with feature comparison, FAQ, and social proof. Built with BoldKit neubrutalism components."
+        keywords="pricing template, pricing page, react pricing, vue pricing, saas pricing, neubrutalism template"
+        canonical="https://boldkit.dev/templates/pricing"
+        breadcrumbs={[
+          { name: 'Home', url: 'https://boldkit.dev/' },
+          { name: 'Templates', url: 'https://boldkit.dev/templates' },
+          { name: 'Pricing' },
+        ]}
+      />
+
+      {/* Navigation */}
       <nav className="border-b-3 border-foreground bg-background sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary border-3 border-foreground" />
-            <span className="font-black text-xl uppercase">MCP Marketplace</span>
+            <span className="font-black text-xl uppercase">YourBrand</span>
           </div>
           <div className="hidden md:flex items-center gap-6">
             <Link href="/#features" className="font-bold hover:text-primary transition-colors">Features</Link>
             <Link href="/pricing" className="font-bold text-primary">Pricing</Link>
-            <Link href="/marketplace" className="font-bold hover:text-primary transition-colors">Marketplace</Link>
+            <Link href="/coming-soon" className="font-bold hover:text-primary transition-colors">Docs</Link>
           </div>
           <div className="flex items-center gap-3">
             <Button variant="ghost" asChild><Link href="/login">Log in</Link></Button>
@@ -230,22 +285,25 @@ export default function PricingPage() {
         </div>
       </nav>
 
+      {/* Hero */}
       <section className="relative overflow-hidden border-b-3 border-foreground bg-primary/10 py-16 md:py-24">
         <div className="absolute inset-0 grid-pattern opacity-20" />
         <Star5Shape size={80} className="absolute top-10 left-10 text-warning hidden lg:block animate-[brutal-wiggle_3s_ease-in-out_infinite]" />
         <ShieldShape size={60} className="absolute bottom-20 right-20 text-success hidden lg:block" />
 
         <div className="container mx-auto px-4 text-center relative">
-          <Badge className="mb-6 shadow-[3px_3px_0px_hsl(var(--shadow-color))]">
+          <Badge variant="accent" className="mb-6 shadow-[3px_3px_0px_hsl(var(--shadow-color))]">
             Simple & Transparent
           </Badge>
           <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tight mb-4">
-            Simple Pricing
+            Choose Your Plan
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-            No hidden fees. No surprises. Choose the plan that works for you.
+            Start free, upgrade when you need. No hidden fees, no surprises.
+            Cancel anytime.
           </p>
 
+          {/* Billing Toggle */}
           <div className="flex items-center justify-center gap-4 mb-4">
             <Label htmlFor="billing" className={`font-bold ${!isYearly ? 'text-foreground' : 'text-muted-foreground'}`}>
               Monthly
@@ -270,6 +328,7 @@ export default function PricingPage() {
         </div>
       </section>
 
+      {/* Pricing Cards */}
       <section className="py-16 border-b-3 border-foreground">
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-6 lg:gap-8 max-w-6xl mx-auto">
@@ -280,6 +339,7 @@ export default function PricingPage() {
         </div>
       </section>
 
+      {/* Feature Comparison Table */}
       <section className="py-16 border-b-3 border-foreground bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
@@ -288,7 +348,7 @@ export default function PricingPage() {
               Feature Comparison
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Compare what is included in each plan.
+              See what's included in each plan to find the perfect fit for your needs.
             </p>
           </div>
 
@@ -347,6 +407,7 @@ export default function PricingPage() {
         </div>
       </section>
 
+      {/* FAQ Section */}
       <section className="py-16 border-b-3 border-foreground">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
@@ -357,6 +418,9 @@ export default function PricingPage() {
             <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight mb-4">
               Common Questions
             </h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Everything you need to know about our pricing and plans.
+            </p>
           </div>
 
           <div className="max-w-3xl mx-auto grid md:grid-cols-2 gap-4">
@@ -376,10 +440,11 @@ export default function PricingPage() {
         </div>
       </section>
 
+      {/* Social Proof */}
       <section className="py-12 border-b-3 border-foreground bg-muted">
         <div className="container mx-auto px-4 text-center mb-8">
           <p className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
-            Trusted by teams worldwide
+            Trusted by 10,000+ companies worldwide
           </p>
         </div>
         <Marquee className="py-4" pauseOnHover>
@@ -394,26 +459,40 @@ export default function PricingPage() {
         </Marquee>
       </section>
 
+      {/* CTA */}
       <section className="py-16 bg-foreground text-background">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight mb-4">
             Still Have Questions?
           </h2>
           <p className="text-background/70 mb-8 max-w-xl mx-auto">
-            Our team can help you choose the right plan.
+            Our team is here to help you find the perfect plan for your needs.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button variant="secondary" size="lg" className="gap-2">
-              <Mail className="h-5 w-5" />
-              Contact Sales
+            <Button variant="secondary" size="lg" className="gap-2" asChild>
+              <a href="mailto:sales@mcp-marketplace.local">
+                <Mail className="h-5 w-5" />
+                Contact Sales
+              </a>
             </Button>
-            <Button variant="outline" size="lg" className="gap-2 border-background text-background hover:bg-background hover:text-foreground">
-              <MessageSquare className="h-5 w-5" />
-              Live Chat
+            <Button variant="outline" size="lg" className="gap-2 border-background text-background hover:bg-background hover:text-foreground" asChild>
+              <Link href="/coming-soon">
+                <MessageSquare className="h-5 w-5" />
+                Live Chat
+              </Link>
             </Button>
           </div>
         </div>
       </section>
+
+      {/* Footer */}
+      <footer className="py-8 border-t-3 border-foreground bg-background">
+        <div className="container mx-auto px-4 text-center text-muted-foreground">
+          <p>&copy; 2025 YourBrand. All rights reserved.</p>
+        </div>
+      </footer>
     </div>
   )
 }
+
+export default PricingTemplate

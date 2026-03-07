@@ -227,7 +227,32 @@
 }
 
 .brutal-surface {
-  border: 2px solid hsl(var(--foreground));
+  border: 2px solid var(--foreground);
   box-shadow: 4px 4px 0 hsl(var(--shadow-color));
-  background: hsl(var(--card));
+  background: var(--card);
+}
+
+/* Shared light-theme dashboard language based on the landing page style */
+html:not(.dark) .dashboard-shell {
+  background-image:
+    linear-gradient(rgba(80, 80, 80, 0.32) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(80, 80, 80, 0.32) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+html:not(.dark) .dashboard-shell [data-slot='sidebar-inner'] {
+  border-right: 2px solid var(--foreground);
+  background: var(--background);
+  box-shadow: 4px 0 0 hsl(var(--shadow-color));
+}
+
+html:not(.dark) .dashboard-shell [data-shell-header],
+html:not(.dark) .dashboard-shell [data-shell-breadcrumb] {
+  box-shadow: 0 3px 0 hsl(var(--shadow-color));
+}
+
+html:not(.dark) .dashboard-shell [data-slot='card'] {
+  border: 2px solid var(--foreground);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 hsl(var(--shadow-color));
 }

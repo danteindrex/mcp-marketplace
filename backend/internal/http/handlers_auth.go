@@ -3,17 +3,19 @@ package http
 import (
 	"encoding/json"
 	"net/http"
-	"unicode"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
+	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	MFACode  string `json:"mfaCode,omitempty"`
 }
 
 type signupRequest struct {
@@ -193,6 +195,26 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		})
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
+	}
+	if user.MFAEnabled {
+		code := strings.TrimSpace(req.MFACode)
+		if code == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "mfa_required"})
+			return
+		}
+		if !totp.Validate(code, user.MFATOTPSecret) {
+			a.store.AddAuditLog(models.AuditLog{
+				TenantID:   user.TenantID,
+				ActorID:    user.ID,
+				Action:     "auth.login.failed",
+				TargetType: "user",
+				TargetID:   user.ID,
+				Outcome:    "failure",
+				Metadata:   map[string]interface{}{"email": user.Email, "reason": "invalid_mfa_code"},
+			})
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid mfa code"})
+			return
+		}
 	}
 	a.store.AddAuditLog(models.AuditLog{
 		TenantID:   user.TenantID,

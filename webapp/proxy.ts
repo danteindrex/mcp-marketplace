@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const protectedPrefixes = ['/buyer', '/merchant', '/admin', '/marketplace', '/settings', '/install']
+const protectedPrefixes = ['/buyer', '/merchant', '/admin', '/settings', '/install']
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
 
 function isPublicPath(pathname: string): boolean {
@@ -21,7 +21,7 @@ function roleAllowedForPath(pathname: string, role: string): boolean {
   if (pathname.startsWith('/buyer')) return role === 'buyer' || role === 'admin'
   if (pathname.startsWith('/merchant')) return role === 'merchant' || role === 'admin'
   if (pathname.startsWith('/admin')) return role === 'admin'
-  if (pathname.startsWith('/marketplace') || pathname.startsWith('/settings') || pathname.startsWith('/install')) {
+  if (pathname.startsWith('/settings') || pathname.startsWith('/install')) {
     return role === 'buyer' || role === 'merchant' || role === 'admin'
   }
   return true

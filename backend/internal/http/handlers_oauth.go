@@ -30,8 +30,8 @@ func (a *App) oauthAuthorizationServerMetadata(w http.ResponseWriter, r *http.Re
 		"authorization_endpoint":                a.cfg.BaseURL + "/oauth/authorize",
 		"token_endpoint":                        a.cfg.BaseURL + "/oauth/token",
 		"registration_endpoint":                 a.cfg.BaseURL + "/oauth/register",
-		"code_challenge_methods_supported":      []string{"S256", "plain"},
-		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
+		"code_challenge_methods_supported":      []string{"S256"},
+		"grant_types_supported":                 []string{"authorization_code"},
 		"response_types_supported":              []string{"code"},
 		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_post"},
 		"client_id_metadata_document_supported": true,
@@ -52,7 +52,13 @@ func (a *App) oauthRegisterClient(w http.ResponseWriter, r *http.Request) {
 		req.TokenEndpointAuthMethod = "none"
 	}
 	if len(req.GrantTypes) == 0 {
-		req.GrantTypes = []string{"authorization_code", "refresh_token"}
+		req.GrantTypes = []string{"authorization_code"}
+	}
+	for _, grantType := range req.GrantTypes {
+		if grantType != "authorization_code" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported_grant_type"})
+			return
+		}
 	}
 	a.oauth.clients[clientID] = oauthClient{
 		ClientID:                clientID,
@@ -73,6 +79,11 @@ func (a *App) oauthRegisterClient(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
+	claims, ok := getClaims(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
 	q := r.URL.Query()
 	clientID := q.Get("client_id")
 	redirectURI := q.Get("redirect_uri")
@@ -89,6 +100,10 @@ func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	tenantID, userID, ok := parseResourceSubject(resource)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource"})
+		return
+	}
+	if claims.UserID != userID || claims.TenantID != tenantID {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "resource subject mismatch"})
 		return
 	}
 	if user, exists := a.store.GetUserByID(userID); !exists || user.TenantID != tenantID {

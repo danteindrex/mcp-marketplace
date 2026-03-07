@@ -18,12 +18,18 @@ func (a *App) getMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}
+	if server.Status != "published" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"server": server,
 		"install": map[string]interface{}{
-			"oneClick":    true,
-			"hubStrategy": "single-personal-hub",
-			"clients":     []string{"codex", "vscode", "cursor", "claude"},
+			"oneClick":         true,
+			"hubStrategy":      "single-personal-hub",
+			"clients":          []string{"vscode", "codex", "claude", "cursor", "chatgpt"},
+			"installEndpoint":  "/v1/marketplace/servers/" + server.Slug + "/install",
+			"supportsCommands": true,
 		},
 	})
 }

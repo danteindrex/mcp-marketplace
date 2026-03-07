@@ -111,13 +111,13 @@ func (a *App) updateUserProfile(w http.ResponseWriter, r *http.Request) {
 		a.store.UpsertUserSettings(settings)
 	}
 	a.store.AddAuditLog(models.AuditLog{
-		TenantID: claims.TenantID,
-		ActorID:  claims.UserID,
-		Action:   "settings.profile.update",
+		TenantID:   claims.TenantID,
+		ActorID:    claims.UserID,
+		Action:     "settings.profile.update",
 		TargetType: "user",
-		TargetID: claims.UserID,
-		Outcome:  "success",
-		Metadata: map[string]interface{}{"email": user.Email},
+		TargetID:   claims.UserID,
+		Outcome:    "success",
+		Metadata:   map[string]interface{}{"email": user.Email},
 	})
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{

@@ -1,9 +1,10 @@
 package store
 
 import (
+	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,6 +32,8 @@ type MemoryStore struct {
 	security     map[string]models.SecurityEvent
 	audit        map[string]models.AuditLog
 	x402         map[string]models.X402Intent
+	paymentPol   map[string]models.PaymentPolicy
+	topups       map[string]models.WalletTopUp
 	agents       map[string]models.LocalAgent
 	userSettings map[string]models.UserSettings
 	seq          int
@@ -48,6 +51,8 @@ type diskState struct {
 	Security     map[string]models.SecurityEvent `json:"security"`
 	Audit        map[string]models.AuditLog      `json:"audit"`
 	X402         map[string]models.X402Intent    `json:"x402"`
+	PaymentPol   map[string]models.PaymentPolicy `json:"paymentPolicies"`
+	TopUps       map[string]models.WalletTopUp   `json:"walletTopups"`
 	Agents       map[string]models.LocalAgent    `json:"agents"`
 	UserSettings map[string]models.UserSettings  `json:"userSettings"`
 	Seq          int                             `json:"seq"`
@@ -66,6 +71,8 @@ func (s *MemoryStore) snapshotLocked() diskState {
 		Security:     s.security,
 		Audit:        s.audit,
 		X402:         s.x402,
+		PaymentPol:   s.paymentPol,
+		TopUps:       s.topups,
 		Agents:       s.agents,
 		UserSettings: s.userSettings,
 		Seq:          s.seq,
@@ -136,6 +143,12 @@ func (s *MemoryStore) loadFromDisk() bool {
 	if state.X402 == nil {
 		state.X402 = map[string]models.X402Intent{}
 	}
+	if state.PaymentPol == nil {
+		state.PaymentPol = map[string]models.PaymentPolicy{}
+	}
+	if state.TopUps == nil {
+		state.TopUps = map[string]models.WalletTopUp{}
+	}
 	if state.Agents == nil {
 		state.Agents = map[string]models.LocalAgent{}
 	}
@@ -154,6 +167,8 @@ func (s *MemoryStore) loadFromDisk() bool {
 	s.security = state.Security
 	s.audit = state.Audit
 	s.x402 = state.X402
+	s.paymentPol = state.PaymentPol
+	s.topups = state.TopUps
 	s.agents = state.Agents
 	s.userSettings = state.UserSettings
 	s.seq = state.Seq
@@ -175,6 +190,8 @@ func NewMemoryStore(cfg config.Config) *MemoryStore {
 		security:     map[string]models.SecurityEvent{},
 		audit:        map[string]models.AuditLog{},
 		x402:         map[string]models.X402Intent{},
+		paymentPol:   map[string]models.PaymentPolicy{},
+		topups:       map[string]models.WalletTopUp{},
 		agents:       map[string]models.LocalAgent{},
 		userSettings: map[string]models.UserSettings{},
 	}
@@ -591,9 +608,22 @@ func (s *MemoryStore) CreateX402Intent(intent models.X402Intent) models.X402Inte
 	intent.CreatedAt = time.Now().UTC()
 	intent.Status = "payment_required"
 	intent.Challenge = "PAYMENT-REQUIRED"
+	if intent.Quantity <= 0 {
+		intent.Quantity = 1
+	}
+	if intent.RemainingQuantity < 0 {
+		intent.RemainingQuantity = 0
+	}
 	s.x402[intent.ID] = intent
 	s.persistLocked()
 	return intent
+}
+
+func (s *MemoryStore) GetX402Intent(id string) (models.X402Intent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	intent, ok := s.x402[id]
+	return intent, ok
 }
 
 func (s *MemoryStore) SettleX402Intent(id string) (models.X402Intent, bool) {
@@ -605,6 +635,12 @@ func (s *MemoryStore) SettleX402Intent(id string) (models.X402Intent, bool) {
 	}
 	intent.Status = "settled"
 	intent.SettledAt = time.Now().UTC()
+	if intent.Quantity <= 0 {
+		intent.Quantity = 1
+	}
+	if intent.RemainingQuantity <= 0 {
+		intent.RemainingQuantity = intent.Quantity
+	}
 	s.x402[id] = intent
 	s.persistLocked()
 	return intent, true
@@ -618,6 +654,115 @@ func (s *MemoryStore) ListX402Intents(tenantID, userID string) []models.X402Inte
 		if intent.TenantID == tenantID && intent.UserID == userID {
 			out = append(out, intent)
 		}
+	}
+	return out
+}
+
+func (s *MemoryStore) ListAllX402Intents() []models.X402Intent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.X402Intent, 0, len(s.x402))
+	for _, intent := range s.x402 {
+		out = append(out, intent)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out
+}
+
+func (s *MemoryStore) UpdateX402Intent(intent models.X402Intent) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.x402[intent.ID]; !ok {
+		return false
+	}
+	s.x402[intent.ID] = intent
+	s.persistLocked()
+	return true
+}
+
+func (s *MemoryStore) GetPaymentPolicy(tenantID, userID string) (models.PaymentPolicy, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	pol, ok := s.paymentPol[keyHub(tenantID, userID)]
+	return pol, ok
+}
+
+func (s *MemoryStore) UpsertPaymentPolicy(policy models.PaymentPolicy) models.PaymentPolicy {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	policy.UpdatedAt = time.Now().UTC()
+	s.paymentPol[keyHub(policy.TenantID, policy.UserID)] = policy
+	s.persistLocked()
+	return policy
+}
+
+func (s *MemoryStore) CreateWalletTopUp(item models.WalletTopUp) models.WalletTopUp {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(item.ID) == "" {
+		item.ID = s.next("topup")
+	}
+	now := time.Now().UTC()
+	if item.CreatedAt.IsZero() {
+		item.CreatedAt = now
+	}
+	item.UpdatedAt = now
+	if strings.TrimSpace(item.Status) == "" {
+		item.Status = "pending"
+	}
+	s.topups[item.ID] = item
+	s.persistLocked()
+	return item
+}
+
+func (s *MemoryStore) GetWalletTopUp(id string) (models.WalletTopUp, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	item, ok := s.topups[id]
+	return item, ok
+}
+
+func (s *MemoryStore) GetWalletTopUpByProviderSession(provider, providerSessionID string) (models.WalletTopUp, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	wantProvider := strings.ToLower(strings.TrimSpace(provider))
+	wantSession := strings.TrimSpace(providerSessionID)
+	for _, item := range s.topups {
+		if strings.ToLower(strings.TrimSpace(item.Provider)) == wantProvider && strings.TrimSpace(item.ProviderSessionID) == wantSession {
+			return item, true
+		}
+	}
+	return models.WalletTopUp{}, false
+}
+
+func (s *MemoryStore) UpdateWalletTopUp(item models.WalletTopUp) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.topups[item.ID]; !ok {
+		return false
+	}
+	item.UpdatedAt = time.Now().UTC()
+	s.topups[item.ID] = item
+	s.persistLocked()
+	return true
+}
+
+func (s *MemoryStore) ListWalletTopUps(tenantID, userID string, limit int) []models.WalletTopUp {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.WalletTopUp, 0)
+	for _, item := range s.topups {
+		if item.TenantID == tenantID && item.UserID == userID {
+			out = append(out, item)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if limit > 0 && len(out) > limit {
+		return out[:limit]
 	}
 	return out
 }
@@ -660,4 +805,12 @@ func (s *MemoryStore) UpsertUserSettings(settings models.UserSettings) models.Us
 	s.userSettings[settings.UserID] = settings
 	s.persistLocked()
 	return settings
+}
+
+func (s *MemoryStore) StoreType() string {
+	return "memory"
+}
+
+func (s *MemoryStore) Health(context.Context) error {
+	return nil
 }

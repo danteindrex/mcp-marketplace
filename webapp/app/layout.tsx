@@ -6,8 +6,8 @@ import { Toaster } from 'sonner'
 import { RetroUIGlobalProvider } from '@/components/retroui/globals'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const _geist = Geist({ subsets: ['latin'] })
+const _geistMono = Geist_Mono({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'MCP Marketplace',

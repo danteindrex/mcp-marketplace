@@ -48,7 +48,7 @@ func newOAuthState() *oauthState {
 				ClientID:                "vscode-dev",
 				ClientName:              "VS Code Dev",
 				RedirectURIs:            []string{"http://127.0.0.1:33418", "https://vscode.dev/redirect"},
-				GrantTypes:              []string{"authorization_code", "refresh_token"},
+				GrantTypes:              []string{"authorization_code"},
 				TokenEndpointAuthMethod: "none",
 				CreatedAt:               now,
 			},
@@ -65,11 +65,9 @@ func randomToken(prefix string) string {
 
 func verifyPKCE(verifier, method, challenge string) bool {
 	if method == "" {
-		method = "plain"
+		method = "S256"
 	}
 	switch strings.ToUpper(method) {
-	case "PLAIN":
-		return verifier == challenge
 	case "S256":
 		h := sha256.Sum256([]byte(verifier))
 		computed := base64.RawURLEncoding.EncodeToString(h[:])
