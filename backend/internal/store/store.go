@@ -6,6 +6,7 @@ type Store interface {
 	GetUserByEmail(email string) (models.User, bool)
 	GetUserByID(id string) (models.User, bool)
 	CreateUser(user models.User) (models.User, bool)
+	UpdateUser(user models.User) bool
 	CreateTenant(tenant models.Tenant) models.Tenant
 	ListMarketplaceServers() []models.Server
 	GetServerBySlug(slug string) (models.Server, bool)
@@ -35,4 +36,6 @@ type Store interface {
 	ListX402Intents(tenantID, userID string) []models.X402Intent
 	ListLocalAgents(tenantID, userID string) []models.LocalAgent
 	UpsertLocalAgent(agent models.LocalAgent) models.LocalAgent
+	GetUserSettings(userID string) (models.UserSettings, bool)
+	UpsertUserSettings(settings models.UserSettings) models.UserSettings
 }

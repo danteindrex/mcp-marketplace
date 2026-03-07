@@ -12,19 +12,35 @@ import (
 )
 
 type App struct {
-	cfg   config.Config
-	store store.Store
-	jwt   *auth.JWTManager
-	oauth *oauthState
+	cfg            config.Config
+	store          store.Store
+	jwt            *auth.JWTManager
+	oauth          *oauthState
+	allowedOrigins map[string]struct{}
+	rateLimiter    *ipRateLimiter
+	authLimiter    *ipRateLimiter
 }
 
 func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Handler {
-	app := &App{cfg: cfg, store: st, jwt: jwt, oauth: newOAuthState()}
+	allowedOrigins := map[string]struct{}{}
+	for _, origin := range cfg.CORSAllowedOrigins {
+		allowedOrigins[origin] = struct{}{}
+	}
+	app := &App{
+		cfg:            cfg,
+		store:          st,
+		jwt:            jwt,
+		oauth:          newOAuthState(),
+		allowedOrigins: allowedOrigins,
+		rateLimiter:    newIPRateLimiter(cfg.RateLimitPerMinute, cfg.RateLimitPerMinute/4),
+		authLimiter:    newIPRateLimiter(30, 10),
+	}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(app.rateLimit)
 	r.Use(app.cors)
 	r.Use(middleware.Heartbeat("/healthz"))
 	r.Use(app.securityHeaders)
@@ -45,6 +61,13 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 		v1.Group(func(prv chi.Router) {
 			prv.Use(app.authenticate)
 			prv.Get("/me", app.me)
+			prv.Get("/settings/profile", app.getUserProfile)
+			prv.Put("/settings/profile", app.updateUserProfile)
+			prv.Put("/settings/security/password", app.changeUserPassword)
+			prv.Get("/settings/preferences", app.getUserPreferences)
+			prv.Put("/settings/preferences", app.updateUserPreferences)
+			prv.Get("/settings/notifications", app.getUserNotifications)
+			prv.Put("/settings/notifications", app.updateUserNotifications)
 			prv.Get("/buyer/connections", app.listBuyerConnections)
 			prv.Post("/buyer/connections", app.createBuyerConnection)
 			prv.Post("/buyer/connections/{id}/rotate", app.rotateBuyerConnectionToken)

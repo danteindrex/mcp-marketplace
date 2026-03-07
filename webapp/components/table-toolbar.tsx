@@ -75,7 +75,7 @@ export function TableToolbar({
               placeholder={searchPlaceholder}
               value={searchValue}
               onChange={e => handleSearch(e.target.value)}
-              className="pl-10"
+              className="pl-10 border-2 border-foreground shadow-[3px_3px_0px_hsl(var(--shadow-color))]"
               disabled={isLoading}
               aria-label={searchPlaceholder}
             />
@@ -89,7 +89,7 @@ export function TableToolbar({
               onValueChange={value => handleFilter(filter.name, value)}
               disabled={isLoading}
             >
-              <SelectTrigger className="w-full sm:w-40" aria-label={`Filter by ${filter.label}`}>
+              <SelectTrigger className="w-full sm:w-40 border-2 border-foreground shadow-[3px_3px_0px_hsl(var(--shadow-color))]" aria-label={`Filter by ${filter.label}`}>
                 <SelectValue placeholder={filter.label} />
               </SelectTrigger>
               <SelectContent>
@@ -111,7 +111,7 @@ export function TableToolbar({
               size="sm"
               onClick={handleClearFilters}
               disabled={isLoading}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto border-2 border-foreground shadow-[3px_3px_0px_hsl(var(--shadow-color))]"
             >
               <X className="w-4 h-4 mr-2" />
               Clear
@@ -124,7 +124,7 @@ export function TableToolbar({
               size="sm"
               onClick={onExport}
               disabled={isLoading}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto border-2 border-foreground shadow-[3px_3px_0px_hsl(var(--shadow-color))]"
             >
               <Download className="w-4 h-4 mr-2" />
               Export

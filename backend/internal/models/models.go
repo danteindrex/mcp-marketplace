@@ -15,9 +15,14 @@ type User struct {
 	TenantID     string    `json:"tenantId"`
 	Email        string    `json:"email"`
 	Name         string    `json:"name"`
+	Phone        string    `json:"phone,omitempty"`
+	AvatarURL    string    `json:"avatarUrl,omitempty"`
+	Locale       string    `json:"locale,omitempty"`
+	Timezone     string    `json:"timezone,omitempty"`
 	Role         Role      `json:"role"`
 	PasswordHash string    `json:"-"`
 	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 type Tenant struct {
@@ -153,4 +158,27 @@ type LocalAgent struct {
 	Version      string    `json:"version"`
 	TunnelStatus string    `json:"tunnelStatus"`
 	LastSeenAt   time.Time `json:"lastSeenAt"`
+}
+
+type UserPreferences struct {
+	Theme          string `json:"theme"`
+	Language       string `json:"language"`
+	Timezone       string `json:"timezone"`
+	DefaultLanding string `json:"defaultLanding"`
+	CompactMode    bool   `json:"compactMode"`
+}
+
+type NotificationSettings struct {
+	ProductUpdates bool `json:"productUpdates"`
+	SecurityAlerts bool `json:"securityAlerts"`
+	BillingAlerts  bool `json:"billingAlerts"`
+	MarketingEmail bool `json:"marketingEmail"`
+	WeeklyDigest   bool `json:"weeklyDigest"`
+}
+
+type UserSettings struct {
+	UserID        string               `json:"userId"`
+	Preferences   UserPreferences      `json:"preferences"`
+	Notifications NotificationSettings `json:"notifications"`
+	UpdatedAt     time.Time            `json:"updatedAt"`
 }

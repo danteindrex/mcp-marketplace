@@ -23,7 +23,6 @@ const buyerNavigation = [
 
 const merchantNavigation = [
   { label: 'Publish', items: [{ name: 'Dashboard', href: '/merchant/servers', icon: Home }, { name: 'New Server', href: '/merchant/servers/new/import-docker', icon: Package }, { name: 'Onboarding', href: '/merchant/onboarding', icon: Workflow }] },
-  { label: 'Server Settings', items: [{ name: 'Builder', href: '/merchant/servers/srv_postgres/builder', icon: Grid }, { name: 'Deployments', href: '/merchant/servers/srv_postgres/deployments', icon: GitBranch }, { name: 'Auth & Scopes', href: '/merchant/servers/srv_postgres/auth', icon: Lock }, { name: 'Pricing', href: '/merchant/servers/srv_postgres/pricing', icon: ShoppingCart }, { name: 'Observability', href: '/merchant/servers/srv_postgres/observability', icon: BarChart3 }] },
   { label: 'Revenue', items: [{ name: 'Dashboard', href: '/merchant/revenue', icon: TrendingUp }] },
 ]
 
@@ -46,6 +45,7 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
   const { resolvedTheme } = useTheme()
   const [profile, setProfile] = useState<Profile>({ id: 'loading', name: 'Loading', email: 'loading@local', avatar: dicebearAvatar('loading', 'avataaars') })
   const [teams, setTeams] = useState<Team[]>([{ id: 'team', name: 'Workspace', avatar: dicebearAvatar('workspace', 'shapes'), role: 'owner' }])
+  const [merchantServerId, setMerchantServerId] = useState<string | null>(null)
 
   useEffect(() => {
     apiGet<any>('/v1/me', role)
@@ -61,7 +61,34 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
       })
   }, [role])
 
-  const navigationConfig = role === 'admin' ? adminNavigation : role === 'merchant' ? merchantNavigation : buyerNavigation
+  useEffect(() => {
+    if (role !== 'merchant') {
+      setMerchantServerId(null)
+      return
+    }
+    apiGet<{ items: Array<{ id: string }> }>('/v1/merchant/servers', 'merchant')
+      .then(res => {
+        setMerchantServerId(res.items?.[0]?.id || null)
+      })
+      .catch(() => setMerchantServerId(null))
+  }, [role])
+
+  const merchantServerSettings = merchantServerId
+    ? [
+        { name: 'Builder', href: `/merchant/servers/${merchantServerId}/builder`, icon: Grid },
+        { name: 'Deployments', href: `/merchant/servers/${merchantServerId}/deployments`, icon: GitBranch },
+        { name: 'Auth & Scopes', href: `/merchant/servers/${merchantServerId}/auth`, icon: Lock },
+        { name: 'Pricing', href: `/merchant/servers/${merchantServerId}/pricing`, icon: ShoppingCart },
+        { name: 'Observability', href: `/merchant/servers/${merchantServerId}/observability`, icon: BarChart3 },
+      ]
+    : [{ name: 'Server Settings', href: '/merchant/servers', icon: Grid }]
+
+  const navigationConfig =
+    role === 'admin'
+      ? adminNavigation
+      : role === 'merchant'
+        ? [...merchantNavigation, { label: 'Server Settings', items: merchantServerSettings }]
+        : buyerNavigation
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
   const selectedTeam = teams[0] || { id: 'workspace', name: 'Workspace', avatar: dicebearAvatar('workspace', 'shapes'), role: 'owner' as const }

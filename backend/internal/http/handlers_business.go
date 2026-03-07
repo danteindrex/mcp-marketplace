@@ -13,18 +13,23 @@ func (a *App) getBuyerBilling(w http.ResponseWriter, r *http.Request) {
 	intents := a.store.ListX402Intents(claims.TenantID, claims.UserID)
 	monthlySpend := 0.0
 	for _, intent := range intents {
-		if intent.Status == "settled" {
+		if intent.Status == "settled" && intent.SettledAt.Month() == time.Now().UTC().Month() && intent.SettledAt.Year() == time.Now().UTC().Year() {
 			monthlySpend += intent.AmountUSDC
 		}
+	}
+	entitlements := a.store.ListEntitlements(claims.TenantID, claims.UserID)
+	plan := "free"
+	if len(entitlements) > 0 {
+		plan = "pro"
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":              "bill_" + claims.UserID,
 		"userId":          claims.UserID,
-		"plan":            "professional",
+		"plan":            plan,
 		"monthlySpend":    monthlySpend,
-		"currentBalance":  1000.0 - monthlySpend,
+		"currentBalance":  0.0,
 		"nextBillingDate": time.Now().UTC().AddDate(0, 1, 0),
-		"paymentMethod":   "**** **** **** 4242",
+		"paymentMethod":   "",
 		"status":          "active",
 	})
 }
@@ -32,16 +37,22 @@ func (a *App) getBuyerBilling(w http.ResponseWriter, r *http.Request) {
 func (a *App) listBuyerInvoices(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	intents := a.store.ListX402Intents(claims.TenantID, claims.UserID)
-	lineTotal := 0.0
+	items := make([]map[string]interface{}, 0)
 	for _, intent := range intents {
 		if intent.Status == "settled" {
-			lineTotal += intent.AmountUSDC
+			items = append(items, map[string]interface{}{
+				"id":     "inv_" + intent.ID,
+				"date":   intent.SettledAt,
+				"amount": intent.AmountUSDC,
+				"status": "paid",
+			})
 		}
 	}
-	items := []map[string]interface{}{
-		{"id": "inv_current", "date": time.Now().UTC(), "amount": lineTotal, "status": "paid"},
-		{"id": "inv_prev", "date": time.Now().UTC().AddDate(0, -1, 0), "amount": 29.0, "status": "paid"},
-	}
+	sort.Slice(items, func(i, j int) bool {
+		ti, _ := items[i]["date"].(time.Time)
+		tj, _ := items[j]["date"].(time.Time)
+		return ti.After(tj)
+	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "count": len(items)})
 }
 

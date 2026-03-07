@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"unicode"
 	"strings"
 	"time"
 
@@ -21,6 +22,29 @@ type signupRequest struct {
 	Name       string `json:"name"`
 	Role       string `json:"role"`
 	TenantName string `json:"tenantName"`
+}
+
+func isStrongPassword(v string) bool {
+	if len(v) < 12 {
+		return false
+	}
+	hasUpper := false
+	hasLower := false
+	hasDigit := false
+	hasSymbol := false
+	for _, r := range v {
+		switch {
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		default:
+			hasSymbol = true
+		}
+	}
+	return hasUpper && hasLower && hasDigit && hasSymbol
 }
 
 func normalizeRole(role string) models.Role {
@@ -80,6 +104,10 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "email, password, name, tenantName are required"})
 		return
 	}
+	if !isStrongPassword(req.Password) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password must be at least 12 characters and include upper, lower, number, and symbol"})
+		return
+	}
 	if _, exists := a.store.GetUserByEmail(req.Email); exists {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "email already registered"})
 		return
@@ -115,6 +143,15 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "email already registered"})
 		return
 	}
+	a.store.AddAuditLog(models.AuditLog{
+		TenantID:   user.TenantID,
+		ActorID:    user.ID,
+		Action:     "auth.signup.success",
+		TargetType: "user",
+		TargetID:   user.ID,
+		Outcome:    "success",
+		Metadata:   map[string]interface{}{"email": user.Email, "role": roleName(user.Role)},
+	})
 
 	token, err := a.jwt.Generate(user)
 	if err != nil {
@@ -132,13 +169,40 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	}
 	user, ok := a.store.GetUserByEmail(strings.ToLower(strings.TrimSpace(req.Email)))
 	if !ok {
+		a.store.AddAuditLog(models.AuditLog{
+			TenantID:   "public",
+			ActorID:    "anonymous",
+			Action:     "auth.login.failed",
+			TargetType: "user",
+			TargetID:   "",
+			Outcome:    "failure",
+			Metadata:   map[string]interface{}{"email": strings.ToLower(strings.TrimSpace(req.Email)), "reason": "user_not_found"},
+		})
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		a.store.AddAuditLog(models.AuditLog{
+			TenantID:   user.TenantID,
+			ActorID:    user.ID,
+			Action:     "auth.login.failed",
+			TargetType: "user",
+			TargetID:   user.ID,
+			Outcome:    "failure",
+			Metadata:   map[string]interface{}{"email": user.Email, "reason": "invalid_password"},
+		})
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
+	a.store.AddAuditLog(models.AuditLog{
+		TenantID:   user.TenantID,
+		ActorID:    user.ID,
+		Action:     "auth.login.success",
+		TargetType: "user",
+		TargetID:   user.ID,
+		Outcome:    "success",
+		Metadata:   map[string]interface{}{"email": user.Email},
+	})
 	token, err := a.jwt.Generate(user)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})

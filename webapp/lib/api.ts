@@ -23,6 +23,20 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
+export function getActiveRole(): AppRole | null {
+  const fromCookie = readCookie('mcp_active_role')
+  if (fromCookie === 'buyer' || fromCookie === 'merchant' || fromCookie === 'admin') {
+    return fromCookie
+  }
+  if (typeof window !== 'undefined') {
+    const fromLocal = localStorage.getItem('mcp_active_role')
+    if (fromLocal === 'buyer' || fromLocal === 'merchant' || fromLocal === 'admin') {
+      return fromLocal
+    }
+  }
+  return null
+}
+
 type AuthResponse = {
   accessToken: string
   user: {
@@ -40,7 +54,10 @@ export async function loginWithCredentials(email: string, password: string): Pro
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   })
-  if (!res.ok) throw new Error('Invalid email/password')
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({} as { error?: string }))
+    throw new Error(body.error || 'Invalid email/password')
+  }
   return res.json()
 }
 
@@ -56,7 +73,10 @@ export async function signupWithCredentials(payload: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  if (!res.ok) throw new Error('Signup failed')
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({} as { error?: string }))
+    throw new Error(body.error || 'Signup failed')
+  }
   return res.json()
 }
 
@@ -109,6 +129,25 @@ export async function apiPost<T>(path: string, body: unknown, role?: AppRole): P
   })
   if (!res.ok) {
     throw new Error(`API POST failed ${path} (${res.status})`)
+  }
+  return res.json()
+}
+
+export async function apiPut<T>(path: string, body: unknown, role?: AppRole): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (role) {
+    const token = await getRoleToken(role)
+    headers.Authorization = `Bearer ${token}`
+  }
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    throw new Error(`API PUT failed ${path} (${res.status})`)
   }
   return res.json()
 }

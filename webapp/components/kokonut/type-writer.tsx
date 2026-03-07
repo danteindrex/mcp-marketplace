@@ -6,9 +6,11 @@ interface TypeWriterProps {
   text: string
   className?: string
   speed?: number
+  deleteSpeed?: number
   delay?: number
   cursor?: boolean
   loop?: boolean
+  holdDuration?: number
   loopDelay?: number
 }
 
@@ -16,50 +18,67 @@ export function TypeWriter({
   text, 
   className = '', 
   speed = 50, 
+  deleteSpeed = 34,
   delay = 0,
   cursor = true,
   loop = false,
+  holdDuration = 2000,
   loopDelay = 2000
 }: TypeWriterProps) {
   const [displayedText, setDisplayedText] = useState('')
   const [isComplete, setIsComplete] = useState(false)
+  const [phase, setPhase] = useState<'waiting' | 'typing' | 'holding' | 'deleting' | 'stopped'>(
+    delay > 0 ? 'waiting' : 'typing',
+  )
 
   useEffect(() => {
-    const startTime = setTimeout(() => {
-      let currentIndex = 0
-      
-      const interval = setInterval(() => {
-        if (currentIndex <= text.length) {
-          setDisplayedText(text.slice(0, currentIndex))
-          currentIndex++
+    setDisplayedText('')
+    setIsComplete(false)
+    setPhase(delay > 0 ? 'waiting' : 'typing')
+  }, [text, delay])
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    if (phase === 'waiting') {
+      timer = setTimeout(() => setPhase('typing'), delay)
+    } else if (phase === 'typing') {
+      if (displayedText.length < text.length) {
+        timer = setTimeout(() => {
+          const nextLength = displayedText.length + 1
+          setDisplayedText(text.slice(0, nextLength))
+        }, speed)
+      } else {
+        setIsComplete(true)
+        if (loop) {
+          setPhase('holding')
         } else {
-          setIsComplete(true)
-          
-          if (loop) {
-            // Wait before restarting
-            const resetTimeout = setTimeout(() => {
-              currentIndex = 0
-              setDisplayedText('')
-              setIsComplete(false)
-            }, loopDelay)
-            
-            return () => clearTimeout(resetTimeout)
-          }
-          
-          clearInterval(interval)
+          setPhase('stopped')
         }
-      }, speed)
+      }
+    } else if (phase === 'holding') {
+      timer = setTimeout(() => setPhase('deleting'), holdDuration)
+    } else if (phase === 'deleting') {
+      if (displayedText.length > 0) {
+        timer = setTimeout(() => {
+          const nextLength = displayedText.length - 1
+          setDisplayedText(text.slice(0, nextLength))
+        }, deleteSpeed)
+      } else {
+        setIsComplete(false)
+        timer = setTimeout(() => setPhase('typing'), loopDelay)
+      }
+    }
 
-      return () => clearInterval(interval)
-    }, delay)
-
-    return () => clearTimeout(startTime)
-  }, [text, speed, delay, loop, loopDelay])
+    return () => {
+      if (timer) clearTimeout(timer)
+    }
+  }, [phase, displayedText, text, speed, deleteSpeed, delay, loop, holdDuration, loopDelay])
 
   return (
     <span className={className}>
       {displayedText}
-      {cursor && !isComplete && (
+      {cursor && (loop || !isComplete) && (
         <span className="inline-block w-1 h-6 ml-1 bg-current animate-pulse" />
       )}
     </span>

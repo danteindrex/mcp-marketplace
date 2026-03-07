@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './api'
+import { apiGet, apiPost, apiPut, getActiveRole, type AppRole } from './api'
 
 export interface Server {
   id: string
@@ -57,6 +57,50 @@ export interface SecurityEvent {
   targetServer?: string
   timestamp: Date
   resolved: boolean
+}
+
+export interface UserProfileSettings {
+  id: string
+  tenantId: string
+  email: string
+  name: string
+  phone?: string
+  avatarUrl?: string
+  locale?: string
+  timezone?: string
+  role: AppRole
+}
+
+export interface UserPreferencesSettings {
+  theme: 'light' | 'dark' | 'system'
+  language: string
+  timezone: string
+  defaultLanding: string
+  compactMode: boolean
+}
+
+export interface UserNotificationSettings {
+  productUpdates: boolean
+  securityAlerts: boolean
+  billingAlerts: boolean
+  marketingEmail: boolean
+  weeklyDigest: boolean
+}
+
+export interface TenantRecord {
+  id: string
+  name: string
+  slug: string
+  ownerUserId: string
+  planTier: string
+  status: string
+  createdAt: string
+}
+
+function requireActiveRole(): AppRole {
+  const role = getActiveRole()
+  if (!role) throw new Error('Not authenticated')
+  return role
 }
 
 export async function fetchServers(): Promise<Server[]> {
@@ -157,19 +201,9 @@ export async function fetchAuditLogs(): Promise<Array<{ id: string; timestamp: D
   }))
 }
 
-export async function fetchTenants(): Promise<Array<{ id: string; name: string; email: string; status: string; riskScore: number; suspensions: number; createdAt: Date; lastActivity: Date; installs: number }>> {
-  const data = await apiGet<{ items: any[] }>('/v1/admin/tenants', 'admin')
-  return data.items.map((t, i) => ({
-    id: t.id,
-    name: t.name,
-    email: `${t.slug}@tenant.local`,
-    status: t.status,
-    riskScore: t.status === 'active' ? 10 + i * 5 : 80,
-    suspensions: t.status === 'active' ? 0 : 1,
-    createdAt: new Date(t.createdAt),
-    lastActivity: new Date(),
-    installs: 1000 + i * 250,
-  }))
+export async function fetchTenants(): Promise<TenantRecord[]> {
+  const data = await apiGet<{ items: TenantRecord[] }>('/v1/admin/tenants', 'admin')
+  return data.items
 }
 
 export async function fetchClientCompatibility(): Promise<Array<{ client: string; supportsDCR: boolean; supportsCIMD: boolean; supportsInteractive: boolean; notes: string }>> {
@@ -204,4 +238,60 @@ export async function fetchServerDeployments(id: string) {
 
 export async function fetchServerBuilder(id: string) {
   return apiGet(`/v1/merchant/servers/${id}/builder`, 'merchant')
+}
+
+export async function fetchUserProfileSettings(): Promise<UserProfileSettings> {
+  const role = requireActiveRole()
+  const data = await apiGet<{ profile: UserProfileSettings }>('/v1/settings/profile', role)
+  return data.profile
+}
+
+export async function updateUserProfileSettings(payload: {
+  name: string
+  email: string
+  phone?: string
+  avatarUrl?: string
+  locale?: string
+  timezone?: string
+}): Promise<UserProfileSettings> {
+  const role = requireActiveRole()
+  const data = await apiPut<{ profile: UserProfileSettings }>('/v1/settings/profile', payload, role)
+  return data.profile
+}
+
+export async function changeUserPassword(payload: {
+  currentPassword: string
+  newPassword: string
+  confirmPassword?: string
+}): Promise<void> {
+  const role = requireActiveRole()
+  await apiPut('/v1/settings/security/password', payload, role)
+}
+
+export async function fetchUserPreferencesSettings(): Promise<UserPreferencesSettings> {
+  const role = requireActiveRole()
+  const data = await apiGet<{ preferences: UserPreferencesSettings }>('/v1/settings/preferences', role)
+  return data.preferences
+}
+
+export async function updateUserPreferencesSettings(
+  payload: Partial<UserPreferencesSettings>,
+): Promise<UserPreferencesSettings> {
+  const role = requireActiveRole()
+  const data = await apiPut<{ preferences: UserPreferencesSettings }>('/v1/settings/preferences', payload, role)
+  return data.preferences
+}
+
+export async function fetchUserNotificationSettings(): Promise<UserNotificationSettings> {
+  const role = requireActiveRole()
+  const data = await apiGet<{ notifications: UserNotificationSettings }>('/v1/settings/notifications', role)
+  return data.notifications
+}
+
+export async function updateUserNotificationSettings(
+  payload: Partial<UserNotificationSettings>,
+): Promise<UserNotificationSettings> {
+  const role = requireActiveRole()
+  const data = await apiPut<{ notifications: UserNotificationSettings }>('/v1/settings/notifications', payload, role)
+  return data.notifications
 }

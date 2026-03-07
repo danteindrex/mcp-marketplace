@@ -2,8 +2,11 @@ package store
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -16,6 +19,7 @@ import (
 
 type MemoryStore struct {
 	mu           sync.RWMutex
+	persistPath  string
 	users        map[string]models.User
 	usersByEmail map[string]string
 	tenants      map[string]models.Tenant
@@ -28,12 +32,138 @@ type MemoryStore struct {
 	audit        map[string]models.AuditLog
 	x402         map[string]models.X402Intent
 	agents       map[string]models.LocalAgent
+	userSettings map[string]models.UserSettings
 	seq          int
+}
+
+type diskState struct {
+	Users        map[string]models.User          `json:"users"`
+	UsersByEmail map[string]string               `json:"usersByEmail"`
+	Tenants      map[string]models.Tenant        `json:"tenants"`
+	Servers      map[string]models.Server        `json:"servers"`
+	Entitlements map[string]models.Entitlement   `json:"entitlements"`
+	Hubs         map[string]models.HubProfile    `json:"hubs"`
+	HubRoutes    map[string][]models.HubRoute    `json:"hubRoutes"`
+	Connections  map[string]models.Connection    `json:"connections"`
+	Security     map[string]models.SecurityEvent `json:"security"`
+	Audit        map[string]models.AuditLog      `json:"audit"`
+	X402         map[string]models.X402Intent    `json:"x402"`
+	Agents       map[string]models.LocalAgent    `json:"agents"`
+	UserSettings map[string]models.UserSettings  `json:"userSettings"`
+	Seq          int                             `json:"seq"`
+}
+
+func (s *MemoryStore) snapshotLocked() diskState {
+	return diskState{
+		Users:        s.users,
+		UsersByEmail: s.usersByEmail,
+		Tenants:      s.tenants,
+		Servers:      s.servers,
+		Entitlements: s.entitlements,
+		Hubs:         s.hubs,
+		HubRoutes:    s.hubRoutes,
+		Connections:  s.connections,
+		Security:     s.security,
+		Audit:        s.audit,
+		X402:         s.x402,
+		Agents:       s.agents,
+		UserSettings: s.userSettings,
+		Seq:          s.seq,
+	}
+}
+
+func (s *MemoryStore) persistLocked() {
+	if s.persistPath == "" {
+		return
+	}
+	dir := filepath.Dir(s.persistPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	blob, err := json.MarshalIndent(s.snapshotLocked(), "", "  ")
+	if err != nil {
+		return
+	}
+	tmp := s.persistPath + ".tmp"
+	if err := os.WriteFile(tmp, blob, 0o600); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, s.persistPath)
+}
+
+func (s *MemoryStore) loadFromDisk() bool {
+	if s.persistPath == "" {
+		return false
+	}
+	blob, err := os.ReadFile(s.persistPath)
+	if err != nil {
+		return false
+	}
+	var state diskState
+	if err := json.Unmarshal(blob, &state); err != nil {
+		return false
+	}
+	if state.Users == nil {
+		return false
+	}
+	if state.UsersByEmail == nil {
+		state.UsersByEmail = map[string]string{}
+	}
+	if state.Tenants == nil {
+		state.Tenants = map[string]models.Tenant{}
+	}
+	if state.Servers == nil {
+		state.Servers = map[string]models.Server{}
+	}
+	if state.Entitlements == nil {
+		state.Entitlements = map[string]models.Entitlement{}
+	}
+	if state.Hubs == nil {
+		state.Hubs = map[string]models.HubProfile{}
+	}
+	if state.HubRoutes == nil {
+		state.HubRoutes = map[string][]models.HubRoute{}
+	}
+	if state.Connections == nil {
+		state.Connections = map[string]models.Connection{}
+	}
+	if state.Security == nil {
+		state.Security = map[string]models.SecurityEvent{}
+	}
+	if state.Audit == nil {
+		state.Audit = map[string]models.AuditLog{}
+	}
+	if state.X402 == nil {
+		state.X402 = map[string]models.X402Intent{}
+	}
+	if state.Agents == nil {
+		state.Agents = map[string]models.LocalAgent{}
+	}
+	if state.UserSettings == nil {
+		state.UserSettings = map[string]models.UserSettings{}
+	}
+
+	s.users = state.Users
+	s.usersByEmail = state.UsersByEmail
+	s.tenants = state.Tenants
+	s.servers = state.Servers
+	s.entitlements = state.Entitlements
+	s.hubs = state.Hubs
+	s.hubRoutes = state.HubRoutes
+	s.connections = state.Connections
+	s.security = state.Security
+	s.audit = state.Audit
+	s.x402 = state.X402
+	s.agents = state.Agents
+	s.userSettings = state.UserSettings
+	s.seq = state.Seq
+	return true
 }
 
 func NewMemoryStore(cfg config.Config) *MemoryStore {
 	now := time.Now().UTC()
 	s := &MemoryStore{
+		persistPath:  cfg.DataFilePath,
 		users:        map[string]models.User{},
 		usersByEmail: map[string]string{},
 		tenants:      map[string]models.Tenant{},
@@ -46,12 +176,27 @@ func NewMemoryStore(cfg config.Config) *MemoryStore {
 		audit:        map[string]models.AuditLog{},
 		x402:         map[string]models.X402Intent{},
 		agents:       map[string]models.LocalAgent{},
+		userSettings: map[string]models.UserSettings{},
+	}
+	if s.loadFromDisk() {
+		// Remove legacy seeded catalog records from older demo builds.
+		delete(s.servers, "srv_postgres")
+		delete(s.servers, "srv_doc")
+		delete(s.tenants, "tenant_catalog")
+		for id, ent := range s.entitlements {
+			if ent.ServerID == "srv_postgres" || ent.ServerID == "srv_doc" {
+				delete(s.entitlements, id)
+			}
+		}
+		s.persistLocked()
+		// Ensure bootstrap admin exists for initial operator access.
+		if _, exists := s.GetUserByEmail(cfg.SuperAdminEmail); exists {
+			return s
+		}
 	}
 
 	tAdmin := models.Tenant{ID: "tenant_platform", Name: "Platform", Slug: "platform", OwnerUserID: "user_admin", PlanTier: "enterprise", Status: "active", CreatedAt: now}
-	tCatalog := models.Tenant{ID: "tenant_catalog", Name: "Catalog Servers", Slug: "catalog", OwnerUserID: "user_admin", PlanTier: "enterprise", Status: "active", CreatedAt: now}
 	s.tenants[tAdmin.ID] = tAdmin
-	s.tenants[tCatalog.ID] = tCatalog
 
 	adminHash, _ := bcrypt.GenerateFromPassword([]byte(cfg.SuperAdminPassword), bcrypt.DefaultCost)
 	uAdmin := models.User{
@@ -59,26 +204,33 @@ func NewMemoryStore(cfg config.Config) *MemoryStore {
 		TenantID:     tAdmin.ID,
 		Email:        cfg.SuperAdminEmail,
 		Name:         "Owner Admin",
+		Locale:       "en-US",
+		Timezone:     "America/Los_Angeles",
 		Role:         models.RoleAdmin,
 		PasswordHash: string(adminHash),
 		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	s.putUser(uAdmin)
-
-	server1 := models.Server{
-		ID: "srv_postgres", TenantID: tCatalog.ID, Author: "Catalog", Name: "PostgreSQL Assistant", Slug: "postgresql-assistant",
-		Description: "Postgres operations", Category: "data", Version: "2.1.0", DockerImage: "dataflow/postgresql-assistant:2.1.0",
-		CanonicalResourceURI: "https://mcp.marketplace.local/resource/srv_postgres", RequiredScopes: []string{"db:read", "db:write"}, PricingType: "subscription", PricingAmount: 29,
-		Verified: true, Featured: true, InstallCount: 2300, Rating: 4.8, Status: "published", SupportsCloud: true, SupportsLocal: true, CreatedAt: now, UpdatedAt: now,
+	s.userSettings[uAdmin.ID] = models.UserSettings{
+		UserID: uAdmin.ID,
+		Preferences: models.UserPreferences{
+			Theme:          "system",
+			Language:       "en",
+			Timezone:       uAdmin.Timezone,
+			DefaultLanding: "/admin/tenants",
+			CompactMode:    false,
+		},
+		Notifications: models.NotificationSettings{
+			ProductUpdates: true,
+			SecurityAlerts: true,
+			BillingAlerts:  true,
+			MarketingEmail: false,
+			WeeklyDigest:   true,
+		},
+		UpdatedAt: now,
 	}
-	server2 := models.Server{
-		ID: "srv_doc", TenantID: tCatalog.ID, Author: "Catalog", Name: "Document Analyzer", Slug: "document-analyzer",
-		Description: "AI extraction", Category: "ai", Version: "1.5.2", DockerImage: "docai/document-analyzer:1.5.2",
-		CanonicalResourceURI: "https://mcp.marketplace.local/resource/srv_doc", RequiredScopes: []string{"documents:read", "ai:inference"}, PricingType: "x402", PricingAmount: 0.02,
-		Verified: true, Featured: false, InstallCount: 1800, Rating: 4.6, Status: "published", SupportsCloud: true, SupportsLocal: true, CreatedAt: now, UpdatedAt: now,
-	}
-	s.servers[server1.ID] = server1
-	s.servers[server2.ID] = server2
+	s.persistLocked()
 	return s
 }
 
@@ -131,8 +283,67 @@ func (s *MemoryStore) CreateUser(user models.User) (models.User, bool) {
 	}
 	user.ID = s.next("user")
 	user.CreatedAt = time.Now().UTC()
+	user.UpdatedAt = user.CreatedAt
+	if strings.TrimSpace(user.Locale) == "" {
+		user.Locale = "en-US"
+	}
+	if strings.TrimSpace(user.Timezone) == "" {
+		user.Timezone = "America/Los_Angeles"
+	}
 	s.putUser(user)
+	defaultLanding := "/buyer/dashboard"
+	if user.Role == models.RoleMerchant {
+		defaultLanding = "/merchant/onboarding"
+	}
+	if user.Role == models.RoleAdmin {
+		defaultLanding = "/admin/tenants"
+	}
+	s.userSettings[user.ID] = models.UserSettings{
+		UserID: user.ID,
+		Preferences: models.UserPreferences{
+			Theme:          "system",
+			Language:       "en",
+			Timezone:       user.Timezone,
+			DefaultLanding: defaultLanding,
+			CompactMode:    false,
+		},
+		Notifications: models.NotificationSettings{
+			ProductUpdates: true,
+			SecurityAlerts: true,
+			BillingAlerts:  true,
+			MarketingEmail: false,
+			WeeklyDigest:   true,
+		},
+		UpdatedAt: user.CreatedAt,
+	}
+	s.persistLocked()
 	return user, true
+}
+
+func (s *MemoryStore) UpdateUser(user models.User) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.users[user.ID]
+	if !ok {
+		return false
+	}
+	newEmail := strings.ToLower(strings.TrimSpace(user.Email))
+	if newEmail == "" {
+		newEmail = current.Email
+	}
+	if existingID, exists := s.usersByEmail[newEmail]; exists && existingID != user.ID {
+		return false
+	}
+	oldEmail := strings.ToLower(strings.TrimSpace(current.Email))
+	if oldEmail != newEmail {
+		delete(s.usersByEmail, oldEmail)
+		s.usersByEmail[newEmail] = user.ID
+	}
+	user.Email = newEmail
+	user.UpdatedAt = time.Now().UTC()
+	s.users[user.ID] = user
+	s.persistLocked()
+	return true
 }
 
 func (s *MemoryStore) CreateTenant(tenant models.Tenant) models.Tenant {
@@ -141,6 +352,7 @@ func (s *MemoryStore) CreateTenant(tenant models.Tenant) models.Tenant {
 	tenant.ID = s.next("tenant")
 	tenant.CreatedAt = time.Now().UTC()
 	s.tenants[tenant.ID] = tenant
+	s.persistLocked()
 	return tenant
 }
 
@@ -193,6 +405,7 @@ func (s *MemoryStore) CreateServer(server models.Server) models.Server {
 	server.CreatedAt = time.Now().UTC()
 	server.UpdatedAt = server.CreatedAt
 	s.servers[server.ID] = server
+	s.persistLocked()
 	return server
 }
 
@@ -204,6 +417,7 @@ func (s *MemoryStore) UpdateServer(server models.Server) bool {
 	}
 	server.UpdatedAt = time.Now().UTC()
 	s.servers[server.ID] = server
+	s.persistLocked()
 	return true
 }
 
@@ -229,6 +443,7 @@ func (s *MemoryStore) GrantEntitlement(e models.Entitlement) models.Entitlement 
 	e.Status = "active"
 	s.entitlements[e.ID] = e
 	s.refreshHubRoutesLocked(e.TenantID, e.UserID)
+	s.persistLocked()
 	return e
 }
 
@@ -248,6 +463,7 @@ func (s *MemoryStore) UpsertHubProfile(profile models.HubProfile) models.HubProf
 	}
 	profile.UpdatedAt = time.Now().UTC()
 	s.hubs[keyHub(profile.TenantID, profile.UserID)] = profile
+	s.persistLocked()
 	return profile
 }
 
@@ -264,6 +480,7 @@ func (s *MemoryStore) ReplaceHubRoutes(hubID string, routes []models.HubRoute) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.hubRoutes[hubID] = routes
+	s.persistLocked()
 }
 
 func (s *MemoryStore) refreshHubRoutesLocked(tenantID, userID string) {
@@ -313,6 +530,7 @@ func (s *MemoryStore) UpsertConnection(connection models.Connection) models.Conn
 	}
 	connection.LastUsedAt = now
 	s.connections[connection.ID] = connection
+	s.persistLocked()
 	return connection
 }
 
@@ -363,6 +581,7 @@ func (s *MemoryStore) AddAuditLog(log models.AuditLog) {
 		log.CreatedAt = time.Now().UTC()
 	}
 	s.audit[log.ID] = log
+	s.persistLocked()
 }
 
 func (s *MemoryStore) CreateX402Intent(intent models.X402Intent) models.X402Intent {
@@ -373,6 +592,7 @@ func (s *MemoryStore) CreateX402Intent(intent models.X402Intent) models.X402Inte
 	intent.Status = "payment_required"
 	intent.Challenge = "PAYMENT-REQUIRED"
 	s.x402[intent.ID] = intent
+	s.persistLocked()
 	return intent
 }
 
@@ -386,6 +606,7 @@ func (s *MemoryStore) SettleX402Intent(id string) (models.X402Intent, bool) {
 	intent.Status = "settled"
 	intent.SettledAt = time.Now().UTC()
 	s.x402[id] = intent
+	s.persistLocked()
 	return intent, true
 }
 
@@ -421,5 +642,22 @@ func (s *MemoryStore) UpsertLocalAgent(agent models.LocalAgent) models.LocalAgen
 	}
 	agent.LastSeenAt = time.Now().UTC()
 	s.agents[agent.ID] = agent
+	s.persistLocked()
 	return agent
+}
+
+func (s *MemoryStore) GetUserSettings(userID string) (models.UserSettings, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	settings, ok := s.userSettings[userID]
+	return settings, ok
+}
+
+func (s *MemoryStore) UpsertUserSettings(settings models.UserSettings) models.UserSettings {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	settings.UpdatedAt = time.Now().UTC()
+	s.userSettings[settings.UserID] = settings
+	s.persistLocked()
+	return settings
 }

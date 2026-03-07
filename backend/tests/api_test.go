@@ -90,7 +90,7 @@ func TestPublicEndpoints(t *testing.T) {
 	if res := call(t, h, http.MethodGet, "/v1/marketplace/servers", "", nil); res.Code != http.StatusOK {
 		t.Fatalf("marketplace list status %d", res.Code)
 	}
-	if res := call(t, h, http.MethodGet, "/v1/marketplace/servers/postgresql-assistant", "", nil); res.Code != http.StatusOK {
+	if res := call(t, h, http.MethodGet, "/v1/marketplace/servers/postgresql-assistant", "", nil); res.Code != http.StatusNotFound {
 		t.Fatalf("marketplace detail status %d", res.Code)
 	}
 	if res := call(t, h, http.MethodGet, "/.well-known/oauth-protected-resource", "", nil); res.Code != http.StatusOK {
@@ -103,8 +103,8 @@ func TestPublicEndpoints(t *testing.T) {
 
 func TestBuyerFlowAndHub(t *testing.T) {
 	h := newTestServer()
-	signup(t, h, "buyer@acme.local", "buyer-pass", "buyer")
-	buyerToken := login(t, h, "buyer@acme.local", "buyer-pass")
+	signup(t, h, "buyer@acme.local", "BuyerPass123!@", "buyer")
+	buyerToken := login(t, h, "buyer@acme.local", "BuyerPass123!@")
 
 	if res := call(t, h, http.MethodGet, "/v1/buyer/entitlements", buyerToken, nil); res.Code != http.StatusOK {
 		t.Fatalf("entitlements status %d", res.Code)
@@ -132,12 +132,78 @@ func TestBuyerFlowAndHub(t *testing.T) {
 	}
 }
 
+func TestUserSettingsFlow(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "settings-buyer@acme.local", "BuyerPass123!@", "buyer")
+	buyerToken := login(t, h, "settings-buyer@acme.local", "BuyerPass123!@")
+
+	profile := call(t, h, http.MethodGet, "/v1/settings/profile", buyerToken, nil)
+	if profile.Code != http.StatusOK {
+		t.Fatalf("settings profile status %d body=%s", profile.Code, profile.Body.String())
+	}
+
+	prefs := call(t, h, http.MethodGet, "/v1/settings/preferences", buyerToken, nil)
+	if prefs.Code != http.StatusOK {
+		t.Fatalf("settings preferences status %d body=%s", prefs.Code, prefs.Body.String())
+	}
+
+	notifications := call(t, h, http.MethodGet, "/v1/settings/notifications", buyerToken, nil)
+	if notifications.Code != http.StatusOK {
+		t.Fatalf("settings notifications status %d body=%s", notifications.Code, notifications.Body.String())
+	}
+
+	profileUpdate := call(t, h, http.MethodPut, "/v1/settings/profile", buyerToken, map[string]interface{}{
+		"name":      "Settings Buyer Updated",
+		"email":     "settings-buyer@acme.local",
+		"phone":     "+1-415-555-0101",
+		"avatarUrl": "https://example.com/avatar.png",
+		"locale":    "en-US",
+		"timezone":  "America/New_York",
+	})
+	if profileUpdate.Code != http.StatusOK {
+		t.Fatalf("update profile status %d body=%s", profileUpdate.Code, profileUpdate.Body.String())
+	}
+
+	prefsUpdate := call(t, h, http.MethodPut, "/v1/settings/preferences", buyerToken, map[string]interface{}{
+		"theme":          "dark",
+		"language":       "en",
+		"timezone":       "America/New_York",
+		"defaultLanding": "/buyer/dashboard",
+		"compactMode":    true,
+	})
+	if prefsUpdate.Code != http.StatusOK {
+		t.Fatalf("update preferences status %d body=%s", prefsUpdate.Code, prefsUpdate.Body.String())
+	}
+
+	notificationsUpdate := call(t, h, http.MethodPut, "/v1/settings/notifications", buyerToken, map[string]interface{}{
+		"productUpdates": false,
+		"securityAlerts": true,
+		"billingAlerts":  true,
+		"marketingEmail": false,
+		"weeklyDigest":   false,
+	})
+	if notificationsUpdate.Code != http.StatusOK {
+		t.Fatalf("update notifications status %d body=%s", notificationsUpdate.Code, notificationsUpdate.Body.String())
+	}
+
+	passwordChange := call(t, h, http.MethodPut, "/v1/settings/security/password", buyerToken, map[string]interface{}{
+		"currentPassword": "BuyerPass123!@",
+		"newPassword":     "BuyerPass456!@",
+		"confirmPassword": "BuyerPass456!@",
+	})
+	if passwordChange.Code != http.StatusOK {
+		t.Fatalf("change password status %d body=%s", passwordChange.Code, passwordChange.Body.String())
+	}
+
+	_ = login(t, h, "settings-buyer@acme.local", "BuyerPass456!@")
+}
+
 func TestMerchantAccessControl(t *testing.T) {
 	h := newTestServer()
-	signup(t, h, "buyer@acme.local", "buyer-pass", "buyer")
-	signup(t, h, "merchant@dataflow.local", "merchant-pass", "merchant")
-	buyerToken := login(t, h, "buyer@acme.local", "buyer-pass")
-	merchantToken := login(t, h, "merchant@dataflow.local", "merchant-pass")
+	signup(t, h, "buyer@acme.local", "BuyerPass123!@", "buyer")
+	signup(t, h, "merchant@dataflow.local", "MerchantPass123!@", "merchant")
+	buyerToken := login(t, h, "buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "merchant@dataflow.local", "MerchantPass123!@")
 
 	if res := call(t, h, http.MethodGet, "/v1/merchant/servers", buyerToken, nil); res.Code != http.StatusForbidden {
 		t.Fatalf("buyer should be forbidden, got %d", res.Code)
@@ -169,10 +235,32 @@ func TestMerchantAccessControl(t *testing.T) {
 
 func TestAdminAndX402(t *testing.T) {
 	h := newTestServer()
-	buyerSignup := signup(t, h, "buyer@acme.local", "buyer-pass", "buyer")
+	buyerSignup := signup(t, h, "buyer@acme.local", "BuyerPass123!@", "buyer")
+	signup(t, h, "merchant@acme.local", "MerchantPass123!@", "merchant")
 	adminToken := login(t, h, "admin@platform.local", "admin-pass")
-	buyerToken := login(t, h, "buyer@acme.local", "buyer-pass")
+	buyerToken := login(t, h, "buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "merchant@acme.local", "MerchantPass123!@")
 	buyerUser := buyerSignup["user"].(map[string]interface{})
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Doc Extractor",
+		"slug":                 "doc-extractor",
+		"description":          "Extract text",
+		"category":             "ai",
+		"dockerImage":          "local/doc-extractor:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/doc-extractor",
+		"requiredScopes":       []string{"documents:read"},
+		"pricingType":          "x402",
+		"pricingAmount":        0.05,
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create merchant server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
 
 	if res := call(t, h, http.MethodGet, "/v1/admin/tenants", adminToken, nil); res.Code != http.StatusOK {
 		t.Fatalf("admin tenants status %d", res.Code)
@@ -185,14 +273,14 @@ func TestAdminAndX402(t *testing.T) {
 	}
 
 	grant := call(t, h, http.MethodPost, "/v1/admin/entitlements", adminToken, map[string]interface{}{
-		"tenantId": buyerUser["tenantId"], "userId": buyerUser["id"], "serverId": "srv_doc", "allowedScopes": []string{"documents:read"}, "cloudAllowed": true, "localAllowed": true,
+		"tenantId": buyerUser["tenantId"], "userId": buyerUser["id"], "serverId": serverID, "allowedScopes": []string{"documents:read"}, "cloudAllowed": true, "localAllowed": true,
 	})
 	if grant.Code != http.StatusCreated {
 		t.Fatalf("grant entitlement status %d body=%s", grant.Code, grant.Body.String())
 	}
 
 	intent := call(t, h, http.MethodPost, "/v1/billing/x402/intents", buyerToken, map[string]interface{}{
-		"serverId": "srv_doc", "toolName": "extract_pdf", "amount": 0.05,
+		"serverId": serverID, "toolName": "extract_pdf", "amount": 0.05,
 	})
 	if intent.Code != http.StatusPaymentRequired {
 		t.Fatalf("x402 intent status %d body=%s", intent.Code, intent.Body.String())
@@ -214,7 +302,7 @@ func TestAdminAndX402(t *testing.T) {
 
 func TestOAuthAuthorizationCodePKCEFlow(t *testing.T) {
 	h := newTestServer()
-	buyerSignup := signup(t, h, "oauth-buyer@acme.local", "buyer-pass", "buyer")
+	buyerSignup := signup(t, h, "oauth-buyer@acme.local", "BuyerPass123!@", "buyer")
 	buyerUser := buyerSignup["user"].(map[string]interface{})
 	resource := "https://mcp.marketplace.local/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
 

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const protectedPrefixes = ['/buyer', '/merchant', '/admin']
+const protectedPrefixes = ['/buyer', '/merchant', '/admin', '/marketplace', '/settings', '/install']
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/' || pathname === '/login') return true
-  if (pathname === '/marketplace' || pathname.startsWith('/marketplace/')) return true
+  if (pathname === '/forbidden' || pathname === '/offline' || pathname === '/coming-soon') return true
   if (pathname.startsWith('/_next') || pathname.startsWith('/favicon')) return true
   return false
 }
@@ -18,15 +18,18 @@ function dashboardForRole(role: string): string {
 }
 
 function roleAllowedForPath(pathname: string, role: string): boolean {
-  if (pathname.startsWith('/buyer')) return role === 'buyer'
+  if (pathname.startsWith('/buyer')) return role === 'buyer' || role === 'admin'
   if (pathname.startsWith('/merchant')) return role === 'merchant' || role === 'admin'
   if (pathname.startsWith('/admin')) return role === 'admin'
+  if (pathname.startsWith('/marketplace') || pathname.startsWith('/settings') || pathname.startsWith('/install')) {
+    return role === 'buyer' || role === 'merchant' || role === 'admin'
+  }
   return true
 }
 
-function loginRedirect(request: NextRequest, pathname: string): NextResponse {
+function loginRedirect(request: NextRequest, pathname: string, search: string): NextResponse {
   const loginUrl = new URL('/login', request.url)
-  loginUrl.searchParams.set('next', pathname)
+  loginUrl.searchParams.set('next', `${pathname}${search}`)
   return NextResponse.redirect(loginUrl)
 }
 
@@ -51,7 +54,7 @@ async function resolveTokenRole(token: string): Promise<string | null> {
 }
 
 export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  const { pathname, search } = request.nextUrl
   if (isPublicPath(pathname)) {
     if (pathname === '/login') {
       const role = request.cookies.get('mcp_active_role')?.value
@@ -79,12 +82,12 @@ export async function proxy(request: NextRequest) {
   const role = request.cookies.get('mcp_active_role')?.value
   const token = request.cookies.get('mcp_access_token')?.value
   if (!role || !token || !roleAllowedForPath(pathname, role)) {
-    return clearSessionCookies(loginRedirect(request, pathname))
+    return clearSessionCookies(loginRedirect(request, pathname, search))
   }
 
   const resolvedRole = await resolveTokenRole(token)
   if (!resolvedRole || !roleAllowedForPath(pathname, resolvedRole)) {
-    return clearSessionCookies(loginRedirect(request, pathname))
+    return clearSessionCookies(loginRedirect(request, pathname, search))
   }
 
   const response = NextResponse.next()

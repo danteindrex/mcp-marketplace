@@ -1,151 +1,91 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Shield, Ban, AlertTriangle, CheckCircle2, Lock, Unlock } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { TableToolbar } from '@/components/table-toolbar'
-import { toast } from 'sonner'
-import { fetchTenants } from '@/lib/api-client'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { PieChart } from '@/components/retroui/charts/PieChart'
+import { fetchTenants, type TenantRecord } from '@/lib/api-client'
 
 export default function AdminTenantsPage() {
-  const [tenants, setTenants] = useState<any[]>([])
+  const [tenants, setTenants] = useState<TenantRecord[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchTenants()
-      .then(items => {
-        const normalized = items.map(t => ({
-          ...t,
-          lastActivity: new Date(),
-          createdAt: new Date(t.createdAt),
-        }))
-        setTenants(normalized as any)
-      })
-      .catch(() => {
-        // Keep seeded fallback.
-      })
+      .then(setTenants)
+      .catch(() => setTenants([]))
   }, [])
 
-  const filteredTenants = tenants
-    .filter(t => {
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase()
-        return (
-          t.name.toLowerCase().includes(query) ||
-          t.email.toLowerCase().includes(query)
-        )
-      }
-      return true
+  const filtered = useMemo(() => {
+    return tenants.filter(tenant => {
+      const matchesSearch =
+        !searchQuery ||
+        tenant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        tenant.slug.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesStatus = !selectedStatus || tenant.status === selectedStatus
+      return matchesSearch && matchesStatus
     })
-    .filter(t => {
-      if (selectedStatus) {
-        return t.status === selectedStatus
-      }
-      return true
-    })
+  }, [tenants, searchQuery, selectedStatus])
 
-  const handleSuspend = (tenantId: string) => {
-    setTenants(
-      tenants.map(t =>
-        t.id === tenantId
-          ? { ...t, status: 'suspended' as const, suspensions: t.suspensions + 1 }
-          : t
-      )
-    )
-    toast.success('Tenant suspended')
-  }
+  const planDistribution = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const tenant of tenants) {
+      counts.set(tenant.planTier, (counts.get(tenant.planTier) || 0) + 1)
+    }
+    return Array.from(counts.entries()).map(([name, value]) => ({ name, value }))
+  }, [tenants])
 
-  const handleUnsuspend = (tenantId: string) => {
-    setTenants(
-      tenants.map(t =>
-        t.id === tenantId ? { ...t, status: 'active' as const } : t
-      )
-    )
-    toast.success('Tenant unsuspended')
-  }
-
-  const getRiskColor = (score: number) => {
-    if (score < 20) return 'text-green-600 dark:text-green-400 bg-green-500/10'
-    if (score < 50) return 'text-amber-600 dark:text-amber-400 bg-amber-500/10'
-    return 'text-red-600 dark:text-red-400 bg-red-500/10'
-  }
-
-  const riskBands = [
-    { name: 'Low', value: tenants.filter(t => t.riskScore < 20).length },
-    { name: 'Medium', value: tenants.filter(t => t.riskScore >= 20 && t.riskScore < 50).length },
-    { name: 'High', value: tenants.filter(t => t.riskScore >= 50).length },
-  ].filter(item => item.value > 0)
-
-  const tenantInstallData = tenants.map(t => ({
-    name: t.name.slice(0, 12),
-    installs: t.installs,
-  }))
+  const statusDistribution = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const tenant of tenants) {
+      counts.set(tenant.status, (counts.get(tenant.status) || 0) + 1)
+    }
+    return Array.from(counts.entries()).map(([name, value]) => ({ name, value }))
+  }, [tenants])
 
   return (
     <AppShell role="admin">
       <div className="p-6 space-y-6">
-        {/* Header */}
         <div>
           <h1 className="text-3xl font-bold mb-2">Tenant Management</h1>
-          <p className="text-muted-foreground">
-            Oversee organizations, risk assessments, and account status
-          </p>
+          <p className="text-muted-foreground">Operational view of real tenant data and status.</p>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="p-6">
             <p className="text-sm text-muted-foreground mb-2">Total Tenants</p>
             <p className="text-3xl font-bold">{tenants.length}</p>
           </Card>
           <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Active</p>
+            <p className="text-sm text-muted-foreground mb-2">Active Tenants</p>
             <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-              {tenants.filter(t => t.status === 'active').length}
+              {tenants.filter(tenant => tenant.status === 'active').length}
             </p>
           </Card>
           <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Suspended</p>
+            <p className="text-sm text-muted-foreground mb-2">Suspended Tenants</p>
             <p className="text-3xl font-bold text-red-600 dark:text-red-400">
-              {tenants.filter(t => t.status === 'suspended').length}
-            </p>
-          </Card>
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">High Risk</p>
-            <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
-              {tenants.filter(t => t.riskScore > 50).length}
+              {tenants.filter(tenant => tenant.status === 'suspended').length}
             </p>
           </Card>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Tenant Install Distribution</h2>
-            <BarChart
-              data={tenantInstallData}
-              index="name"
-              categories={['installs']}
-            />
+            <h2 className="text-lg font-semibold mb-4">Plan Distribution</h2>
+            <BarChart data={planDistribution} index="name" categories={['value']} />
           </Card>
           <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Risk Segment Split</h2>
-            <PieChart
-              data={riskBands}
-              dataKey="value"
-              nameKey="name"
-            />
+            <h2 className="text-lg font-semibold mb-4">Status Distribution</h2>
+            <PieChart data={statusDistribution} dataKey="value" nameKey="name" />
           </Card>
         </div>
 
-        {/* Toolbar */}
         <TableToolbar
-          searchPlaceholder="Search by name or email..."
+          searchPlaceholder="Search by tenant name or slug..."
           onSearch={setSearchQuery}
           filters={[
             {
@@ -160,157 +100,34 @@ export default function AdminTenantsPage() {
           ]}
         />
 
-        {/* Tenants List */}
         <div className="space-y-3">
-          {filteredTenants.length === 0 ? (
-            <Card className="p-8 text-center text-muted-foreground">
-              <p>No tenants found</p>
-            </Card>
+          {filtered.length === 0 ? (
+            <Card className="p-8 text-center text-muted-foreground">No tenants found.</Card>
           ) : (
-            filteredTenants.map(tenant => (
-              <Card
-                key={tenant.id}
-                className="overflow-hidden"
-              >
-                <button
-                  onClick={() =>
-                    setExpandedId(expandedId === tenant.id ? null : tenant.id)
-                  }
-                  className="w-full text-left p-6 hover:bg-muted/50 transition-colors"
-                >
-                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
-                    {/* Name */}
-                    <div>
-                      <h3 className="font-semibold mb-1">{tenant.name}</h3>
-                      <p className="text-sm text-muted-foreground">{tenant.email}</p>
-                    </div>
-
-                    {/* Status */}
-                    <div>
-                      <div
-                        className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded ${
-                          tenant.status === 'active'
-                            ? 'bg-green-500/20 text-green-700 dark:text-green-400'
-                            : 'bg-red-500/20 text-red-700 dark:text-red-400'
-                        }`}
-                      >
-                        {tenant.status === 'active' ? (
-                          <CheckCircle2 className="w-3 h-3" />
-                        ) : (
-                          <Ban className="w-3 h-3" />
-                        )}
-                        {tenant.status === 'active' ? 'Active' : 'Suspended'}
-                      </div>
-                    </div>
-
-                    {/* Risk Score */}
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Risk Score</p>
-                      <p className={`text-lg font-bold px-2 py-1 rounded text-center ${getRiskColor(tenant.riskScore)}`}>
-                        {tenant.riskScore}
-                      </p>
-                    </div>
-
-                    {/* Suspensions */}
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Suspensions</p>
-                      <p className="font-semibold">{tenant.suspensions}</p>
-                    </div>
-
-                    {/* Installs */}
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Installs</p>
-                      <p className="font-semibold">{tenant.installs.toLocaleString()}</p>
-                    </div>
-
-                    {/* Expand Indicator */}
-                    <div className="text-right">
-                      <span className="text-muted-foreground">
-                        {expandedId === tenant.id ? '▼' : '▶'}
-                      </span>
-                    </div>
+            filtered.map(tenant => (
+              <Card key={tenant.id} className="p-5">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Name</p>
+                    <p className="font-semibold">{tenant.name}</p>
                   </div>
-                </button>
-
-                {/* Expanded Details */}
-                {expandedId === tenant.id && (
-                  <div className="border-t border-border bg-muted/30 p-6 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <h4 className="font-semibold mb-3">Account Information</h4>
-                        <div className="space-y-2 text-sm">
-                          <div>
-                            <p className="text-muted-foreground">Created</p>
-                            <p>{tenant.createdAt.toLocaleDateString()}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">Last Activity</p>
-                            <p>{tenant.lastActivity.toLocaleDateString()}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">Total Installs</p>
-                            <p>{tenant.installs.toLocaleString()}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <h4 className="font-semibold mb-3">Risk Assessment</h4>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">Risk Score</span>
-                            <span className={`font-bold px-2 py-1 rounded ${getRiskColor(tenant.riskScore)}`}>
-                              {tenant.riskScore}%
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">Total Suspensions</span>
-                            <span className="font-bold">{tenant.suspensions}</span>
-                          </div>
-                          {tenant.riskScore > 50 && (
-                            <div className="mt-2 p-3 bg-amber-500/10 border border-amber-200 dark:border-amber-800 rounded text-amber-900 dark:text-amber-100 text-xs">
-                              <div className="flex items-start gap-2">
-                                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                                <p>High-risk tenant. Consider suspension or investigation.</p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex flex-wrap gap-2 pt-4 border-t border-border">
-                      {tenant.status === 'active' ? (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleSuspend(tenant.id)}
-                        >
-                          <Ban className="w-4 h-4 mr-2" />
-                          Suspend Tenant
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleUnsuspend(tenant.id)}
-                        >
-                          <Unlock className="w-4 h-4 mr-2" />
-                          Unsuspend
-                        </Button>
-                      )}
-                      <Button size="sm" variant="outline">
-                        <Shield className="w-4 h-4 mr-2" />
-                        Review Risk
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        <Lock className="w-4 h-4 mr-2" />
-                        Force Password Reset
-                      </Button>
-                    </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Slug</p>
+                    <p className="font-semibold">{tenant.slug}</p>
                   </div>
-                )}
+                  <div>
+                    <p className="text-xs text-muted-foreground">Plan</p>
+                    <p className="font-semibold">{tenant.planTier}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <p className="font-semibold">{tenant.status}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Created</p>
+                    <p className="font-semibold">{new Date(tenant.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
               </Card>
             ))
           )}
@@ -319,3 +136,4 @@ export default function AdminTenantsPage() {
     </AppShell>
   )
 }
+

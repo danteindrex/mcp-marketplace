@@ -2,8 +2,12 @@ package http
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/yourorg/mcp-marketplace/backend/internal/auth"
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
@@ -13,9 +17,114 @@ type contextKey string
 
 const claimsKey contextKey = "claims"
 
+type limiterEntry struct {
+	tokens   int
+	lastSeen time.Time
+}
+
+type ipRateLimiter struct {
+	mu      sync.Mutex
+	limit   int
+	burst   int
+	window  time.Duration
+	entries map[string]limiterEntry
+}
+
+func newIPRateLimiter(limitPerMinute int, burst int) *ipRateLimiter {
+	if limitPerMinute <= 0 {
+		limitPerMinute = 240
+	}
+	if burst <= 0 {
+		burst = limitPerMinute / 4
+	}
+	if burst <= 0 {
+		burst = 20
+	}
+	return &ipRateLimiter{
+		limit:   limitPerMinute,
+		burst:   burst,
+		window:  time.Minute,
+		entries: map[string]limiterEntry{},
+	}
+}
+
+func (l *ipRateLimiter) allow(key string) (allowed bool, remaining int) {
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if len(l.entries) > 10000 {
+		for k, entry := range l.entries {
+			if now.Sub(entry.lastSeen) > 10*time.Minute {
+				delete(l.entries, k)
+			}
+		}
+	}
+
+	entry := l.entries[key]
+	if entry.lastSeen.IsZero() || now.Sub(entry.lastSeen) >= l.window {
+		entry.tokens = l.limit + l.burst
+	}
+	if entry.tokens <= 0 {
+		entry.lastSeen = now
+		l.entries[key] = entry
+		return false, 0
+	}
+	entry.tokens--
+	entry.lastSeen = now
+	l.entries[key] = entry
+	return true, entry.tokens
+}
+
+func (a *App) rateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip internal heartbeat and health probes from throttling.
+		if r.URL.Path == "/health" || r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ip := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+		if ip != "" {
+			parts := strings.Split(ip, ",")
+			ip = strings.TrimSpace(parts[0])
+		}
+		if ip == "" {
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err == nil && host != "" {
+				ip = host
+			} else {
+				ip = r.RemoteAddr
+			}
+		}
+		limiter := a.rateLimiter
+		limit := a.cfg.RateLimitPerMinute
+		if strings.HasPrefix(r.URL.Path, "/auth/") {
+			limiter = a.authLimiter
+			limit = 30
+		}
+		allowed, remaining := limiter.allow(ip)
+		w.Header().Set("X-RateLimit-Limit", strconv.Itoa(limit))
+		w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
+		if !allowed {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (a *App) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" {
+			if _, ok := a.allowedOrigins[origin]; ok {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			} else if r.Method == http.MethodOptions {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
+				return
+			}
+		}
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Tenant-ID")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		if r.Method == http.MethodOptions {
