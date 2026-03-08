@@ -103,6 +103,22 @@ export interface InstallSession {
   }
 }
 
+export interface ScopeCheckResult {
+  server: {
+    id: string
+    slug: string
+    name: string
+    pricingType: string
+  }
+  client: string
+  allowedScopes: string[]
+  grantedScopes: string[]
+  hasEntitlement: boolean
+  autoGrantAvailable: boolean
+  paymentRequired: boolean
+  entitlementStatus: string
+}
+
 export interface InstallPaymentRequired {
   error: string
   intent: {
@@ -118,6 +134,8 @@ export interface InstallPaymentRequired {
     balanceUsdc?: number
     minimumBalanceUsdc?: number
   }
+  wwwAuthenticate?: string | null
+  paymentChallenge?: string | null
 }
 
 export type InstallResult =
@@ -439,9 +457,15 @@ export async function installMarketplaceServer(
   })
   const body = await res.json().catch(() => ({}))
   if (res.status === 402) {
+    const wwwAuthenticate = res.headers.get('www-authenticate')
+    const paymentRequiredHeader = res.headers.get('payment-required')
     return {
       type: 'payment_required',
-      payment: body as InstallPaymentRequired,
+      payment: {
+        ...(body as InstallPaymentRequired),
+        wwwAuthenticate,
+        paymentChallenge: paymentRequiredHeader,
+      },
     }
   }
   if (!res.ok) {
@@ -451,6 +475,16 @@ export async function installMarketplaceServer(
     type: 'installed',
     session: body as InstallSession,
   }
+}
+
+export async function checkInstallScopes(
+  slug: string,
+  payload: {
+    client: string
+    grantedScopes?: string[]
+  },
+): Promise<ScopeCheckResult> {
+  return apiPost<ScopeCheckResult>(`/v1/marketplace/servers/${slug}/scope-check`, payload, 'buyer')
 }
 
 export async function fetchBuyerHub() {

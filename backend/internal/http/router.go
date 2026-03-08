@@ -61,6 +61,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 	r.Post("/auth/login", app.login)
 	r.Get("/.well-known/oauth-protected-resource", app.oauthProtectedResourceMetadata)
 	r.Get("/.well-known/oauth-authorization-server", app.oauthAuthorizationServerMetadata)
+	r.Get("/.well-known/jwks.json", app.jwks)
 	r.Post("/webhooks/stripe/onramp", app.handleStripeOnrampWebhook)
 	r.Post("/webhooks/stripe/connect", app.handleStripeConnectWebhook)
 	r.Post("/oauth/register", app.oauthRegisterClient)
@@ -76,6 +77,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 		v1.Group(func(prv chi.Router) {
 			prv.Use(app.authenticate)
 			prv.Get("/me", app.me)
+			prv.Post("/marketplace/servers/{slug}/scope-check", app.scopeCheckMarketplaceServer)
 			prv.Post("/marketplace/servers/{slug}/install", app.installMarketplaceServer)
 			prv.Get("/settings/profile", app.getUserProfile)
 			prv.Put("/settings/profile", app.updateUserProfile)

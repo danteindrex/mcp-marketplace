@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, use, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Check, ChevronRight, Copy, ExternalLink, Check as CheckIcon, Terminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -14,9 +14,11 @@ import {
   fetchServerBySlug,
   installMarketplaceServer,
   settleX402Intent,
+  checkInstallScopes,
   type InstallPaymentRequired,
   type InstallAction,
   type InstallSession,
+  type ScopeCheckResult,
   type Server,
 } from '@/lib/api-client'
 
@@ -42,11 +44,53 @@ const clientOptions = [
   { value: 'chatgpt', label: 'ChatGPT', description: 'Connector setup for remote MCP' },
 ]
 
+type MetadataState =
+  | { status: 'idle' | 'loading'; data?: undefined; error?: undefined }
+  | { status: 'ready'; data: InstallReadinessResponse; error?: undefined }
+  | { status: 'error'; data?: InstallReadinessResponse; error: string }
+
+interface InstallReadinessResponse {
+  baseUrl: string
+  timestamp: string
+  cimd: {
+    status: 'ok' | 'error'
+    httpStatus: number
+    url: string
+    error?: string
+    json?: Record<string, any> | null
+  }
+  oauth: {
+    status: 'ok' | 'error'
+    httpStatus: number
+    url: string
+    error?: string
+    json?: Record<string, any> | null
+  }
+  jwks: null | {
+    status: 'ok' | 'error'
+    httpStatus: number
+    url: string
+    error?: string
+    json?: Record<string, any> | null
+  }
+  links: {
+    cimdUrl: string
+    oauthMetadataUrl: string
+    jwksUrl: string | null
+  }
+}
+
+type ScopeCheckState =
+  | { status: 'idle' | 'loading'; result?: undefined; error?: undefined }
+  | { status: 'success'; result: ScopeCheckResult; error?: undefined }
+  | { status: 'error'; result?: ScopeCheckResult; error: string }
+
 export default function InstallWizardPage({ params }: PageProps) {
   const { serverId } = use(params)
   const [currentStep, setCurrentStep] = useState<Step>('client')
   const [selectedClient, setSelectedClient] = useState<string>('')
-  const [authReady, setAuthReady] = useState(false)
+  const [authConfirmed, setAuthConfirmed] = useState(false)
+  const [manualAuthOverride, setManualAuthOverride] = useState(false)
   const [acceptedScopes, setAcceptedScopes] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
   const [showBridgeHelp, setShowBridgeHelp] = useState(false)
@@ -56,10 +100,80 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'wallet_balance' | 'x402_wallet'>('wallet_balance')
   const [externalPaymentID, setExternalPaymentID] = useState('')
   const [server, setServer] = useState<Server | null>(null)
+  const [metadataState, setMetadataState] = useState<MetadataState>({ status: 'idle' })
+  const [scopeCheckState, setScopeCheckState] = useState<ScopeCheckState>({ status: 'idle' })
+  const parsedPaymentChallenge = useMemo(() => {
+    if (!paymentRequired?.paymentChallenge) return null
+    try {
+      return JSON.parse(paymentRequired.paymentChallenge)
+    } catch {
+      return paymentRequired.paymentChallenge
+    }
+  }, [paymentRequired?.paymentChallenge])
 
   useEffect(() => {
     fetchServerBySlug(serverId).then(setServer)
   }, [serverId])
+
+  useEffect(() => {
+    setScopeCheckState({ status: 'idle' })
+  }, [selectedClient, server?.id])
+
+  const refreshInstallReadiness = useCallback(async () => {
+    if (!server) {
+      setMetadataState({ status: 'idle' })
+      return
+    }
+    if (!server.canonicalResourceUri) {
+      setMetadataState({ status: 'error', error: 'Server is missing a canonical resource URI.' })
+      return
+    }
+    try {
+      setMetadataState({ status: 'loading' })
+      const params = new URLSearchParams({ resource: server.canonicalResourceUri })
+      const res = await fetch(`/api/install/readiness?${params.toString()}`, { cache: 'no-store' })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Unable to fetch install metadata')
+      }
+      setMetadataState({ status: 'ready', data })
+      setManualAuthOverride(false)
+    } catch (error) {
+      setMetadataState({
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Failed to verify install metadata',
+      })
+    }
+  }, [server])
+
+  useEffect(() => {
+    refreshInstallReadiness()
+  }, [refreshInstallReadiness])
+
+  const validateScopes = useCallback(async () => {
+    if (!server) {
+      toast.error('Server data unavailable')
+      return false
+    }
+    if (!selectedClient) {
+      toast.error('Select a client before validating scopes')
+      return false
+    }
+    try {
+      setScopeCheckState({ status: 'loading' })
+      const result = await checkInstallScopes(server.slug, {
+        client: selectedClient,
+        grantedScopes: server.requiredScopes,
+      })
+      setScopeCheckState({ status: 'success', result })
+      return true
+    } catch (error: any) {
+      const message = error?.message || 'Scope validation failed'
+      setScopeCheckState({ status: 'error', error: message })
+      toast.error(message)
+      return false
+    }
+  }, [server, selectedClient])
 
   if (!server) {
     return (
@@ -85,9 +199,12 @@ export default function InstallWizardPage({ params }: PageProps) {
   const runInstallAttempt = async (autoSettle: boolean) => {
     try {
       setInstalling(true)
+      const grantedScopesToUse = scopeCheckState.result?.grantedScopes?.length
+        ? scopeCheckState.result.grantedScopes
+        : server.requiredScopes
       const out = await installMarketplaceServer(server.slug, {
         client: selectedClient,
-        grantedScopes: server.requiredScopes,
+        grantedScopes: grantedScopesToUse,
         paymentMethod: selectedPaymentMethod,
         autoSettle,
         toolName: installToolName,
@@ -116,6 +233,10 @@ export default function InstallWizardPage({ params }: PageProps) {
       }
       return
     }
+    if (currentStep === 'scopes') {
+      const ok = await validateScopes()
+      if (!ok) return
+    }
     if (currentStep === 'complete') {
       window.location.href = '/buyer/connections'
       return
@@ -131,10 +252,14 @@ export default function InstallWizardPage({ params }: PageProps) {
 
   const canProceed = () => {
     switch (currentStep) {
-      case 'client': return selectedClient !== ''
-      case 'auth': return authReady
-      case 'scopes': return acceptedScopes
-      default: return true
+      case 'client':
+        return selectedClient !== ''
+      case 'auth':
+        return (metadataState.status === 'ready' || manualAuthOverride) && authConfirmed
+      case 'scopes':
+        return acceptedScopes
+      default:
+        return true
     }
   }
 
@@ -215,11 +340,89 @@ export default function InstallWizardPage({ params }: PageProps) {
               )}
 
               {currentStep === 'auth' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
+                  <Card className="p-4 space-y-4 border border-border">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">CIMD Metadata</p>
+                        <p className="text-xs text-muted-foreground break-all">
+                          {metadataState.status === 'ready' ? metadataState.data.links.cimdUrl : server.canonicalResourceUri || 'unknown resource'}
+                        </p>
+                      </div>
+                      <Badge variant={metadataState.status === 'ready' && metadataState.data.cimd.status === 'ok' ? 'default' : metadataState.status === 'loading' ? 'outline' : 'destructive'}>
+                        {metadataState.status === 'ready' && metadataState.data.cimd.status === 'ok'
+                          ? 'Ready'
+                          : metadataState.status === 'loading'
+                            ? 'Checking'
+                            : 'Error'}
+                      </Badge>
+                    </div>
+                    {metadataState.status === 'ready' && metadataState.data.cimd.json?.scopes_supported && (
+                      <p className="text-xs text-muted-foreground">
+                        Scopes exposed: {metadataState.data.cimd.json.scopes_supported.join(', ')}
+                      </p>
+                    )}
+                    {metadataState.status === 'error' && (
+                      <p className="text-sm text-destructive">
+                        {metadataState.error}
+                      </p>
+                    )}
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="p-3 rounded-md bg-muted/60">
+                        <p className="text-xs uppercase text-muted-foreground">OAuth Metadata</p>
+                        <p className="text-sm font-medium break-all">
+                          {metadataState.status === 'ready' ? metadataState.data.links.oauthMetadataUrl : 'Pending'}
+                        </p>
+                        <Badge className="mt-2" variant={metadataState.status === 'ready' && metadataState.data.oauth.status === 'ok' ? 'default' : metadataState.status === 'loading' ? 'outline' : 'destructive'}>
+                          {metadataState.status === 'ready' && metadataState.data.oauth.status === 'ok'
+                            ? 'Reachable'
+                            : metadataState.status === 'loading'
+                              ? 'Checking'
+                              : 'Error'}
+                        </Badge>
+                      </div>
+                      <div className="p-3 rounded-md bg-muted/60">
+                        <p className="text-xs uppercase text-muted-foreground">JWKS</p>
+                        <p className="text-sm font-medium break-all">
+                          {metadataState.status === 'ready' && metadataState.data.links.jwksUrl ? metadataState.data.links.jwksUrl : 'Awaiting metadata'}
+                        </p>
+                        <Badge className="mt-2" variant={metadataState.status === 'ready' && metadataState.data.jwks && metadataState.data.jwks.status === 'ok' ? 'default' : metadataState.status === 'loading' ? 'outline' : 'destructive'}>
+                          {metadataState.status === 'ready' && metadataState.data.jwks?.status === 'ok'
+                            ? `${Array.isArray(metadataState.data.jwks?.json?.keys) ? metadataState.data.jwks?.json?.keys.length : 0} keys`
+                            : metadataState.status === 'loading'
+                              ? 'Checking'
+                              : 'Missing'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <Button variant="outline" size="sm" onClick={refreshInstallReadiness} disabled={metadataState.status === 'loading'}>
+                        {metadataState.status === 'loading' ? 'Checking...' : 'Check Metadata'}
+                      </Button>
+                      {metadataState.status === 'ready' && (
+                        <p className="text-xs text-muted-foreground">
+                          Last checked {new Date(metadataState.data.timestamp).toLocaleTimeString()}
+                        </p>
+                      )}
+                    </div>
+                  </Card>
+
                   <div className="flex items-center space-x-3 p-4 border border-border rounded-lg">
-                    <Checkbox id="auth-ready" checked={authReady} onCheckedChange={state => setAuthReady(state === true)} />
-                    <Label htmlFor="auth-ready" className="flex-1 cursor-pointer"><p className="font-medium">I can complete OAuth authorization</p></Label>
+                    <Checkbox id="auth-ready" checked={authConfirmed} onCheckedChange={state => setAuthConfirmed(state === true)} />
+                    <Label htmlFor="auth-ready" className="flex-1 cursor-pointer">
+                      <p className="font-medium">I can complete OAuth authorization using the metadata above.</p>
+                    </Label>
                   </div>
+
+                  {metadataState.status === 'error' && (
+                    <div className="flex items-center space-x-3 p-4 border border-border rounded-lg bg-amber-500/10">
+                      <Checkbox id="auth-override" checked={manualAuthOverride} onCheckedChange={state => setManualAuthOverride(state === true)} />
+                      <Label htmlFor="auth-override" className="flex-1 cursor-pointer">
+                        <p className="font-medium">Allow manual override if CIMD metadata blocks automated checks.</p>
+                        <p className="text-xs text-muted-foreground">Only enable this if you verified the metadata manually.</p>
+                      </Label>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -234,6 +437,42 @@ export default function InstallWizardPage({ params }: PageProps) {
                     <Checkbox id="scopes-accepted" checked={acceptedScopes} onCheckedChange={state => setAcceptedScopes(state === true)} />
                     <Label htmlFor="scopes-accepted" className="flex-1 cursor-pointer"><p className="font-medium">I accept these permissions</p></Label>
                   </div>
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={validateScopes}
+                      disabled={scopeCheckState.status === 'loading'}
+                    >
+                      {scopeCheckState.status === 'loading' ? 'Validating…' : 'Validate With Server'}
+                    </Button>
+                    {scopeCheckState.status === 'success' && (
+                      <Badge variant={scopeCheckState.result.paymentRequired ? 'destructive' : 'default'}>
+                        {scopeCheckState.result.paymentRequired ? 'Payment required' : 'Scopes confirmed'}
+                      </Badge>
+                    )}
+                  </div>
+                  {scopeCheckState.status === 'success' && (
+                    <Card className="p-4 space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Entitlement status: <span className="font-medium text-foreground">{scopeCheckState.result.entitlementStatus}</span>
+                      </p>
+                      {scopeCheckState.result.autoGrantAvailable && (
+                        <p className="text-sm text-muted-foreground">
+                          This free server will auto-grant an entitlement during install.
+                        </p>
+                      )}
+                      {scopeCheckState.result.paymentRequired && (
+                        <p className="text-sm text-amber-600 dark:text-amber-400">
+                          You will be prompted to settle payment before install completes.
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">Validated scopes: {scopeCheckState.result.grantedScopes.join(', ')}</p>
+                    </Card>
+                  )}
+                  {scopeCheckState.status === 'error' && (
+                    <p className="text-sm text-destructive">{scopeCheckState.error}</p>
+                  )}
                 </div>
               )}
 
@@ -291,6 +530,22 @@ export default function InstallWizardPage({ params }: PageProps) {
                             className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
                             placeholder="tx hash or provider payment id"
                           />
+                        </div>
+                      )}
+                      {paymentRequired.wwwAuthenticate && (
+                        <div className="bg-background rounded-md p-3 font-mono text-xs overflow-x-auto">
+                          <p className="text-[11px] uppercase text-muted-foreground mb-1">WWW-Authenticate</p>
+                          <pre className="whitespace-pre-wrap break-all">{paymentRequired.wwwAuthenticate}</pre>
+                        </div>
+                      )}
+                      {parsedPaymentChallenge && (
+                        <div className="bg-background rounded-md p-3 font-mono text-xs overflow-x-auto space-y-1">
+                          <p className="text-[11px] uppercase text-muted-foreground">PAYMENT-REQUIRED</p>
+                          <pre className="whitespace-pre-wrap break-all">
+                            {typeof parsedPaymentChallenge === 'string'
+                              ? parsedPaymentChallenge
+                              : JSON.stringify(parsedPaymentChallenge, null, 2)}
+                          </pre>
                         </div>
                       )}
                       <div className="flex flex-wrap gap-2">

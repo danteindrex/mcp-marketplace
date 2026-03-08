@@ -32,6 +32,27 @@ type installAction struct {
 	RequiresLocalExec bool   `json:"requiresLocalExec"`
 }
 
+type scopeCheckRequest struct {
+	Client        string   `json:"client"`
+	GrantedScopes []string `json:"grantedScopes"`
+}
+
+type scopeCheckResponse struct {
+	Server struct {
+		ID          string `json:"id"`
+		Slug        string `json:"slug"`
+		Name        string `json:"name"`
+		PricingType string `json:"pricingType"`
+	} `json:"server"`
+	Client             string   `json:"client"`
+	AllowedScopes      []string `json:"allowedScopes"`
+	GrantedScopes      []string `json:"grantedScopes"`
+	HasEntitlement     bool     `json:"hasEntitlement"`
+	AutoGrantAvailable bool     `json:"autoGrantAvailable"`
+	PaymentRequired    bool     `json:"paymentRequired"`
+	EntitlementStatus  string   `json:"entitlementStatus"`
+}
+
 func (a *App) installMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 	claims, ok := getClaims(r.Context())
 	if !ok {
@@ -162,6 +183,94 @@ func (a *App) installMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 			"actions":  actions,
 		},
 	})
+}
+
+func (a *App) scopeCheckMarketplaceServer(w http.ResponseWriter, r *http.Request) {
+	claims, ok := getClaims(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+	server, found := a.store.GetServerBySlug(slug)
+	if !found {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	if claims.Role != models.RoleAdmin && claims.TenantID != server.TenantID && server.Status != models.ServerStatusPublished {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	if server.DeploymentStatus != "" && server.DeploymentStatus != models.ServerDeploymentDeployed {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+
+	var req scopeCheckRequest
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+			return
+		}
+	}
+	if strings.TrimSpace(req.Client) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "client required"})
+		return
+	}
+	client := normalizeClientName(req.Client)
+	allowedScopes := server.RequiredScopes
+	grantedScopes := allowedScopes
+	var hasEntitlement bool
+	var entitlementStatus string
+	autoGrantAvailable := false
+	paymentRequired := false
+
+	if claims.Role == models.RoleAdmin || claims.TenantID == server.TenantID {
+		hasEntitlement = true
+		entitlementStatus = "owner"
+	} else {
+		entitlements := a.store.ListEntitlements(claims.TenantID, claims.UserID)
+		entitlement, ok := entitlementForServer(entitlements, server.ID)
+		if ok {
+			hasEntitlement = true
+			entitlementStatus = "active_entitlement"
+			if len(entitlement.AllowedScopes) > 0 {
+				allowedScopes = entitlement.AllowedScopes
+			}
+		} else {
+			if server.Status == models.ServerStatusPublished && server.PricingType == "free" {
+				autoGrantAvailable = true
+				entitlementStatus = "auto_grant_available"
+			} else {
+				paymentRequired = true
+				entitlementStatus = "payment_required"
+			}
+		}
+	}
+
+	if len(req.GrantedScopes) > 0 {
+		filtered := filterGranted(allowedScopes, req.GrantedScopes)
+		if len(filtered) > 0 {
+			grantedScopes = filtered
+		}
+	}
+
+	resp := scopeCheckResponse{
+		Client:             client,
+		AllowedScopes:      allowedScopes,
+		GrantedScopes:      grantedScopes,
+		HasEntitlement:     hasEntitlement,
+		AutoGrantAvailable: autoGrantAvailable,
+		PaymentRequired:    paymentRequired,
+		EntitlementStatus:  entitlementStatus,
+	}
+	resp.Server.ID = server.ID
+	resp.Server.Slug = server.Slug
+	resp.Server.Name = server.Name
+	resp.Server.PricingType = server.PricingType
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *App) ensureInstallPayment(
