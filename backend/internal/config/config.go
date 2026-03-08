@@ -10,6 +10,9 @@ import (
 type Config struct {
 	Port                       string
 	JWTSecret                  string
+	JWTPrivateKeyPEM           string
+	JWTPublicKeyPEM            string
+	JWTKeyID                   string
 	BaseURL                    string
 	N8NBaseURL                 string
 	N8NAPIKey                  string
@@ -52,6 +55,12 @@ func Load() Config {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" && allowInsecureDefaults {
 		secret = "change-me-in-production"
+	}
+	jwtPrivateKeyPEM := strings.TrimSpace(os.Getenv("JWT_PRIVATE_KEY_PEM"))
+	jwtPublicKeyPEM := strings.TrimSpace(os.Getenv("JWT_PUBLIC_KEY_PEM"))
+	jwtKeyID := strings.TrimSpace(os.Getenv("JWT_KEY_ID"))
+	if jwtKeyID == "" {
+		jwtKeyID = "default-rs256-key"
 	}
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
@@ -122,6 +131,9 @@ func Load() Config {
 	return Config{
 		Port:                       port,
 		JWTSecret:                  secret,
+		JWTPrivateKeyPEM:           jwtPrivateKeyPEM,
+		JWTPublicKeyPEM:            jwtPublicKeyPEM,
+		JWTKeyID:                   jwtKeyID,
 		BaseURL:                    baseURL,
 		N8NBaseURL:                 n8nBaseURL,
 		N8NAPIKey:                  n8nAPIKey,
@@ -174,11 +186,13 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.MongoURI) == "" {
 		return fmt.Errorf("MONGO_URI must be set (in-memory fallback is disabled)")
 	}
+	hasJWTSecret := strings.TrimSpace(c.JWTSecret) != "" && c.JWTSecret != "change-me-in-production"
+	hasJWTKeys := strings.TrimSpace(c.JWTPrivateKeyPEM) != "" && strings.TrimSpace(c.JWTPublicKeyPEM) != ""
 	if c.AllowInsecureDefaults {
 		return nil
 	}
-	if strings.TrimSpace(c.JWTSecret) == "" || c.JWTSecret == "change-me-in-production" {
-		return fmt.Errorf("JWT_SECRET must be set to a secure value")
+	if !hasJWTSecret && !hasJWTKeys {
+		return fmt.Errorf("JWT_SECRET or both JWT_PRIVATE_KEY_PEM and JWT_PUBLIC_KEY_PEM must be set")
 	}
 	if strings.TrimSpace(c.SuperAdminPassword) == "" || c.SuperAdminPassword == "change-admin-password" {
 		return fmt.Errorf("SUPER_ADMIN_PASSWORD must be set to a secure value")

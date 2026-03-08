@@ -30,12 +30,17 @@ func (a *App) oauthAuthorizationServerMetadata(w http.ResponseWriter, r *http.Re
 		"authorization_endpoint":                a.cfg.BaseURL + "/oauth/authorize",
 		"token_endpoint":                        a.cfg.BaseURL + "/oauth/token",
 		"registration_endpoint":                 a.cfg.BaseURL + "/oauth/register",
+		"jwks_uri":                              a.cfg.BaseURL + "/.well-known/jwks.json",
 		"code_challenge_methods_supported":      []string{"S256"},
 		"grant_types_supported":                 []string{"authorization_code"},
 		"response_types_supported":              []string{"code"},
 		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_post"},
 		"client_id_metadata_document_supported": true,
 	})
+}
+
+func (a *App) jwks(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, a.jwt.JWKS())
 }
 
 func (a *App) oauthRegisterClient(w http.ResponseWriter, r *http.Request) {

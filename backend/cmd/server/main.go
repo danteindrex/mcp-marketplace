@@ -23,7 +23,10 @@ func main() {
 	}
 	log.Printf("using mongo store (%s)", cfg.MongoDBName)
 	var st store.Store = mongoStore
-	jwt := auth.NewJWTManager(cfg.JWTSecret)
+	jwt, err := auth.NewJWTManager(cfg)
+	if err != nil {
+		log.Fatalf("failed to initialize jwt manager: %v", err)
+	}
 	router := api.NewRouter(cfg, st, jwt)
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

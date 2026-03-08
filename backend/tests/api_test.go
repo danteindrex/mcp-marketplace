@@ -29,7 +29,10 @@ func newTestServer() http.Handler {
 		SuperAdminPassword: "admin-pass",
 	}
 	st := store.NewMemoryStore(cfg)
-	jwt := auth.NewJWTManager(cfg.JWTSecret)
+	jwt, err := auth.NewJWTManager(cfg)
+	if err != nil {
+		panic(err)
+	}
 	return api.NewRouter(cfg, st, jwt)
 }
 
@@ -142,7 +145,10 @@ func TestHealthFailsWhenRequiredStorageIsDown(t *testing.T) {
 	}
 	baseStore := store.NewMemoryStore(cfg)
 	st := failingHealthStore{Store: baseStore}
-	jwt := auth.NewJWTManager(cfg.JWTSecret)
+	jwt, err := auth.NewJWTManager(cfg)
+	if err != nil {
+		t.Fatalf("jwt init failed: %v", err)
+	}
 	h := api.NewRouter(cfg, st, jwt)
 
 	res := call(t, h, http.MethodGet, "/health", "", nil)
@@ -450,7 +456,10 @@ func TestMerchantDeploySyncsWithN8NWhenConfigured(t *testing.T) {
 		SuperAdminPassword: "admin-pass",
 	}
 	st := store.NewMemoryStore(cfg)
-	jwt := auth.NewJWTManager(cfg.JWTSecret)
+	jwt, err := auth.NewJWTManager(cfg)
+	if err != nil {
+		t.Fatalf("jwt init failed: %v", err)
+	}
 	h := api.NewRouter(cfg, st, jwt)
 
 	signup(t, h, "n8n-merchant@acme.local", "MerchantPass123!@", "merchant")
