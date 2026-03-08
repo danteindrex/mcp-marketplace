@@ -1,0 +1,62 @@
+## Mission
+- Use `requirements.md` as the single source of truth for scope, ensuring every deliverable traces back to the document.
+- Keep user stories for buyers, merchants, and admins in sync with backend/API coverage.
+- When estimating effort, tag features by lifecycle stage: discover → install → monetize → operate → secure.
+
+## Architecture Guardrails
+1. **Two-tier runtime**
+   - Go gateway owns auth (OAuth 2.1 + PKCE), JWKS caching, tenant isolation, SSRF defense, and the x402 micropayment evaluator.
+   - Python orchestration stack (FastMCP + Docker/N8N) handles agent composition, workflow fan-out, and exposes `.well-known` endpoints per container.
+2. **Remote MCP orchestration**
+   - Every local-only server must have a path to cloud hosting (SSE bridge) plus a licensing path for premium self-hosting.
+3. **Hybrid hosting tiers**
+   - Clearly document when we offer free remote hosting vs. when we upsell dedicated hardware; keep pricing artifacts aligned with monetization rules below.
+
+## Merchant Experience Checklist
+- Docker Hub import + custom registry uploads with SBOM scans.
+- Low-code builder (n8n) templates for FastMCP (Python + TypeScript flavors).
+- Deployment tasks feeding the Go deploy worker; publish remains blocked until deploy+pricing complete.
+- Observability panes: tool invocation counts, latency p95, `insufficient_scope` alarms, audit log timeline.
+- Payment configs: subscription/flat/x402, cloud vs. local licensing, payout policies.
+
+## Buyer Experience Checklist
+- One-click installs powered by CIMD + DCR with WWW-Authenticate responses that include scopes + metadata URLs.
+- Interactive connectors support (inline cards/fullscreen) for Claude Desktop, VS Code, Cursor.
+- Discovery filters: verified 🎖 badge, rating aggregation, Local 🏠 vs Cloud ☁ scopes.
+- Install wizard gating (client → auth → scopes → connect → verify) and local bridge handoff for `mcp-marketplace://` URIs.
+
+## Managed Hosting & Monetization
+- Remote orchestration must expose canonical server URIs (`https://mcp.<domain>/<tenant>/<slug>`).
+- Monetization levers: subscription/flat fees, per-call metering via x402, self-hosting surcharge, wallet top-ups.
+- Ledger + payout policies flow from platform fees (bps/min/max/hold days) down to seller payouts (Stripe Connect or stablecoin).
+
+## Security Obligations
+- Enforce PKCE + Refresh Token Rotation everywhere; treat scope upgrades as explicit step-up flows producing `insufficient_scope` errors.
+- Audience binding on access tokens via Resource Indicators.
+- SSRF protections when fetching metadata or CIMD docs; whitelist hosts for local bridge installs.
+- Multi-tenant segregation at every store layer; audit logs for deploys, payouts, and privilege changes.
+
+## Delivery Playbook
+1. Start with requirements traceability: map Jira/issue slug → section in `requirements.md`.
+2. Keep backend/frontend in lockstep—feature toggles should note API contract maturity.
+3. For each milestone, document:
+   - Buyer impact (what gets “one-click” easier?).
+   - Merchant impact (import/build/monitor/payout?).
+   - Security/compliance deltas.
+4. Maintain a testing grid: Go unit/integration, Python orchestration sims, frontend e2e (light + dark), MCP client smoke tests.
+5. Before merge, verify MCP ecosystem compatibility (Gateways: Roundtable, mcgravity, LUNA MCPX; Auth gateways: Scalekit, Clerk/Auth0).
+
+## References
+- Source spec: `requirements.md`
+- Ecosystem inspiration: Roundtable, mcgravity, pluggedin-mcp-proxy, LUNA MCPX, AgentHotspot, Smithery, Glama Chat.
+
+
+i need you to understand what is remaining for this project to be production ready with cliens able to use it and tenants also use sub agents to find out
+
+---
+
+i need you to focus on making the auhentication and system processes fully functional and removing demo data drafta a plan
+
+---
+
+start the impleantation apart from adding a valut secte manageer for that we need to ahve an npm package inside the current code in the backedn i dont want another docker image since it will be expaensive to host them also be ware there is another agent running fixing the smae project and it is focused on buyer gaps so if you notice some code being change d knwo the agent is doing it so thats why i want youb to focus on full intergration of the authenticatio nand remove of demo data fro mthe UI there is also an issue witht he session tokens being fake as well
