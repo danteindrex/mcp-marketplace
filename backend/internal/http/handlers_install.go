@@ -12,8 +12,13 @@ import (
 )
 
 type installServerRequest struct {
-	Client        string   `json:"client"`
-	GrantedScopes []string `json:"grantedScopes"`
+	Client          string                 `json:"client"`
+	GrantedScopes   []string               `json:"grantedScopes"`
+	PaymentMethod   string                 `json:"paymentMethod"`
+	ToolName        string                 `json:"toolName"`
+	IdempotencyKey  string                 `json:"idempotencyKey"`
+	AutoSettle      bool                   `json:"autoSettle"`
+	PaymentResponse map[string]interface{} `json:"paymentResponse"`
 }
 
 type installAction struct {
@@ -69,6 +74,27 @@ func (a *App) installMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 					CloudAllowed:  true,
 					LocalAllowed:  true,
 				})
+				hasEntitlement = true
+			} else if server.Status == "published" && server.PricingType == "x402" {
+				paid, err := a.ensureInstallPayment(w, r, claims.TenantID, claims.UserID, hub.HubURL, server, req)
+				if err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					return
+				}
+				if !paid {
+					return
+				}
+				entitlement, hasEntitlement = entitlementForServer(a.store.ListEntitlements(claims.TenantID, claims.UserID), server.ID)
+				if !hasEntitlement {
+					entitlement = a.store.GrantEntitlement(models.Entitlement{
+						TenantID:      claims.TenantID,
+						UserID:        claims.UserID,
+						ServerID:      server.ID,
+						AllowedScopes: server.RequiredScopes,
+						CloudAllowed:  true,
+						LocalAllowed:  true,
+					})
+				}
 				hasEntitlement = true
 			}
 		}
@@ -136,6 +162,174 @@ func (a *App) installMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 			"actions":  actions,
 		},
 	})
+}
+
+func (a *App) ensureInstallPayment(
+	w http.ResponseWriter,
+	r *http.Request,
+	tenantID string,
+	userID string,
+	resource string,
+	server models.Server,
+	req installServerRequest,
+) (bool, error) {
+	amount := server.PricingAmount
+	if amount <= 0 {
+		return false, nil
+	}
+	policy := a.effectivePaymentPolicy(tenantID, userID)
+	method := strings.ToLower(strings.TrimSpace(req.PaymentMethod))
+	if method == "" {
+		method = firstMethod(policy.AllowedMethods)
+	}
+	if !hasScope(policy.AllowedMethods, method) {
+		writeJSON(w, http.StatusPaymentRequired, map[string]interface{}{
+			"error":  "payment method is not allowed by buyer policy",
+			"policy": policy,
+		})
+		return false, nil
+	}
+	if len(server.PaymentMethods) > 0 && !hasScope(server.PaymentMethods, method) {
+		writeJSON(w, http.StatusPaymentRequired, map[string]interface{}{
+			"error":  "payment method is not enabled by server",
+			"server": server.ID,
+		})
+		return false, nil
+	}
+	intents := a.store.ListX402Intents(tenantID, userID)
+	if err := a.validateCaps(policy, server, intents, amount); err != nil {
+		writeJSON(w, http.StatusPaymentRequired, map[string]interface{}{
+			"error": err.Error(),
+			"caps":  policy,
+		})
+		return false, nil
+	}
+
+	toolName := strings.TrimSpace(req.ToolName)
+	if toolName == "" {
+		toolName = "install_" + strings.ReplaceAll(server.Slug, "-", "_")
+	}
+	idempotencyKey := strings.TrimSpace(req.IdempotencyKey)
+	if idempotencyKey == "" {
+		idempotencyKey = strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	}
+	if idempotencyKey == "" {
+		idempotencyKey = "install_" + server.ID + "_" + time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	if strings.TrimSpace(resource) == "" {
+		resource = server.CanonicalResourceURI
+	}
+	requirement := buildX402Requirement(server, toolName, amount, resource, method, idempotencyKey)
+	challengeBytes, _ := json.Marshal([]map[string]interface{}{requirement})
+	intent := a.store.CreateX402Intent(models.X402Intent{
+		TenantID:           tenantID,
+		UserID:             userID,
+		ServerID:           server.ID,
+		ToolName:           toolName,
+		AmountUSDC:         amount,
+		Network:            "base",
+		Asset:              "USDC",
+		Challenge:          string(challengeBytes),
+		PaymentMethod:      method,
+		IdempotencyKey:     idempotencyKey,
+		X402Version:        "2",
+		Resource:           resource,
+		VerificationStatus: "pending",
+		Quantity:           1,
+		RemainingQuantity:  0,
+		RequestFingerprint: hashAny(map[string]interface{}{"serverId": server.ID, "toolName": toolName, "idempotencyKey": idempotencyKey}),
+	})
+	if !req.AutoSettle && len(req.PaymentResponse) == 0 {
+		w.Header().Set("PAYMENT-REQUIRED", string(challengeBytes))
+		w.Header().Set("WWW-Authenticate", `Bearer error="insufficient_scope"`)
+		writeJSON(w, http.StatusPaymentRequired, map[string]interface{}{
+			"error":       "payment required",
+			"intent":      intent,
+			"requirement": requirement,
+		})
+		return false, nil
+	}
+
+	if method == "wallet_balance" && len(req.PaymentResponse) == 0 {
+		_, paymentID, err := a.applyWalletDebit(tenantID, userID, amount, idempotencyKey)
+		if err != nil {
+			writeJSON(w, http.StatusPaymentRequired, map[string]interface{}{
+				"error":       err.Error(),
+				"intent":      intent,
+				"requirement": requirement,
+				"wallet": map[string]interface{}{
+					"balanceUsdc":        policy.WalletBalanceUSDC,
+					"minimumBalanceUsdc": policy.MinimumBalanceUSDC,
+				},
+			})
+			return false, nil
+		}
+		settled, ok := a.store.SettleX402Intent(intent.ID)
+		if !ok {
+			return false, errInstallPaymentState
+		}
+		settled.PaymentIdentifier = paymentID
+		settled.PaymentMethod = "wallet_balance"
+		settled.Network = "base"
+		settled.Asset = "USDC"
+		settled.VerificationStatus = "verified"
+		settled.VerificationNote = "debited from prepaid wallet balance"
+		if settled.Quantity <= 0 {
+			settled.Quantity = 1
+		}
+		if settled.RemainingQuantity <= 0 {
+			settled.RemainingQuantity = settled.Quantity
+		}
+		_ = a.store.UpdateX402Intent(settled)
+		if _, err := a.postIntentAccounting(settled); err != nil {
+			return false, err
+		}
+		a.ensurePaidEntitlement(settled)
+		return true, nil
+	}
+
+	verifyRes, err := a.x402.verifyAndSettle(r.Context(), requirement, req.PaymentResponse)
+	if err != nil {
+		writeJSON(w, http.StatusPaymentRequired, map[string]string{"error": err.Error()})
+		return false, nil
+	}
+	if !verifyRes.Valid {
+		writeJSON(w, http.StatusPaymentRequired, map[string]string{"error": verifyRes.Note})
+		return false, nil
+	}
+	settled, ok := a.store.SettleX402Intent(intent.ID)
+	if !ok {
+		return false, errInstallPaymentState
+	}
+	settled.PaymentIdentifier = verifyRes.PaymentIdentifier
+	settled.PaymentMethod = verifyRes.Method
+	settled.Network = verifyRes.Network
+	settled.Asset = verifyRes.Asset
+	settled.FacilitatorTx = verifyRes.TxHash
+	settled.VerificationStatus = "verified"
+	settled.VerificationNote = verifyRes.Note
+	if settled.Quantity <= 0 {
+		settled.Quantity = 1
+	}
+	if settled.RemainingQuantity <= 0 {
+		settled.RemainingQuantity = settled.Quantity
+	}
+	_ = a.store.UpdateX402Intent(settled)
+	if _, err := a.postIntentAccounting(settled); err != nil {
+		return false, err
+	}
+	a.ensurePaidEntitlement(settled)
+	return true, nil
+}
+
+var errInstallPaymentState = &installPaymentError{message: "failed to persist install payment state"}
+
+type installPaymentError struct {
+	message string
+}
+
+func (e *installPaymentError) Error() string {
+	return e.message
 }
 
 func buildInstallActions(serverName string, serverSlug string, resourceURL string) []installAction {

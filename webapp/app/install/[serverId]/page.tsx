@@ -13,6 +13,8 @@ import { toast } from 'sonner'
 import {
   fetchServerBySlug,
   installMarketplaceServer,
+  settleX402Intent,
+  type InstallPaymentRequired,
   type InstallAction,
   type InstallSession,
   type Server,
@@ -50,6 +52,9 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [showBridgeHelp, setShowBridgeHelp] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [installSession, setInstallSession] = useState<InstallSession | null>(null)
+  const [paymentRequired, setPaymentRequired] = useState<InstallPaymentRequired | null>(null)
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'wallet_balance' | 'x402_wallet'>('wallet_balance')
+  const [externalPaymentID, setExternalPaymentID] = useState('')
   const [server, setServer] = useState<Server | null>(null)
 
   useEffect(() => {
@@ -75,22 +80,40 @@ export default function InstallWizardPage({ params }: PageProps) {
     return 'Open Installer'
   })()
 
+  const installToolName = `install_${server.slug.replace(/-/g, '_')}`
+
+  const runInstallAttempt = async (autoSettle: boolean) => {
+    try {
+      setInstalling(true)
+      const out = await installMarketplaceServer(server.slug, {
+        client: selectedClient,
+        grantedScopes: server.requiredScopes,
+        paymentMethod: selectedPaymentMethod,
+        autoSettle,
+        toolName: installToolName,
+      })
+      if (out.type === 'payment_required') {
+        setPaymentRequired(out.payment)
+        return false
+      }
+      setPaymentRequired(null)
+      setInstallSession(out.session)
+      setCurrentStep('complete')
+      return true
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to prepare install')
+      return false
+    } finally {
+      setInstalling(false)
+    }
+  }
+
   const handleNext = async () => {
     if (currentStep === 'connect') {
-      try {
-        setInstalling(true)
-        const session = await installMarketplaceServer(server.slug, {
-          client: selectedClient,
-          grantedScopes: server.requiredScopes,
-        })
-        setInstallSession(session)
-      } catch (error: any) {
-        toast.error(error?.message || 'Failed to prepare install')
-        return
-      } finally {
-        setInstalling(false)
+      const paidAndInstalled = await runInstallAttempt(selectedPaymentMethod === 'wallet_balance')
+      if (!paidAndInstalled && selectedPaymentMethod === 'wallet_balance') {
+        toast.info('Payment required. You can fund wallet or retry with external x402 payment.')
       }
-      setCurrentStep('complete')
       return
     }
     if (currentStep === 'complete') {
@@ -231,9 +254,77 @@ export default function InstallWizardPage({ params }: PageProps) {
                         <p className="font-medium">{server.requiredScopes.length} scopes</p>
                       </div>
                     </div>
+                    <div className="space-y-2 pt-2 border-t border-border">
+                      <p className="text-xs text-muted-foreground">Payment Method For Paid Servers</p>
+                      <RadioGroup
+                        value={selectedPaymentMethod}
+                        onValueChange={value => setSelectedPaymentMethod(value as 'wallet_balance' | 'x402_wallet')}
+                      >
+                        <div className="flex items-center gap-2">
+                          <RadioGroupItem value="wallet_balance" id="wallet_balance" />
+                          <Label htmlFor="wallet_balance">wallet_balance (auto-pay from prepaid wallet)</Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <RadioGroupItem value="x402_wallet" id="x402_wallet" />
+                          <Label htmlFor="x402_wallet">x402_wallet (external wallet payment-response)</Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
                   </Card>
                   {installing && (
                     <p className="text-sm text-muted-foreground">Preparing install session...</p>
+                  )}
+                  {paymentRequired && (
+                    <Card className="p-6 space-y-4 border-2 border-amber-500/50">
+                      <h3 className="font-semibold">Payment Required</h3>
+                      <p className="text-sm text-muted-foreground">{paymentRequired.error || 'Settle payment to continue install.'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Intent: {paymentRequired.intent?.id} | Amount: {Number(paymentRequired.intent?.amountUsdc || 0).toFixed(2)} USDC
+                      </p>
+                      {selectedPaymentMethod === 'x402_wallet' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="external-payment-id">External Payment Identifier</Label>
+                          <input
+                            id="external-payment-id"
+                            value={externalPaymentID}
+                            onChange={e => setExternalPaymentID(e.target.value)}
+                            className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                            placeholder="tx hash or provider payment id"
+                          />
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          disabled={installing || (selectedPaymentMethod === 'x402_wallet' && !externalPaymentID)}
+                          onClick={async () => {
+                            if (!paymentRequired?.intent?.id) return
+                            try {
+                              setInstalling(true)
+                              if (selectedPaymentMethod === 'wallet_balance') {
+                                await settleX402Intent(paymentRequired.intent.id)
+                              } else {
+                                await settleX402Intent(paymentRequired.intent.id, {
+                                  paymentResponse: {
+                                    paymentIdentifier: externalPaymentID,
+                                    method: 'x402_wallet',
+                                  },
+                                })
+                              }
+                              await runInstallAttempt(false)
+                            } catch (error: any) {
+                              toast.error(error?.message || 'Payment settlement failed')
+                            } finally {
+                              setInstalling(false)
+                            }
+                          }}
+                        >
+                          Pay And Continue
+                        </Button>
+                        <Button asChild variant="outline">
+                          <Link href="/buyer/billing">Open Wallet Top-Up</Link>
+                        </Button>
+                      </div>
+                    </Card>
                   )}
                 </div>
               )}

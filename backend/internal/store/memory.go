@@ -185,6 +185,14 @@ func (s *MemoryStore) loadFromDisk() bool {
 	if state.DeployBySrv == nil {
 		state.DeployBySrv = map[string]string{}
 	}
+	if len(state.DeployBySrv) == 0 && len(state.DeployTasks) > 0 {
+		for id, task := range state.DeployTasks {
+			if strings.TrimSpace(task.ServerID) == "" {
+				continue
+			}
+			state.DeployBySrv[task.ServerID] = id
+		}
+	}
 	if state.Agents == nil {
 		state.Agents = map[string]models.LocalAgent{}
 	}

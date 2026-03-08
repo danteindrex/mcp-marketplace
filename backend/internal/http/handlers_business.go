@@ -143,6 +143,15 @@ func (a *App) serverDeployments(w http.ResponseWriter, r *http.Request) {
 			"updatedAt":   server.UpdatedAt,
 		})
 	}
+	queue := map[string]interface{}{}
+	if task, exists := a.store.GetDeployTaskByServer(server.ID); exists {
+		queue["taskId"] = task.ID
+		queue["status"] = task.Status
+		queue["attemptCount"] = task.AttemptCount
+		queue["maxAttempts"] = task.MaxAttempts
+		queue["nextAttemptAt"] = task.NextAttemptAt
+		queue["lastError"] = task.LastError
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"items": items,
 		"count": len(items),
@@ -153,6 +162,7 @@ func (a *App) serverDeployments(w http.ResponseWriter, r *http.Request) {
 			"priceSet":          server.PricingAmount > 0,
 			"deployedAt":        server.DeployedAt,
 		},
+		"queue": queue,
 		"n8n": map[string]interface{}{
 			"workflowId":  server.N8nWorkflowID,
 			"workflowUrl": server.N8nWorkflowURL,

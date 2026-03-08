@@ -20,6 +20,7 @@ type App struct {
 	stripeOnramp   *stripeOnrampService
 	stripeConnect  *stripeConnectService
 	n8n            *n8nService
+	deployTrigger  chan struct{}
 	allowedOrigins map[string]struct{}
 	rateLimiter    *ipRateLimiter
 	authLimiter    *ipRateLimiter
@@ -39,10 +40,12 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 		stripeOnramp:   newStripeOnrampService(cfg),
 		stripeConnect:  newStripeConnectService(cfg),
 		n8n:            newN8NService(cfg),
+		deployTrigger:  make(chan struct{}, 1),
 		allowedOrigins: allowedOrigins,
 		rateLimiter:    newIPRateLimiter(cfg.RateLimitPerMinute, cfg.RateLimitPerMinute/4),
 		authLimiter:    newIPRateLimiter(30, 10),
 	}
+	app.startDeployWorker()
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)

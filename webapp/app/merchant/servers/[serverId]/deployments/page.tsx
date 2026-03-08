@@ -14,26 +14,37 @@ export default function DeploymentsPage({ params }: { params: Promise<{ serverId
   const { serverId } = use(params)
   const [items, setItems] = useState<any[]>([])
   const [lifecycle, setLifecycle] = useState<ServerLifecycle | null>(null)
+  const [queue, setQueue] = useState<any>(null)
   const [isDeploying, setIsDeploying] = useState(false)
 
   const load = useCallback(async () => {
     const data = await fetchServerDeployments(serverId)
     setItems(data.items || [])
     setLifecycle(data.lifecycle || null)
+    setQueue(data.queue || null)
   }, [serverId])
 
   useEffect(() => {
     load().catch(() => {
       setItems([])
       setLifecycle(null)
+      setQueue(null)
     })
   }, [load])
+
+  useEffect(() => {
+    if (lifecycle?.deploymentStatus !== 'deploy_queued') return
+    const id = window.setInterval(() => {
+      load().catch(() => undefined)
+    }, 5000)
+    return () => window.clearInterval(id)
+  }, [lifecycle?.deploymentStatus, load])
 
   const handleDeploy = async () => {
     setIsDeploying(true)
     try {
       await deployMerchantServer(serverId, { deploymentTarget: 'us-west-1' })
-      toast.success('Agent deployed and saved as marketplace draft')
+      toast.success('Deploy queued. We will keep retrying automatically.')
       await load()
     } catch (e: any) {
       toast.error(e?.message || 'Deploy failed')
@@ -63,6 +74,13 @@ export default function DeploymentsPage({ params }: { params: Promise<{ serverId
               <p className="font-medium">{lifecycle?.canPublish ? 'Ready' : 'Price required'}</p>
             </div>
           </div>
+          {queue?.status && (
+            <div className="text-sm rounded border border-border p-3">
+              <p className="font-medium capitalize">Queue: {String(queue.status).replace('_', ' ')}</p>
+              <p className="text-muted-foreground">Attempts: {queue.attemptCount || 0}/{queue.maxAttempts || 0}</p>
+              {queue.lastError && <p className="text-destructive text-xs mt-1">{queue.lastError}</p>}
+            </div>
+          )}
           <div className="flex gap-3">
             <Button onClick={handleDeploy} disabled={isDeploying}>
               {isDeploying ? 'Deploying...' : 'Deploy Now'}

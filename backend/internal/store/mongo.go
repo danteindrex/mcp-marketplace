@@ -84,6 +84,7 @@ func NewMongoStore(cfg config.Config) (*MongoStore, error) {
 		ledger:       db.Collection("ledger_entries"),
 		payoutProf:   db.Collection("seller_payout_profiles"),
 		payouts:      db.Collection("payout_records"),
+		deployTasks:  db.Collection("deploy_tasks"),
 		agents:       db.Collection("local_agents"),
 		userSettings: db.Collection("user_settings"),
 	}
@@ -225,6 +226,14 @@ func (s *MongoStore) ensureIndexes() error {
 				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
 				{Keys: bson.D{{Key: "tenantId", Value: 1}, {Key: "createdAt", Value: ttlDesc}}},
 				{Keys: bson.D{{Key: "status", Value: 1}, {Key: "createdAt", Value: ttlDesc}}},
+			},
+		},
+		{
+			col: s.deployTasks,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "serverId", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "status", Value: 1}, {Key: "nextAttemptAt", Value: 1}}},
 			},
 		},
 		{
@@ -526,6 +535,109 @@ func (s *MongoStore) UpdateServer(server models.Server) bool {
 	defer cancel()
 	server.UpdatedAt = time.Now().UTC()
 	res, err := s.servers.ReplaceOne(ctx, bson.M{"id": server.ID}, server)
+	if err != nil {
+		return false
+	}
+	return res.MatchedCount > 0
+}
+
+func (s *MongoStore) UpsertDeployTaskByServer(task models.DeployTask) models.DeployTask {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+
+	now := time.Now().UTC()
+	if strings.TrimSpace(task.ID) == "" {
+		task.ID = newPrefixedID("dpl")
+	}
+	if task.CreatedAt.IsZero() {
+		task.CreatedAt = now
+	}
+	if task.MaxAttempts <= 0 {
+		task.MaxAttempts = 6
+	}
+	if task.NextAttemptAt.IsZero() {
+		task.NextAttemptAt = now
+	}
+	if strings.TrimSpace(task.Status) == "" {
+		task.Status = models.DeployTaskStatusPending
+	}
+	task.UpdatedAt = now
+	if task.Status == models.DeployTaskStatusPending {
+		task.CompletedAt = time.Time{}
+	}
+
+	filter := bson.M{"serverId": strings.TrimSpace(task.ServerID)}
+	update := bson.M{
+		"$set": bson.M{
+			"tenantId":            task.TenantID,
+			"serverId":            task.ServerID,
+			"requestedBy":         task.RequestedBy,
+			"preferredWorkflowId": task.PreferredWorkflowID,
+			"deploymentTarget":    task.DeploymentTarget,
+			"status":              task.Status,
+			"attemptCount":        task.AttemptCount,
+			"maxAttempts":         task.MaxAttempts,
+			"nextAttemptAt":       task.NextAttemptAt,
+			"lastError":           task.LastError,
+			"updatedAt":           task.UpdatedAt,
+			"completedAt":         task.CompletedAt,
+		},
+		"$setOnInsert": bson.M{
+			"id":        task.ID,
+			"createdAt": task.CreatedAt,
+		},
+	}
+	opts := options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
+	var out models.DeployTask
+	if err := s.deployTasks.FindOneAndUpdate(ctx, filter, update, opts).Decode(&out); err != nil {
+		return task
+	}
+	return out
+}
+
+func (s *MongoStore) GetDeployTaskByServer(serverID string) (models.DeployTask, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+
+	var task models.DeployTask
+	err := s.deployTasks.FindOne(ctx, bson.M{"serverId": strings.TrimSpace(serverID)}).Decode(&task)
+	if err != nil {
+		return models.DeployTask{}, false
+	}
+	return task, true
+}
+
+func (s *MongoStore) ListDueDeployTasks(now time.Time, limit int) []models.DeployTask {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+
+	filter := bson.M{
+		"status":        models.DeployTaskStatusPending,
+		"nextAttemptAt": bson.M{"$lte": now},
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "nextAttemptAt", Value: 1}, {Key: "createdAt", Value: 1}})
+	if limit > 0 {
+		opts.SetLimit(int64(limit))
+	}
+	cur, err := s.deployTasks.Find(ctx, filter, opts)
+	if err != nil {
+		return []models.DeployTask{}
+	}
+	items, err := decodeAll[models.DeployTask](cur)
+	if err != nil {
+		return []models.DeployTask{}
+	}
+	return items
+}
+
+func (s *MongoStore) UpdateDeployTask(task models.DeployTask) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+
+	if task.UpdatedAt.IsZero() {
+		task.UpdatedAt = time.Now().UTC()
+	}
+	res, err := s.deployTasks.ReplaceOne(ctx, bson.M{"id": task.ID}, task)
 	if err != nil {
 		return false
 	}

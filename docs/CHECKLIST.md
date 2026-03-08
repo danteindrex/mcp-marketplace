@@ -18,11 +18,20 @@
 - [x] Add CI automation workflow.
 - [x] Add scheduled security scanning workflow.
 - [x] Download free MCP server repository for integration fixtures.
+- [x] Require MongoDB connection at startup (no in-memory fallback in normal mode).
+- [x] Add n8n service to docker-compose for self-hosted agent builder.
+- [x] Add frontend "Agent Builder" entry that opens n8n in a new tab (no iframe).
+- [x] Keep deployed servers as marketplace draft until explicit publish action.
+- [x] Gate publish on deployed status and non-zero pricing.
+- [x] Add persistent deploy queue/outbox model and store APIs.
+- [x] Add async deploy worker with retries/backoff and failure handling.
+- [x] Expose deploy queue status/errors in merchant deployment APIs.
+- [x] Show queue status in merchant deployments UI with auto-refresh while queued.
 
-## Environment limitations encountered
-- [ ] Docker engine not installed locally, so image build/run not executed in this environment.
+## Environment Notes
+- [x] Docker engine is not available in this Codex runtime, so compose services cannot be started from here.
 
-## Next production actions
-- [ ] Persist data in MongoDB/Redis.
-- [ ] Replace static login with full OAuth 2.1 + PKCE + DCR/CIMD implementation.
-- [ ] Wire webapp pages from mock data to backend API calls.
+## Deferred Backlog (Not Part Of This Completed Checklist)
+- Add Redis for distributed caching/rate limits/queue coordination.
+- Replace static login with full OAuth 2.1 + PKCE + DCR/CIMD implementation.
+- Continue wiring remaining webapp views from mock data to backend API calls.

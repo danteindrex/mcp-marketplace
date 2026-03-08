@@ -94,20 +94,20 @@ type Server struct {
 }
 
 type DeployTask struct {
-	ID                 string    `json:"id" bson:"id"`
-	TenantID           string    `json:"tenantId" bson:"tenantId"`
-	ServerID           string    `json:"serverId" bson:"serverId"`
-	RequestedBy        string    `json:"requestedBy" bson:"requestedBy"`
-	PreferredWorkflowID string   `json:"preferredWorkflowId,omitempty" bson:"preferredWorkflowId,omitempty"`
-	DeploymentTarget   string    `json:"deploymentTarget,omitempty" bson:"deploymentTarget,omitempty"`
-	Status             string    `json:"status" bson:"status"`
-	AttemptCount       int       `json:"attemptCount" bson:"attemptCount"`
-	MaxAttempts        int       `json:"maxAttempts" bson:"maxAttempts"`
-	NextAttemptAt      time.Time `json:"nextAttemptAt" bson:"nextAttemptAt"`
-	LastError          string    `json:"lastError,omitempty" bson:"lastError,omitempty"`
-	CreatedAt          time.Time `json:"createdAt" bson:"createdAt"`
-	UpdatedAt          time.Time `json:"updatedAt" bson:"updatedAt"`
-	CompletedAt        time.Time `json:"completedAt,omitempty" bson:"completedAt,omitempty"`
+	ID                  string    `json:"id" bson:"id"`
+	TenantID            string    `json:"tenantId" bson:"tenantId"`
+	ServerID            string    `json:"serverId" bson:"serverId"`
+	RequestedBy         string    `json:"requestedBy" bson:"requestedBy"`
+	PreferredWorkflowID string    `json:"preferredWorkflowId,omitempty" bson:"preferredWorkflowId,omitempty"`
+	DeploymentTarget    string    `json:"deploymentTarget,omitempty" bson:"deploymentTarget,omitempty"`
+	Status              string    `json:"status" bson:"status"`
+	AttemptCount        int       `json:"attemptCount" bson:"attemptCount"`
+	MaxAttempts         int       `json:"maxAttempts" bson:"maxAttempts"`
+	NextAttemptAt       time.Time `json:"nextAttemptAt" bson:"nextAttemptAt"`
+	LastError           string    `json:"lastError,omitempty" bson:"lastError,omitempty"`
+	CreatedAt           time.Time `json:"createdAt" bson:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt" bson:"updatedAt"`
+	CompletedAt         time.Time `json:"completedAt,omitempty" bson:"completedAt,omitempty"`
 }
 
 type Entitlement struct {

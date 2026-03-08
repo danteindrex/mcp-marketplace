@@ -49,14 +49,18 @@ func (a *App) getMerchantServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.normalizeServerLifecycleForView(&server)
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	response := map[string]interface{}{
 		"server": server,
 		"lifecycle": map[string]interface{}{
 			"marketplaceStatus": server.Status,
 			"deploymentStatus":  server.DeploymentStatus,
 			"canPublish":        server.DeploymentStatus == models.ServerDeploymentDeployed && server.PricingAmount > 0,
 		},
-	})
+	}
+	if task, exists := a.store.GetDeployTaskByServer(server.ID); exists {
+		response["queue"] = task
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 type createServerRequest struct {
@@ -232,6 +236,8 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
+	a.normalizeServerLifecycleForView(&server)
+
 	if strings.TrimSpace(req.DeploymentTarget) != "" {
 		server.DeploymentTarget = strings.TrimSpace(req.DeploymentTarget)
 	}
@@ -242,25 +248,70 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 		server.N8nWorkflowURL = strings.TrimSpace(req.N8nWorkflowURL)
 	}
 
-	n8nResult := n8nDeployResult{}
+	now := time.Now().UTC()
 	if a.n8n != nil && a.n8n.configured() {
-		result, err := a.n8n.deployWorkflow(r.Context(), server, req.N8nWorkflowID)
-		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{
-				"error": "failed to deploy workflow in n8n: " + err.Error(),
-			})
-			return
+		preferredWorkflowID := strings.TrimSpace(req.N8nWorkflowID)
+		if preferredWorkflowID == "" {
+			preferredWorkflowID = strings.TrimSpace(server.N8nWorkflowID)
 		}
-		n8nResult = result
-		if strings.TrimSpace(result.WorkflowID) != "" {
-			server.N8nWorkflowID = strings.TrimSpace(result.WorkflowID)
+		task := a.store.UpsertDeployTaskByServer(models.DeployTask{
+			TenantID:            claims.TenantID,
+			ServerID:            server.ID,
+			RequestedBy:         claims.UserID,
+			PreferredWorkflowID: preferredWorkflowID,
+			DeploymentTarget:    server.DeploymentTarget,
+			Status:              models.DeployTaskStatusPending,
+			AttemptCount:        0,
+			MaxAttempts:         6,
+			NextAttemptAt:       now,
+			LastError:           "",
+		})
+		server.DeploymentStatus = models.ServerDeploymentQueued
+		if server.Status != models.ServerStatusPublished {
+			server.Status = models.ServerStatusDraft
+			server.PublishedAt = time.Time{}
 		}
-		if strings.TrimSpace(result.WorkflowURL) != "" {
-			server.N8nWorkflowURL = strings.TrimSpace(result.WorkflowURL)
-		}
+		server.UpdatedAt = now
+		a.store.UpdateServer(server)
+		a.store.AddAuditLog(models.AuditLog{
+			TenantID:   claims.TenantID,
+			ActorID:    claims.UserID,
+			Action:     "server.deploy.queued",
+			TargetType: "server",
+			TargetID:   server.ID,
+			Outcome:    "success",
+			Metadata: map[string]interface{}{
+				"taskId":            task.ID,
+				"deploymentStatus":  server.DeploymentStatus,
+				"marketplaceStatus": server.Status,
+				"workflowId":        server.N8nWorkflowID,
+				"workflowUrl":       server.N8nWorkflowURL,
+			},
+		})
+		a.triggerDeployWorker()
+		writeJSON(w, http.StatusAccepted, map[string]interface{}{
+			"server": server,
+			"lifecycle": map[string]interface{}{
+				"marketplaceStatus": server.Status,
+				"deploymentStatus":  server.DeploymentStatus,
+				"canPublish":        false,
+			},
+			"queue": map[string]interface{}{
+				"taskId":        task.ID,
+				"status":        task.Status,
+				"attemptCount":  task.AttemptCount,
+				"maxAttempts":   task.MaxAttempts,
+				"nextAttemptAt": task.NextAttemptAt,
+			},
+			"n8n": map[string]interface{}{
+				"configured":  true,
+				"workflowId":  server.N8nWorkflowID,
+				"workflowUrl": server.N8nWorkflowURL,
+			},
+		})
+		return
 	}
 
-	now := time.Now().UTC()
 	server.DeploymentStatus = models.ServerDeploymentDeployed
 	server.DeployedAt = now
 	server.DeployedBy = claims.UserID
@@ -283,7 +334,6 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 			"marketplaceStatus": server.Status,
 			"workflowId":        server.N8nWorkflowID,
 			"workflowUrl":       server.N8nWorkflowURL,
-			"webhookPath":       n8nResult.WebhookPath,
 		},
 	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -294,10 +344,9 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 			"canPublish":        server.PricingAmount > 0,
 		},
 		"n8n": map[string]interface{}{
-			"configured":  a.n8n != nil && a.n8n.configured(),
+			"configured":  false,
 			"workflowId":  server.N8nWorkflowID,
 			"workflowUrl": server.N8nWorkflowURL,
-			"webhookPath": n8nResult.WebhookPath,
 		},
 	})
 }

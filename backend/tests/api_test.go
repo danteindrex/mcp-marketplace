@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/yourorg/mcp-marketplace/backend/internal/auth"
 	"github.com/yourorg/mcp-marketplace/backend/internal/config"
@@ -476,15 +477,32 @@ func TestMerchantDeploySyncsWithN8NWhenConfigured(t *testing.T) {
 	serverID := createdBody["id"].(string)
 
 	deploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/deploy", merchantToken, nil)
-	if deploy.Code != http.StatusOK {
+	if deploy.Code != http.StatusAccepted {
 		t.Fatalf("deploy status %d body=%s", deploy.Code, deploy.Body.String())
 	}
 
-	var deployBody map[string]interface{}
-	_ = json.Unmarshal(deploy.Body.Bytes(), &deployBody)
-	serverObj := deployBody["server"].(map[string]interface{})
-	if strings.TrimSpace(serverObj["n8nWorkflowId"].(string)) != "wf_test_123" {
-		t.Fatalf("expected n8n workflow id to be persisted, got body=%s", deploy.Body.String())
+	deadline := time.Now().Add(3 * time.Second)
+	workflowPersisted := false
+	for time.Now().Before(deadline) {
+		serverRes := call(t, h, http.MethodGet, "/v1/merchant/servers/"+serverID, merchantToken, nil)
+		if serverRes.Code != http.StatusOK {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		var serverBody map[string]interface{}
+		_ = json.Unmarshal(serverRes.Body.Bytes(), &serverBody)
+		serverObj := serverBody["server"].(map[string]interface{})
+		workflowID, _ := serverObj["n8nWorkflowId"].(string)
+		deploymentStatus, _ := serverObj["deploymentStatus"].(string)
+		if strings.TrimSpace(workflowID) == "wf_test_123" &&
+			strings.TrimSpace(deploymentStatus) == "deployed" {
+			workflowPersisted = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !workflowPersisted {
+		t.Fatalf("expected queued deploy to complete and persist n8n workflow id")
 	}
 	if atomic.LoadInt32(&createCalls) == 0 || atomic.LoadInt32(&activateCalls) == 0 {
 		t.Fatalf("expected n8n create+activate calls, got create=%d activate=%d", createCalls, activateCalls)
@@ -1107,5 +1125,131 @@ func TestFeePolicyPayoutProfileAndPayoutRun(t *testing.T) {
 	merchantPayouts := call(t, h, http.MethodGet, "/v1/merchant/payments/payouts", merchantToken, nil)
 	if merchantPayouts.Code != http.StatusOK {
 		t.Fatalf("merchant payouts status %d body=%s", merchantPayouts.Code, merchantPayouts.Body.String())
+	}
+}
+
+func TestPaidInstallFlowAndInstallAutoSettle(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "installpay-buyer@acme.local", "BuyerPass123!@", "buyer")
+	signup(t, h, "installpay-merchant@acme.local", "MerchantPass123!@", "merchant")
+	buyerToken := login(t, h, "installpay-buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "installpay-merchant@acme.local", "MerchantPass123!@")
+
+	controls := call(t, h, http.MethodPut, "/v1/buyer/payments/controls", buyerToken, map[string]interface{}{
+		"allowedMethods":     []string{"wallet_balance"},
+		"minimumBalanceUsdc": 0.0,
+		"hardStopOnLowFunds": false,
+		"walletAddress":      "0xinstallpaybuyer",
+	})
+	if controls.Code != http.StatusOK {
+		t.Fatalf("update buyer controls status %d body=%s", controls.Code, controls.Body.String())
+	}
+
+	topup := call(t, h, http.MethodPost, "/v1/buyer/payments/topups/stripe/session", buyerToken, map[string]interface{}{
+		"amountUsd":     15.0,
+		"walletAddress": "0xinstallpaybuyer",
+	})
+	if topup.Code != http.StatusCreated {
+		t.Fatalf("create topup session status %d body=%s", topup.Code, topup.Body.String())
+	}
+	var topupBody map[string]interface{}
+	_ = json.Unmarshal(topup.Body.Bytes(), &topupBody)
+	topupObj := topupBody["topup"].(map[string]interface{})
+	providerSessionID := topupObj["providerSessionId"].(string)
+	webhook := call(t, h, http.MethodPost, "/webhooks/stripe/onramp", "", map[string]interface{}{
+		"id":   "evt_test_installpay_1",
+		"type": "crypto.onramp_session_updated",
+		"data": map[string]interface{}{
+			"object": map[string]interface{}{
+				"id":                 providerSessionID,
+				"status":             "fulfillment_complete",
+				"destination_amount": 15.0,
+			},
+		},
+	})
+	if webhook.Code != http.StatusOK {
+		t.Fatalf("stripe webhook status %d body=%s", webhook.Code, webhook.Body.String())
+	}
+
+	createdA := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Paid Install A",
+		"slug":                 "paid-install-a",
+		"description":          "Paid install A",
+		"category":             "ai",
+		"dockerImage":          "tenant/paid-install-a:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/paid-install-a",
+		"requiredScopes":       []string{"documents:read"},
+		"pricingType":          "x402",
+		"pricingAmount":        0.5,
+		"status":               "published",
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+		"paymentMethods":       []string{"wallet_balance"},
+	})
+	if createdA.Code != http.StatusCreated {
+		t.Fatalf("create server A status %d body=%s", createdA.Code, createdA.Body.String())
+	}
+	var createdABody map[string]interface{}
+	_ = json.Unmarshal(createdA.Body.Bytes(), &createdABody)
+	slugA := createdABody["slug"].(string)
+
+	installNeedsPayment := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+slugA+"/install", buyerToken, map[string]interface{}{
+		"client":        "vscode",
+		"paymentMethod": "wallet_balance",
+	})
+	if installNeedsPayment.Code != http.StatusPaymentRequired {
+		t.Fatalf("expected 402 for paid install without entitlement, got %d body=%s", installNeedsPayment.Code, installNeedsPayment.Body.String())
+	}
+	var installNeedBody map[string]interface{}
+	_ = json.Unmarshal(installNeedsPayment.Body.Bytes(), &installNeedBody)
+	intentObj, _ := installNeedBody["intent"].(map[string]interface{})
+	intentID, _ := intentObj["id"].(string)
+	if intentID == "" {
+		t.Fatalf("expected payment-required install response to include intent id: %s", installNeedsPayment.Body.String())
+	}
+
+	settle := call(t, h, http.MethodPost, "/v1/billing/x402/intents/"+intentID+"/settle", buyerToken, nil)
+	if settle.Code != http.StatusOK {
+		t.Fatalf("settle install intent status %d body=%s", settle.Code, settle.Body.String())
+	}
+
+	installAfterPay := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+slugA+"/install", buyerToken, map[string]interface{}{
+		"client":        "vscode",
+		"paymentMethod": "wallet_balance",
+	})
+	if installAfterPay.Code != http.StatusCreated {
+		t.Fatalf("expected install success after payment settle, got %d body=%s", installAfterPay.Code, installAfterPay.Body.String())
+	}
+
+	createdB := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Paid Install B",
+		"slug":                 "paid-install-b",
+		"description":          "Paid install B",
+		"category":             "ai",
+		"dockerImage":          "tenant/paid-install-b:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/paid-install-b",
+		"requiredScopes":       []string{"documents:read"},
+		"pricingType":          "x402",
+		"pricingAmount":        0.25,
+		"status":               "published",
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+		"paymentMethods":       []string{"wallet_balance"},
+	})
+	if createdB.Code != http.StatusCreated {
+		t.Fatalf("create server B status %d body=%s", createdB.Code, createdB.Body.String())
+	}
+	var createdBBody map[string]interface{}
+	_ = json.Unmarshal(createdB.Body.Bytes(), &createdBBody)
+	slugB := createdBBody["slug"].(string)
+
+	autoSettleInstall := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+slugB+"/install", buyerToken, map[string]interface{}{
+		"client":        "vscode",
+		"paymentMethod": "wallet_balance",
+		"autoSettle":    true,
+		"toolName":      "install_paid_install_b",
+	})
+	if autoSettleInstall.Code != http.StatusCreated {
+		t.Fatalf("expected auto-settle install success, got %d body=%s", autoSettleInstall.Code, autoSettleInstall.Body.String())
 	}
 }

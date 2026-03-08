@@ -103,6 +103,27 @@ export interface InstallSession {
   }
 }
 
+export interface InstallPaymentRequired {
+  error: string
+  intent: {
+    id: string
+    serverId: string
+    toolName: string
+    amountUsdc: number
+    paymentMethod?: string
+    status: string
+  }
+  requirement?: any
+  wallet?: {
+    balanceUsdc?: number
+    minimumBalanceUsdc?: number
+  }
+}
+
+export type InstallResult =
+  | { type: 'installed'; session: InstallSession }
+  | { type: 'payment_required'; payment: InstallPaymentRequired }
+
 export interface Connection {
   id: string
   userId: string
@@ -400,9 +421,36 @@ export async function createConnection(payload: { client: string; resource: stri
 
 export async function installMarketplaceServer(
   slug: string,
-  payload: { client: string; grantedScopes?: string[] },
-): Promise<InstallSession> {
-  return apiPost(`/v1/marketplace/servers/${slug}/install`, payload, 'buyer')
+  payload: {
+    client: string
+    grantedScopes?: string[]
+    paymentMethod?: string
+    autoSettle?: boolean
+    paymentResponse?: Record<string, unknown>
+    idempotencyKey?: string
+    toolName?: string
+  },
+): Promise<InstallResult> {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/v1/marketplace/servers/${slug}/install`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    credentials: 'include',
+  })
+  const body = await res.json().catch(() => ({}))
+  if (res.status === 402) {
+    return {
+      type: 'payment_required',
+      payment: body as InstallPaymentRequired,
+    }
+  }
+  if (!res.ok) {
+    throw new Error((body as any)?.error || `Install failed (${res.status})`)
+  }
+  return {
+    type: 'installed',
+    session: body as InstallSession,
+  }
 }
 
 export async function fetchBuyerHub() {
@@ -486,6 +534,45 @@ export async function createStripeTopUpSession(payload: {
   paymentMethod?: string
 }) {
   return apiPost('/v1/buyer/payments/topups/stripe/session', payload, 'buyer')
+}
+
+export async function createX402Intent(payload: {
+  serverId: string
+  toolName: string
+  amount?: number
+  paymentMethod?: string
+  idempotencyKey?: string
+}) {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/v1/billing/x402/intents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    credentials: 'include',
+  })
+  const body = await res.json().catch(() => ({}))
+  if (res.status === 402) return body
+  if (!res.ok) throw new Error((body as any)?.error || `Intent create failed (${res.status})`)
+  return body
+}
+
+export async function settleX402Intent(
+  intentId: string,
+  payload?: { paymentResponse?: Record<string, unknown> },
+) {
+  const body = payload || {}
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/v1/billing/x402/intents/${intentId}/settle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'include',
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((json as any)?.error || `Intent settlement failed (${res.status})`)
+  return json
+}
+
+export async function fetchX402Intents() {
+  return apiGet<{ items: any[]; count: number }>('/v1/billing/x402/intents', 'buyer')
 }
 
 export async function fetchSecurityEvents(severity?: string): Promise<SecurityEvent[]> {
@@ -689,7 +776,19 @@ export async function fetchServerObservability(id: string) {
 }
 
 export async function fetchServerDeployments(id: string) {
-  return apiGet<{ items: any[]; lifecycle?: ServerLifecycle; n8n?: { workflowId?: string; workflowUrl?: string } }>(
+  return apiGet<{
+    items: any[]
+    lifecycle?: ServerLifecycle
+    n8n?: { workflowId?: string; workflowUrl?: string }
+    queue?: {
+      taskId?: string
+      status?: string
+      attemptCount?: number
+      maxAttempts?: number
+      nextAttemptAt?: string
+      lastError?: string
+    }
+  }>(
     `/v1/merchant/servers/${id}/deployments`,
     'merchant',
   )

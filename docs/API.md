@@ -33,6 +33,8 @@ Base URL: `http://localhost:8080`
 ## Authenticated routes (`/v1`)
 - `GET /v1/me`
 - `POST /v1/marketplace/servers/{slug}/install`
+  - For paid servers, may return `402` with `{ intent, requirement }`.
+  - Supports payment-assisted install payload fields: `paymentMethod`, `autoSettle`, `paymentResponse`, `idempotencyKey`, `toolName`.
 
 ### Settings
 - `GET /v1/settings/profile`
@@ -89,7 +91,7 @@ Base URL: `http://localhost:8080`
 
 ### Merchant lifecycle notes
 - New servers default to marketplace `draft` and deployment `not_deployed`.
-- `POST /deploy` keeps listing in draft and marks deployment as active.
+- `POST /deploy` keeps listing in draft; with n8n configured it queues an async deployment task (`202 Accepted`) and retries automatically.
 - `POST /publish` requires deployment to be active and `pricingAmount > 0`.
 - Public marketplace endpoints only return `published` listings.
 
