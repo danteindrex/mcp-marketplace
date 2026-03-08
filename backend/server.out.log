@@ -38,3 +38,14 @@
 2026/03/07 09:12:41 [DESKTOP-JFVG6LS/PLDMyA0B6K-000038] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:55301 - 200 23B in 0s
 2026/03/07 14:14:19 [DESKTOP-JFVG6LS/PLDMyA0B6K-000039] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:59122 - 200 23B in 527.9µs
 2026/03/07 14:14:19 [DESKTOP-JFVG6LS/PLDMyA0B6K-000040] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:59123 - 200 23B in 536.1µs
+2026/03/07 11:43:05 [DESKTOP-JFVG6LS/PLDMyA0B6K-000041] "POST http://localhost:8080/auth/login HTTP/1.1" from [::1]:61397 - 401 32B in 14.7001ms
+2026/03/07 11:43:27 [DESKTOP-JFVG6LS/PLDMyA0B6K-000042] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:61399 - 200 23B in 5.6071ms
+2026/03/07 11:43:27 [DESKTOP-JFVG6LS/PLDMyA0B6K-000043] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:61400 - 200 23B in 331.7µs
+2026/03/08 04:23:41 [DESKTOP-JFVG6LS/PLDMyA0B6K-000044] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:52041 - 200 23B in 4.5353ms
+2026/03/08 04:23:41 [DESKTOP-JFVG6LS/PLDMyA0B6K-000045] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:52042 - 200 23B in 249.5µs
+2026/03/08 04:27:05 [DESKTOP-JFVG6LS/PLDMyA0B6K-000046] "GET http://localhost:8080/v1/me HTTP/1.1" from [::1]:52042 - 401 33B in 1.5532ms
+2026/03/08 04:27:05 [DESKTOP-JFVG6LS/PLDMyA0B6K-000047] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:52041 - 200 23B in 0s
+2026/03/08 04:27:05 [DESKTOP-JFVG6LS/PLDMyA0B6K-000048] "GET http://localhost:8080/v1/me HTTP/1.1" from [::1]:52042 - 401 33B in 0s
+2026/03/08 04:27:05 [DESKTOP-JFVG6LS/PLDMyA0B6K-000049] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:52041 - 200 23B in 722.1µs
+2026/03/08 04:36:15 [DESKTOP-JFVG6LS/PLDMyA0B6K-000050] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:52171 - 200 23B in 0s
+2026/03/08 04:36:15 [DESKTOP-JFVG6LS/PLDMyA0B6K-000051] "GET http://localhost:8080/v1/marketplace/servers HTTP/1.1" from [::1]:52172 - 200 23B in 0s
