@@ -220,7 +220,7 @@ func (a *App) oauthToken(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "user_not_found"})
 		return
 	}
-	accessToken, err := a.jwt.Generate(user)
+	accessToken, err := a.jwt.GenerateOAuthAccessToken(user, resource, ac.Scopes)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token_generation_failed"})
 		return

@@ -56,7 +56,10 @@ func (a *App) buyerPaymentControls(w http.ResponseWriter, r *http.Request) {
 			policy.LastTopUpAt = existing.LastTopUpAt
 		}
 		if len(policy.AllowedMethods) == 0 {
-			policy.AllowedMethods = a.supportedMethodsOrDefault()
+			policy.AllowedMethods = a.defaultAllowedPaymentMethods()
+		} else if err := a.validateEnabledPaymentMethods(policy.AllowedMethods); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
 		}
 		if policy.FundingMethod == "" {
 			policy.FundingMethod = "stripe_onramp"
@@ -124,7 +127,10 @@ func (a *App) merchantServerPaymentConfig(w http.ResponseWriter, r *http.Request
 		}
 		server.PaymentMethods = normalizePaymentMethods(req.PaymentMethods)
 		if len(server.PaymentMethods) == 0 {
-			server.PaymentMethods = normalizePaymentMethods(a.cfg.SupportedPayMethods)
+			server.PaymentMethods = a.defaultAllowedPaymentMethods()
+		} else if err := a.validateEnabledPaymentMethods(server.PaymentMethods); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
 		}
 		server.PaymentAddress = strings.TrimSpace(req.PaymentAddress)
 		server.PerCallCapUSDC = req.PerCallCapUSDC

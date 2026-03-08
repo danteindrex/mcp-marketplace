@@ -122,7 +122,11 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:            now,
 	}
 	if len(server.PaymentMethods) == 0 {
-		server.PaymentMethods = a.supportedMethodsOrDefault()
+		server.PaymentMethods = a.defaultAllowedPaymentMethods()
+	}
+	if err := a.validateEnabledPaymentMethods(server.PaymentMethods); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
 	}
 	if status == models.ServerStatusPublished {
 		server.DeploymentStatus = models.ServerDeploymentDeployed
@@ -172,6 +176,10 @@ func (a *App) updateMerchantServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.PaymentMethods) > 0 {
 		server.PaymentMethods = normalizePaymentMethods(req.PaymentMethods)
+		if err := a.validateEnabledPaymentMethods(server.PaymentMethods); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 	if strings.TrimSpace(req.PaymentAddress) != "" {
 		server.PaymentAddress = strings.TrimSpace(req.PaymentAddress)

@@ -150,13 +150,21 @@ func (a *App) securityHeaders(next http.Handler) http.Handler {
 }
 
 func (a *App) authenticate(next http.Handler) http.Handler {
+	return a.authenticateWithPurpose(auth.TokenPurposeAppAuth, next)
+}
+
+func (a *App) authenticateOAuthAccess(next http.Handler) http.Handler {
+	return a.authenticateWithPurpose(auth.TokenPurposeOAuthAccess, next)
+}
+
+func (a *App) authenticateWithPurpose(expectedPurpose string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := tokenFromRequest(r)
 		if token == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
 			return
 		}
-		claims, err := a.jwt.Parse(token)
+		claims, err := a.jwt.ParseForPurpose(token, expectedPurpose)
 		if err != nil {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 			return

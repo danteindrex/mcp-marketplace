@@ -67,8 +67,8 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 	r.Post("/oauth/register", app.oauthRegisterClient)
 	r.With(app.authenticate).Get("/oauth/authorize", app.oauthAuthorize)
 	r.Post("/oauth/token", app.oauthToken)
-	r.With(app.authenticate).Get("/mcp/hub/{tenantID}/{userID}", app.mcpHub)
-	r.With(app.authenticate).Post("/mcp/hub/{tenantID}/{userID}", app.mcpHub)
+	r.With(app.authenticateOAuthAccess).Get("/mcp/hub/{tenantID}/{userID}", app.mcpHub)
+	r.With(app.authenticateOAuthAccess).Post("/mcp/hub/{tenantID}/{userID}", app.mcpHub)
 
 	r.Route("/v1", func(v1 chi.Router) {
 		v1.Get("/marketplace/servers", app.listMarketplaceServers)

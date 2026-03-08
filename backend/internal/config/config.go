@@ -9,7 +9,6 @@ import (
 
 type Config struct {
 	Port                       string
-	JWTSecret                  string
 	JWTPrivateKeyPEM           string
 	JWTPublicKeyPEM            string
 	JWTKeyID                   string
@@ -52,10 +51,6 @@ func Load() Config {
 	if port == "" {
 		port = "8080"
 	}
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" && allowInsecureDefaults {
-		secret = "change-me-in-production"
-	}
 	jwtPrivateKeyPEM := strings.TrimSpace(os.Getenv("JWT_PRIVATE_KEY_PEM"))
 	jwtPublicKeyPEM := strings.TrimSpace(os.Getenv("JWT_PUBLIC_KEY_PEM"))
 	jwtKeyID := strings.TrimSpace(os.Getenv("JWT_KEY_ID"))
@@ -77,7 +72,7 @@ func Load() Config {
 	facilitatorAPIKey := strings.TrimSpace(os.Getenv("X402_FACILITATOR_API_KEY"))
 	payMethodsCSV := os.Getenv("SUPPORTED_PAYMENT_METHODS")
 	if payMethodsCSV == "" {
-		payMethodsCSV = "x402_wallet,wallet_balance,coinbase_commerce,stripe"
+		payMethodsCSV = "x402_wallet,wallet_balance"
 	}
 	supportedPayMethods := splitAndTrim(payMethodsCSV)
 	stripeSecretKey := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
@@ -130,7 +125,6 @@ func Load() Config {
 	trustProxyHeaders := parseBool(os.Getenv("TRUST_PROXY_HEADERS"), false)
 	return Config{
 		Port:                       port,
-		JWTSecret:                  secret,
 		JWTPrivateKeyPEM:           jwtPrivateKeyPEM,
 		JWTPublicKeyPEM:            jwtPublicKeyPEM,
 		JWTKeyID:                   jwtKeyID,
@@ -186,16 +180,23 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.MongoURI) == "" {
 		return fmt.Errorf("MONGO_URI must be set (in-memory fallback is disabled)")
 	}
-	hasJWTSecret := strings.TrimSpace(c.JWTSecret) != "" && c.JWTSecret != "change-me-in-production"
 	hasJWTKeys := strings.TrimSpace(c.JWTPrivateKeyPEM) != "" && strings.TrimSpace(c.JWTPublicKeyPEM) != ""
 	if c.AllowInsecureDefaults {
 		return nil
 	}
-	if !hasJWTSecret && !hasJWTKeys {
-		return fmt.Errorf("JWT_SECRET or both JWT_PRIVATE_KEY_PEM and JWT_PUBLIC_KEY_PEM must be set")
+	if !hasJWTKeys {
+		return fmt.Errorf("JWT_PRIVATE_KEY_PEM and JWT_PUBLIC_KEY_PEM must be set")
 	}
 	if strings.TrimSpace(c.SuperAdminPassword) == "" || c.SuperAdminPassword == "change-admin-password" {
 		return fmt.Errorf("SUPER_ADMIN_PASSWORD must be set to a secure value")
+	}
+	if strings.TrimSpace(c.StripeSecretKey) != "" {
+		if strings.TrimSpace(c.StripeWebhookSecret) == "" {
+			return fmt.Errorf("STRIPE_WEBHOOK_SECRET must be set when STRIPE_SECRET_KEY is set")
+		}
+		if strings.TrimSpace(c.StripeConnectWebhookSecret) == "" {
+			return fmt.Errorf("STRIPE_CONNECT_WEBHOOK_SECRET must be set when STRIPE_SECRET_KEY is set")
+		}
 	}
 	return nil
 }

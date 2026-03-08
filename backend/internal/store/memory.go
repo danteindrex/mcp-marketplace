@@ -781,7 +781,9 @@ func (s *MemoryStore) CreateX402Intent(intent models.X402Intent) models.X402Inte
 	intent.ID = s.next("x402")
 	intent.CreatedAt = time.Now().UTC()
 	intent.Status = "payment_required"
-	intent.Challenge = "PAYMENT-REQUIRED"
+	if strings.TrimSpace(intent.Challenge) == "" {
+		intent.Challenge = "PAYMENT-REQUIRED"
+	}
 	if intent.Quantity <= 0 {
 		intent.Quantity = 1
 	}

@@ -291,6 +291,13 @@ func (a *App) ensureInstallPayment(
 	if method == "" {
 		method = firstMethod(policy.AllowedMethods)
 	}
+	if !a.isPaymentMethodEnabled(method) {
+		writeJSON(w, http.StatusPaymentRequired, map[string]interface{}{
+			"error":  a.describePaymentMethod(method).Notes,
+			"method": method,
+		})
+		return false, nil
+	}
 	if !hasScope(policy.AllowedMethods, method) {
 		writeJSON(w, http.StatusPaymentRequired, map[string]interface{}{
 			"error":  "payment method is not allowed by buyer policy",

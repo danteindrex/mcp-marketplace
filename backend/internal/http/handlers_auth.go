@@ -7,8 +7,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 	"github.com/pquerna/otp/totp"
+	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -155,7 +155,7 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 		Metadata:   map[string]interface{}{"email": user.Email, "role": roleName(user.Role)},
 	})
 
-	token, err := a.jwt.Generate(user)
+	token, err := a.jwt.GenerateAppToken(user)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
 		return
@@ -225,7 +225,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		Outcome:    "success",
 		Metadata:   map[string]interface{}{"email": user.Email},
 	})
-	token, err := a.jwt.Generate(user)
+	token, err := a.jwt.GenerateAppToken(user)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
 		return

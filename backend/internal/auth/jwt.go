@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -16,10 +17,18 @@ import (
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
 
+const (
+	TokenPurposeAppAuth     = "app_auth"
+	TokenPurposeOAuthAccess = "oauth_access"
+)
+
 type Claims struct {
 	UserID   string      `json:"userId"`
 	TenantID string      `json:"tenantId"`
 	Role     models.Role `json:"role"`
+	Purpose  string      `json:"purpose"`
+	Scopes   []string    `json:"scopes,omitempty"`
+	Resource string      `json:"resource,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -27,6 +36,7 @@ type JWTManager struct {
 	privateKey *rsa.PrivateKey
 	publicKey  *rsa.PublicKey
 	keyID      string
+	issuer     string
 }
 
 type jwk struct {
@@ -56,26 +66,64 @@ func NewJWTManager(cfg config.Config) (*JWTManager, error) {
 		privateKey: privateKey,
 		publicKey:  publicKey,
 		keyID:      keyID,
+		issuer:     strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/"),
 	}, nil
 }
 
 func (j *JWTManager) Generate(user models.User) (string, error) {
+	return j.GenerateAppToken(user)
+}
+
+func (j *JWTManager) GenerateAppToken(user models.User) (string, error) {
 	claims := Claims{
 		UserID:   user.ID,
 		TenantID: user.TenantID,
 		Role:     user.Role,
+		Purpose:  TokenPurposeAppAuth,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.ID,
+			Issuer:    j.issuer,
 			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(8 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
 		},
 	}
+	return j.signClaims(claims)
+}
+
+func (j *JWTManager) GenerateOAuthAccessToken(user models.User, resource string, scopes []string) (string, error) {
+	claims := Claims{
+		UserID:   user.ID,
+		TenantID: user.TenantID,
+		Role:     user.Role,
+		Purpose:  TokenPurposeOAuthAccess,
+		Scopes:   scopes,
+		Resource: resource,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   user.ID,
+			Issuer:    j.issuer,
+			Audience:  jwt.ClaimStrings{resource},
+			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(8 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
+		},
+	}
+	return j.signClaims(claims)
+}
+
+func (j *JWTManager) signClaims(claims Claims) (string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	t.Header["kid"] = j.keyID
 	return t.SignedString(j.privateKey)
 }
 
 func (j *JWTManager) Parse(token string) (*Claims, error) {
+	return j.ParseForPurpose(token, "")
+}
+
+func (j *JWTManager) ParseForPurpose(token string, expectedPurpose string) (*Claims, error) {
+	parserOptions := []jwt.ParserOption{jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()})}
+	if j.issuer != "" {
+		parserOptions = append(parserOptions, jwt.WithIssuer(j.issuer))
+	}
 	parsed, err := jwt.ParseWithClaims(token, &Claims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, errors.New("invalid signing method")
@@ -84,13 +132,19 @@ func (j *JWTManager) Parse(token string) (*Claims, error) {
 			return nil, errors.New("unknown key id")
 		}
 		return j.publicKey, nil
-	})
+	}, parserOptions...)
 	if err != nil {
 		return nil, err
 	}
 	claims, ok := parsed.Claims.(*Claims)
 	if !ok || !parsed.Valid {
 		return nil, errors.New("invalid token")
+	}
+	if expectedPurpose != "" && claims.Purpose != expectedPurpose {
+		return nil, errors.New("invalid token purpose")
+	}
+	if claims.Purpose == "" {
+		return nil, errors.New("missing token purpose")
 	}
 	return claims, nil
 }

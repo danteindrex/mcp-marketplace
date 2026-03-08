@@ -11,16 +11,24 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import {
+  fetchBuyerPaymentControls,
   fetchServerBySlug,
   installMarketplaceServer,
   settleX402Intent,
   checkInstallScopes,
+  type BuyerPaymentControls,
   type InstallPaymentRequired,
   type InstallAction,
   type InstallSession,
   type ScopeCheckResult,
   type Server,
 } from '@/lib/api-client'
+import {
+  getPaymentMethodDescription,
+  getPaymentMethodStatus,
+  getPaymentMethodTitle,
+  isInstallPaymentMethod,
+} from '@/lib/payment-methods'
 
 interface PageProps {
   params: Promise<{ serverId: string }>
@@ -97,9 +105,12 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [installing, setInstalling] = useState(false)
   const [installSession, setInstallSession] = useState<InstallSession | null>(null)
   const [paymentRequired, setPaymentRequired] = useState<InstallPaymentRequired | null>(null)
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'wallet_balance' | 'x402_wallet'>('wallet_balance')
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('')
   const [externalPaymentID, setExternalPaymentID] = useState('')
   const [server, setServer] = useState<Server | null>(null)
+  const [paymentControls, setPaymentControls] = useState<BuyerPaymentControls | null>(null)
+  const [paymentControlsLoading, setPaymentControlsLoading] = useState(true)
+  const [paymentControlsError, setPaymentControlsError] = useState('')
   const [metadataState, setMetadataState] = useState<MetadataState>({ status: 'idle' })
   const [scopeCheckState, setScopeCheckState] = useState<ScopeCheckState>({ status: 'idle' })
   const parsedPaymentChallenge = useMemo(() => {
@@ -114,6 +125,23 @@ export default function InstallWizardPage({ params }: PageProps) {
   useEffect(() => {
     fetchServerBySlug(serverId).then(setServer)
   }, [serverId])
+
+  useEffect(() => {
+    const loadPaymentControls = async () => {
+      try {
+        setPaymentControlsLoading(true)
+        setPaymentControlsError('')
+        const controls = await fetchBuyerPaymentControls()
+        setPaymentControls(controls)
+      } catch (error) {
+        setPaymentControlsError(error instanceof Error ? error.message : 'Unable to load buyer payment controls')
+      } finally {
+        setPaymentControlsLoading(false)
+      }
+    }
+
+    loadPaymentControls()
+  }, [])
 
   useEffect(() => {
     setScopeCheckState({ status: 'idle' })
@@ -175,6 +203,32 @@ export default function InstallWizardPage({ params }: PageProps) {
     }
   }, [server, selectedClient])
 
+  const currentStepIndex = steps.findIndex(s => s.id === currentStep)
+  const currentStepData = steps[currentStepIndex]
+  const selectedAction: InstallAction | null = installSession?.install?.selected || null
+  const allowedMethods = paymentControls?.policy?.allowedMethods || []
+  const installPaymentMethods = (paymentControls?.methods || []).filter(method => isInstallPaymentMethod(method.id))
+  const readyInstallMethods = installPaymentMethods.filter(
+    method => getPaymentMethodStatus(method, allowedMethods).selectable,
+  )
+  const paymentRequiredAheadOfInstall = Boolean(scopeCheckState.result?.paymentRequired)
+  const bridgeInstallCommand = 'powershell -ExecutionPolicy Bypass -File backend\\scripts\\install-local-bridge.ps1'
+  const installActionLabel = (() => {
+    if (selectedAction?.requiresLocalExec && selectedAction?.launchUrl) return 'Run One-Click Install'
+    if (selectedAction?.requiresLocalExec) return 'Run Install Command'
+    return 'Open Installer'
+  })()
+
+  const installToolName = `install_${server?.slug?.replace(/-/g, '_') || 'server'}`
+
+  useEffect(() => {
+    if (!paymentControls) return
+    const defaultMethod = readyInstallMethods[0]?.id || ''
+    if (!selectedPaymentMethod || !readyInstallMethods.some(method => method.id === selectedPaymentMethod)) {
+      setSelectedPaymentMethod(defaultMethod)
+    }
+  }, [paymentControls, readyInstallMethods, selectedPaymentMethod])
+
   if (!server) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -183,18 +237,6 @@ export default function InstallWizardPage({ params }: PageProps) {
       </div>
     )
   }
-
-  const currentStepIndex = steps.findIndex(s => s.id === currentStep)
-  const currentStepData = steps[currentStepIndex]
-  const selectedAction: InstallAction | null = installSession?.install?.selected || null
-  const bridgeInstallCommand = 'powershell -ExecutionPolicy Bypass -File backend\\scripts\\install-local-bridge.ps1'
-  const installActionLabel = (() => {
-    if (selectedAction?.requiresLocalExec && selectedAction?.launchUrl) return 'Run One-Click Install'
-    if (selectedAction?.requiresLocalExec) return 'Run Install Command'
-    return 'Open Installer'
-  })()
-
-  const installToolName = `install_${server.slug.replace(/-/g, '_')}`
 
   const runInstallAttempt = async (autoSettle: boolean) => {
     try {
@@ -205,7 +247,7 @@ export default function InstallWizardPage({ params }: PageProps) {
       const out = await installMarketplaceServer(server.slug, {
         client: selectedClient,
         grantedScopes: grantedScopesToUse,
-        paymentMethod: selectedPaymentMethod,
+        paymentMethod: selectedPaymentMethod || undefined,
         autoSettle,
         toolName: installToolName,
       })
@@ -258,6 +300,8 @@ export default function InstallWizardPage({ params }: PageProps) {
         return (metadataState.status === 'ready' || manualAuthOverride) && authConfirmed
       case 'scopes':
         return acceptedScopes
+      case 'connect':
+        return !paymentRequiredAheadOfInstall || Boolean(selectedPaymentMethod)
       default:
         return true
     }
@@ -494,20 +538,44 @@ export default function InstallWizardPage({ params }: PageProps) {
                       </div>
                     </div>
                     <div className="space-y-2 pt-2 border-t border-border">
-                      <p className="text-xs text-muted-foreground">Payment Method For Paid Servers</p>
-                      <RadioGroup
-                        value={selectedPaymentMethod}
-                        onValueChange={value => setSelectedPaymentMethod(value as 'wallet_balance' | 'x402_wallet')}
-                      >
-                        <div className="flex items-center gap-2">
-                          <RadioGroupItem value="wallet_balance" id="wallet_balance" />
-                          <Label htmlFor="wallet_balance">wallet_balance (auto-pay from prepaid wallet)</Label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <RadioGroupItem value="x402_wallet" id="x402_wallet" />
-                          <Label htmlFor="x402_wallet">x402_wallet (external wallet payment-response)</Label>
-                        </div>
-                      </RadioGroup>
+                      <p className="text-xs text-muted-foreground">Install payment methods from buyer payment controls</p>
+                      {paymentControlsLoading ? (
+                        <p className="text-sm text-muted-foreground">Loading payment readiness...</p>
+                      ) : paymentControlsError ? (
+                        <p className="text-sm text-destructive">{paymentControlsError}</p>
+                      ) : installPaymentMethods.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No install-capable payment methods were returned by the API.</p>
+                      ) : (
+                        <RadioGroup value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
+                          {installPaymentMethods.map(method => {
+                            const readiness = getPaymentMethodStatus(method, allowedMethods)
+                            const disabled = !readiness.selectable
+
+                            return (
+                              <label
+                                key={method.id}
+                                htmlFor={method.id}
+                                className={`flex items-start gap-3 rounded-lg border border-border p-4 ${disabled ? 'opacity-70' : 'cursor-pointer'}`}
+                              >
+                                <RadioGroupItem value={method.id} id={method.id} disabled={disabled} />
+                                <div className="flex-1 space-y-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="font-medium">{getPaymentMethodTitle(method)}</p>
+                                    <Badge variant={readiness.tone}>{readiness.label}</Badge>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{getPaymentMethodDescription(method)}</p>
+                                  <p className="text-xs text-muted-foreground">{readiness.description}</p>
+                                </div>
+                              </label>
+                            )
+                          })}
+                        </RadioGroup>
+                      )}
+                      {paymentRequiredAheadOfInstall && readyInstallMethods.length === 0 && !paymentControlsLoading && !paymentControlsError && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Scope validation says payment will be required, but no allowed method is ready. Open billing to enable or fund one first.
+                        </p>
+                      )}
                     </div>
                   </Card>
                   {installing && (

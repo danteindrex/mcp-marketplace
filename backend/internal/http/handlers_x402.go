@@ -51,6 +51,10 @@ func (a *App) createX402Intent(w http.ResponseWriter, r *http.Request) {
 	if method == "" {
 		method = firstMethod(policy.AllowedMethods)
 	}
+	if !a.isPaymentMethodEnabled(method) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": a.describePaymentMethod(method).Notes})
+		return
+	}
 	if !hasScope(policy.AllowedMethods, method) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "payment method is not allowed by buyer policy"})
 		return

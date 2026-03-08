@@ -939,7 +939,9 @@ func (s *MongoStore) CreateX402Intent(intent models.X402Intent) models.X402Inten
 	intent.ID = newPrefixedID("x402")
 	intent.CreatedAt = time.Now().UTC()
 	intent.Status = "payment_required"
-	intent.Challenge = "PAYMENT-REQUIRED"
+	if strings.TrimSpace(intent.Challenge) == "" {
+		intent.Challenge = "PAYMENT-REQUIRED"
+	}
 	if intent.Quantity <= 0 {
 		intent.Quantity = 1
 	}

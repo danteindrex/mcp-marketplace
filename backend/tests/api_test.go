@@ -21,12 +21,21 @@ import (
 )
 
 func newTestServer() http.Handler {
-	cfg := config.Config{
-		Port:               "8080",
-		JWTSecret:          "test-secret",
-		BaseURL:            "http://localhost:8080",
-		SuperAdminEmail:    "admin@platform.local",
-		SuperAdminPassword: "admin-pass",
+	return newTestServerWithConfig(config.Config{AllowInsecureDefaults: true})
+}
+
+func newTestServerWithConfig(cfg config.Config) http.Handler {
+	if cfg.Port == "" {
+		cfg.Port = "8080"
+	}
+	if cfg.BaseURL == "" {
+		cfg.BaseURL = "http://localhost:8080"
+	}
+	if cfg.SuperAdminEmail == "" {
+		cfg.SuperAdminEmail = "admin@platform.local"
+	}
+	if cfg.SuperAdminPassword == "" {
+		cfg.SuperAdminPassword = "admin-pass"
 	}
 	st := store.NewMemoryStore(cfg)
 	jwt, err := auth.NewJWTManager(cfg)
@@ -34,6 +43,47 @@ func newTestServer() http.Handler {
 		panic(err)
 	}
 	return api.NewRouter(cfg, st, jwt)
+}
+
+func oauthAccessToken(t *testing.T, h http.Handler, appToken string, tenantID string, userID string, scopes []string) string {
+	t.Helper()
+	resource := "https://mcp.marketplace.local/hub/" + tenantID + "/" + userID
+	dcr := call(t, h, http.MethodPost, "/oauth/register", "", map[string]interface{}{
+		"client_name":                "Test OAuth Client",
+		"redirect_uris":              []string{"http://127.0.0.1:33418"},
+		"grant_types":                []string{"authorization_code"},
+		"token_endpoint_auth_method": "none",
+	})
+	if dcr.Code != http.StatusCreated {
+		t.Fatalf("dcr status %d body=%s", dcr.Code, dcr.Body.String())
+	}
+	var dcrBody map[string]interface{}
+	_ = json.Unmarshal(dcr.Body.Bytes(), &dcrBody)
+	clientID := dcrBody["client_id"].(string)
+
+	verifier := "test-verifier-1234567890"
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	authorizePath := "/oauth/authorize?response_type=code&client_id=" + clientID + "&redirect_uri=http://127.0.0.1:33418&state=abc123&resource=" + resource + "&scope=" + strings.Join(scopes, "%20") + "&code_challenge=" + challenge + "&code_challenge_method=S256"
+	authRes := call(t, h, http.MethodGet, authorizePath, appToken, nil)
+	if authRes.Code != http.StatusOK {
+		t.Fatalf("authorize status %d body=%s", authRes.Code, authRes.Body.String())
+	}
+	var authBody map[string]interface{}
+	_ = json.Unmarshal(authRes.Body.Bytes(), &authBody)
+	code := authBody["code"].(string)
+
+	form := "grant_type=authorization_code&client_id=" + clientID + "&code=" + code + "&redirect_uri=http://127.0.0.1:33418&code_verifier=" + verifier + "&resource=" + resource
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token", bytes.NewBufferString(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("token status %d body=%s", res.Code, res.Body.String())
+	}
+	var tokenBody map[string]interface{}
+	_ = json.Unmarshal(res.Body.Bytes(), &tokenBody)
+	return tokenBody["access_token"].(string)
 }
 
 func signup(t *testing.T, h http.Handler, email, password, role string) map[string]interface{} {
@@ -136,12 +186,12 @@ func TestPublicEndpoints(t *testing.T) {
 
 func TestHealthFailsWhenRequiredStorageIsDown(t *testing.T) {
 	cfg := config.Config{
-		Port:               "8080",
-		JWTSecret:          "test-secret",
-		BaseURL:            "http://localhost:8080",
-		SuperAdminEmail:    "admin@platform.local",
-		SuperAdminPassword: "admin-pass",
-		MongoRequired:      true,
+		Port:                  "8080",
+		BaseURL:               "http://localhost:8080",
+		SuperAdminEmail:       "admin@platform.local",
+		SuperAdminPassword:    "admin-pass",
+		AllowInsecureDefaults: true,
+		MongoRequired:         true,
 	}
 	baseStore := store.NewMemoryStore(cfg)
 	st := failingHealthStore{Store: baseStore}
@@ -243,12 +293,13 @@ func TestMarketplaceInstallAndMCPHub(t *testing.T) {
 
 	buyerUser := buyerSignup["user"].(map[string]interface{})
 	hubPath := "/mcp/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
+	hubToken := oauthAccessToken(t, h, buyerToken, buyerUser["tenantId"].(string), buyerUser["id"].(string), []string{"db:read", "db:write"})
 
-	if res := call(t, h, http.MethodGet, hubPath, buyerToken, nil); res.Code != http.StatusOK {
+	if res := call(t, h, http.MethodGet, hubPath, hubToken, nil); res.Code != http.StatusOK {
 		t.Fatalf("mcp hub get status %d body=%s", res.Code, res.Body.String())
 	}
 
-	res := call(t, h, http.MethodPost, hubPath, buyerToken, map[string]interface{}{
+	res := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      "tools-list-1",
 		"method":  "tools/list",
@@ -448,12 +499,12 @@ func TestMerchantDeploySyncsWithN8NWhenConfigured(t *testing.T) {
 	defer n8n.Close()
 
 	cfg := config.Config{
-		Port:               "8080",
-		JWTSecret:          "test-secret",
-		BaseURL:            "http://localhost:8080",
-		N8NBaseURL:         n8n.URL,
-		SuperAdminEmail:    "admin@platform.local",
-		SuperAdminPassword: "admin-pass",
+		Port:                  "8080",
+		BaseURL:               "http://localhost:8080",
+		N8NBaseURL:            n8n.URL,
+		SuperAdminEmail:       "admin@platform.local",
+		SuperAdminPassword:    "admin-pass",
+		AllowInsecureDefaults: true,
 	}
 	st := store.NewMemoryStore(cfg)
 	jwt, err := auth.NewJWTManager(cfg)
@@ -627,6 +678,19 @@ func TestOAuthAuthorizationCodePKCEFlow(t *testing.T) {
 	h.ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("token status %d body=%s", res.Code, res.Body.String())
+	}
+	var tokenBody map[string]interface{}
+	_ = json.Unmarshal(res.Body.Bytes(), &tokenBody)
+	accessToken := tokenBody["access_token"].(string)
+	hubPath := "/mcp/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
+	if hubWithAppToken := call(t, h, http.MethodGet, hubPath, buyerToken, nil); hubWithAppToken.Code != http.StatusUnauthorized {
+		t.Fatalf("expected app token rejected by mcp hub, got %d body=%s", hubWithAppToken.Code, hubWithAppToken.Body.String())
+	}
+	if meWithOAuthToken := call(t, h, http.MethodGet, "/v1/me", accessToken, nil); meWithOAuthToken.Code != http.StatusUnauthorized {
+		t.Fatalf("expected oauth token rejected by app auth, got %d body=%s", meWithOAuthToken.Code, meWithOAuthToken.Body.String())
+	}
+	if hubWithOAuthToken := call(t, h, http.MethodGet, hubPath, accessToken, nil); hubWithOAuthToken.Code != http.StatusOK {
+		t.Fatalf("expected oauth token accepted by mcp hub, got %d body=%s", hubWithOAuthToken.Code, hubWithOAuthToken.Body.String())
 	}
 }
 
@@ -804,8 +868,9 @@ func TestMCPToolsCallX402MetaFlow(t *testing.T) {
 
 	hubPath := "/mcp/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
 	toolName := "invoke_" + strings.ReplaceAll(serverSlug, "-", "_")
+	hubToken := oauthAccessToken(t, h, buyerToken, buyerUser["tenantId"].(string), buyerUser["id"].(string), []string{"documents:read"})
 
-	needPay := call(t, h, http.MethodPost, hubPath, buyerToken, map[string]interface{}{
+	needPay := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      "mcp-pay-1",
 		"method":  "tools/call",
@@ -824,7 +889,7 @@ func TestMCPToolsCallX402MetaFlow(t *testing.T) {
 		t.Fatalf("expected payment required error -32002, got %v body=%s", errObj["code"], needPay.Body.String())
 	}
 
-	paid := call(t, h, http.MethodPost, hubPath, buyerToken, map[string]interface{}{
+	paid := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      "mcp-pay-2",
 		"method":  "tools/call",
@@ -848,7 +913,7 @@ func TestMCPToolsCallX402MetaFlow(t *testing.T) {
 		t.Fatalf("expected paid tools/call success, got error body=%s", paid.Body.String())
 	}
 
-	replay := call(t, h, http.MethodPost, hubPath, buyerToken, map[string]interface{}{
+	replay := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      "mcp-pay-3",
 		"method":  "tools/call",
@@ -921,7 +986,7 @@ func TestPaymentsControlEndpoints(t *testing.T) {
 		"perCallCapUsdc": 2.0,
 		"dailyCapUsdc":   20.0,
 		"monthlyCapUsdc": 200.0,
-		"paymentMethods": []string{"x402_wallet", "stripe"},
+		"paymentMethods": []string{"x402_wallet"},
 	})
 	if cfg.Code != http.StatusOK {
 		t.Fatalf("merchant payment config update status %d body=%s", cfg.Code, cfg.Body.String())
@@ -1260,5 +1325,137 @@ func TestPaidInstallFlowAndInstallAutoSettle(t *testing.T) {
 	})
 	if autoSettleInstall.Code != http.StatusCreated {
 		t.Fatalf("expected auto-settle install success, got %d body=%s", autoSettleInstall.Code, autoSettleInstall.Body.String())
+	}
+}
+
+func TestX402IntentPreservesChallengeAfterSettle(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "preserve-buyer@acme.local", "BuyerPass123!@", "buyer")
+	signup(t, h, "preserve-merchant@acme.local", "MerchantPass123!@", "merchant")
+	buyerToken := login(t, h, "preserve-buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "preserve-merchant@acme.local", "MerchantPass123!@")
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Challenge Server",
+		"slug":                 "challenge-server",
+		"description":          "Challenge server",
+		"category":             "integration",
+		"dockerImage":          "tenant/challenge-server:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/challenge-server",
+		"requiredScopes":       []string{"documents:read"},
+		"pricingType":          "x402",
+		"pricingAmount":        0.25,
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create merchant server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+
+	intent := call(t, h, http.MethodPost, "/v1/billing/x402/intents", buyerToken, map[string]interface{}{
+		"serverId":       serverID,
+		"toolName":       "extract_pdf",
+		"paymentMethod":  "x402_wallet",
+		"idempotencyKey": "preserve_intent_1",
+	})
+	if intent.Code != http.StatusPaymentRequired {
+		t.Fatalf("x402 intent status %d body=%s", intent.Code, intent.Body.String())
+	}
+	var intentBody map[string]interface{}
+	_ = json.Unmarshal(intent.Body.Bytes(), &intentBody)
+	intentObj := intentBody["intent"].(map[string]interface{})
+	challenge := intentObj["challenge"].(string)
+	if !strings.Contains(challenge, "preserve_intent_1") || !strings.Contains(challenge, serverID) {
+		t.Fatalf("expected challenge payload to be preserved, got %s", challenge)
+	}
+	if got := intent.Header().Get("PAYMENT-REQUIRED"); got != challenge {
+		t.Fatalf("expected PAYMENT-REQUIRED header to match stored challenge\nheader=%s\nchallenge=%s", got, challenge)
+	}
+	intentID := intentObj["id"].(string)
+
+	settled := call(t, h, http.MethodPost, "/v1/billing/x402/intents/"+intentID+"/settle", buyerToken, map[string]interface{}{
+		"paymentResponse": map[string]interface{}{"paymentIdentifier": "pay_preserve_1", "method": "x402_wallet"},
+	})
+	if settled.Code != http.StatusOK {
+		t.Fatalf("settle status %d body=%s", settled.Code, settled.Body.String())
+	}
+
+	list := call(t, h, http.MethodGet, "/v1/billing/x402/intents", buyerToken, nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list intents status %d body=%s", list.Code, list.Body.String())
+	}
+	var listBody map[string]interface{}
+	_ = json.Unmarshal(list.Body.Bytes(), &listBody)
+	items := listBody["items"].([]interface{})
+	stored := items[0].(map[string]interface{})
+	if stored["challenge"].(string) != challenge {
+		t.Fatalf("expected settled intent to retain original challenge\nwant=%s\ngot=%s", challenge, stored["challenge"].(string))
+	}
+}
+
+func TestPaymentMethodCatalogIsTruthfulAndDefaultsStaySafe(t *testing.T) {
+	h := newTestServerWithConfig(config.Config{
+		AllowInsecureDefaults: true,
+		SupportedPayMethods:   []string{"x402_wallet", "wallet_balance", "stripe", "coinbase_commerce"},
+	})
+	signup(t, h, "catalog-buyer@acme.local", "BuyerPass123!@", "buyer")
+	buyerToken := login(t, h, "catalog-buyer@acme.local", "BuyerPass123!@")
+
+	controls := call(t, h, http.MethodGet, "/v1/buyer/payments/controls", buyerToken, nil)
+	if controls.Code != http.StatusOK {
+		t.Fatalf("buyer payment controls status %d body=%s", controls.Code, controls.Body.String())
+	}
+	var controlsBody map[string]interface{}
+	_ = json.Unmarshal(controls.Body.Bytes(), &controlsBody)
+	policy := controlsBody["policy"].(map[string]interface{})
+	allowed := policy["allowedMethods"].([]interface{})
+	if len(allowed) != 2 || allowed[0].(string) != "wallet_balance" || allowed[1].(string) != "x402_wallet" {
+		t.Fatalf("expected safe default allowed methods, got %v", allowed)
+	}
+
+	methods := controlsBody["methods"].([]interface{})
+	byID := map[string]map[string]interface{}{}
+	for _, raw := range methods {
+		item := raw.(map[string]interface{})
+		byID[item["id"].(string)] = item
+	}
+	if byID["stripe"]["enabled"] != false || byID["stripe"]["readiness"] != "placeholder" {
+		t.Fatalf("expected stripe to be disabled placeholder, got %v", byID["stripe"])
+	}
+	if byID["coinbase_commerce"]["enabled"] != false || byID["coinbase_commerce"]["readiness"] != "placeholder" {
+		t.Fatalf("expected coinbase_commerce to be disabled placeholder, got %v", byID["coinbase_commerce"])
+	}
+
+	blocked := call(t, h, http.MethodPut, "/v1/buyer/payments/controls", buyerToken, map[string]interface{}{
+		"allowedMethods": []string{"stripe"},
+	})
+	if blocked.Code != http.StatusBadRequest {
+		t.Fatalf("expected placeholder payment method to be rejected, got %d body=%s", blocked.Code, blocked.Body.String())
+	}
+}
+
+func TestStripeFailsClosedOutsideDevMode(t *testing.T) {
+	h := newTestServerWithConfig(config.Config{AllowInsecureDefaults: false})
+	signup(t, h, "strict-buyer@acme.local", "BuyerPass123!@", "buyer")
+	buyerToken := login(t, h, "strict-buyer@acme.local", "BuyerPass123!@")
+
+	topup := call(t, h, http.MethodPost, "/v1/buyer/payments/topups/stripe/session", buyerToken, map[string]interface{}{
+		"amountUsd":     25.0,
+		"walletAddress": "0xstrictbuyer",
+	})
+	if topup.Code != http.StatusBadGateway {
+		t.Fatalf("expected strict mode stripe topup to fail closed, got %d body=%s", topup.Code, topup.Body.String())
+	}
+
+	webhook := call(t, h, http.MethodPost, "/webhooks/stripe/onramp", "", map[string]interface{}{
+		"id":   "evt_strict_1",
+		"type": "crypto.onramp_session_updated",
+		"data": map[string]interface{}{"object": map[string]interface{}{"id": "session_1"}},
+	})
+	if webhook.Code != http.StatusUnauthorized {
+		t.Fatalf("expected strict mode webhook to fail closed, got %d body=%s", webhook.Code, webhook.Body.String())
 	}
 }
