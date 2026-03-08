@@ -1,0 +1,202 @@
+i need you to analyze this project and understand how it works
+
+---
+
+have you read the backend which is in go
+
+---
+
+check the backendd folder
+
+---
+
+your in the wrong branch switch to the master branch
+
+---
+
+now re analyze even the frontend
+
+---
+
+so what issues are there currently that might be todos or mock auth or mock dbcalls what issue do we have
+
+---
+
+now i need you to do a git pull to fetch the requirement.md file to the root of the repo and i nwat you to create a skill for opencode for this project based on that document for what i waht in the completion of th eproject if you don know knwo to create skills search the web then also create a totla of 15 agents for this project as well if yoy dont know again search the web these agents are for open code and aso  search for any mcp servers we might need
+
+---
+
+do the pull first now and ill swtich back to plan mode after you finish the pull
+
+---
+
+wire the new skills and agents
+
+---
+
+now which mcp servers will we need
+
+---
+
+no i mean the mcp servers we shall need to test and make sure this project is done fully
+
+---
+
+why do we need remote hosting mcp servers
+
+---
+
+why do we need remote hosting mcp servers
+
+---
+
+are these mcp servers we need to add in the project or are they mcp servers we need to test and help create the mcp marketplace
+
+---
+
+for deployment we shall use the free alternatives liek digital ocean, vercel and others so we dont need aws or azure mcp servers but install all the mcp serves we shall nedd for open code
+
+---
+
+why are the mcp servers disbled
+
+---
+
+search the web for the right urls for each and add them
+
+---
+
+WHY ARE YOU ADDING AN MCP SERVER FOR SEARCHING YET OPENCODE ALREADY HAS THE CAPABILITY
+
+---
+
+Enable the rest of the mcp servers
+
+---
+
+what do we need from broswer base what does it do
+
+---
+
+so why will we need broswer base epecifically for this project
+
+---
+
+search the web for a free option for this mcp server
+
+---
+
+add that one and amke sure all the mcp servers we have dont need api keys apart from the critical ones kie stripe
+
+---
+
+wait so what does auth0 do exaclty and how will it help us
+
+---
+
+but its a market place how does it relate to the projcet
+
+---
+
+ohh now i understand now are all servers we need are they enabled
+
+---
+
+all the mcps  are diabled
+
+---
+
+ive relaoded open code test that they are enabled
+
+---
+
+you are opencode cli test the mcp servers
+
+---
+
+use the availabel mcp check them you are opencode cli and i can see you have acces tot hem
+
+---
+
+call the mcps directly
+
+---
+
+launch the local mcps as well the find out why x402 isnt working and aqdd the url then also the stripe mcp what credentials do we need so that it can work
+
+---
+
+## Mission
+- Use `requirements.md` as the single source of truth for scope, ensuring every deliverable traces back to the document.
+- Keep user stories for buyers, merchants, and admins in sync with backend/API coverage.
+- When estimating effort, tag features by lifecycle stage: discover → install → monetize → operate → secure.
+
+## Architecture Guardrails
+1. **Two-tier runtime**
+   - Go gateway owns auth (OAuth 2.1 + PKCE), JWKS caching, tenant isolation, SSRF defense, and the x402 micropayment evaluator.
+   - Python orchestration stack (FastMCP + Docker/N8N) handles agent composition, workflow fan-out, and exposes `.well-known` endpoints per container.
+2. **Remote MCP orchestration**
+   - Every local-only server must have a path to cloud hosting (SSE bridge) plus a licensing path for premium self-hosting.
+3. **Hybrid hosting tiers**
+   - Clearly document when we offer free remote hosting vs. when we upsell dedicated hardware; keep pricing artifacts aligned with monetization rules below.
+
+## Merchant Experience Checklist
+- Docker Hub import + custom registry uploads with SBOM scans.
+- Low-code builder (n8n) templates for FastMCP (Python + TypeScript flavors).
+- Deployment tasks feeding the Go deploy worker; publish remains blocked until deploy+pricing complete.
+- Observability panes: tool invocation counts, latency p95, `insufficient_scope` alarms, audit log timeline.
+- Payment configs: subscription/flat/x402, cloud vs. local licensing, payout policies.
+
+## Buyer Experience Checklist
+- One-click installs powered by CIMD + DCR with WWW-Authenticate responses that include scopes + metadata URLs.
+- Interactive connectors support (inline cards/fullscreen) for Claude Desktop, VS Code, Cursor.
+- Discovery filters: verified 🎖 badge, rating aggregation, Local 🏠 vs Cloud ☁ scopes.
+- Install wizard gating (client → auth → scopes → connect → verify) and local bridge handoff for `mcp-marketplace://` URIs.
+
+## Managed Hosting & Monetization
+- Remote orchestration must expose canonical server URIs (`https://mcp.<domain>/<tenant>/<slug>`).
+- Monetization levers: subscription/flat fees, per-call metering via x402, self-hosting surcharge, wallet top-ups.
+- Ledger + payout policies flow from platform fees (bps/min/max/hold days) down to seller payouts (Stripe Connect or stablecoin).
+
+## Security Obligations
+- Enforce PKCE + Refresh Token Rotation everywhere; treat scope upgrades as explicit step-up flows producing `insufficient_scope` errors.
+- Audience binding on access tokens via Resource Indicators.
+- SSRF protections when fetching metadata or CIMD docs; whitelist hosts for local bridge installs.
+- Multi-tenant segregation at every store layer; audit logs for deploys, payouts, and privilege changes.
+
+## Delivery Playbook
+1. Start with requirements traceability: map Jira/issue slug → section in `requirements.md`.
+2. Keep backend/frontend in lockstep—feature toggles should note API contract maturity.
+3. For each milestone, document:
+   - Buyer impact (what gets “one-click” easier?).
+   - Merchant impact (import/build/monitor/payout?).
+   - Security/compliance deltas.
+4. Maintain a testing grid: Go unit/integration, Python orchestration sims, frontend e2e (light + dark), MCP client smoke tests.
+5. Before merge, verify MCP ecosystem compatibility (Gateways: Roundtable, mcgravity, LUNA MCPX; Auth gateways: Scalekit, Clerk/Auth0).
+
+## References
+- Source spec: `requirements.md`
+- Ecosystem inspiration: Roundtable, mcgravity, pluggedin-mcp-proxy, LUNA MCPX, AgentHotspot, Smithery, Glama Chat.
+
+
+according to this what is missing for this project to be fully ready and tested  for productiin
+
+---
+
+i need you to draft a checklist for the buyer experience gaps and implent them
+
+---
+
+start the imeplentatnion
+
+---
+
+now i need you to check and tell me what is left now
+
+---
+
+draft  a deatiled implentation checklist and plan
+
+---
+
+start the implemnatation'#
