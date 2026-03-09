@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
+const API_BASE = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:2024'
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8
 
 type BackendAuthPayload = {
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 
   try {
     const upstream = await fetch(
-      `${API_BASE}/auth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+      `${API_BASE}/auth/oauth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
       {
         method: 'GET',
         credentials: 'include',

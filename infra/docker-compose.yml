@@ -11,9 +11,10 @@ services:
       context: ..
       dockerfile: backend/Dockerfile
     environment:
-      PORT: "8080"
+      PORT: "2024"
+      ALLOW_INSECURE_DEFAULTS: "true"
       JWT_SECRET: "dev-secret-change-before-production"
-      BASE_URL: "http://localhost:8080"
+      BASE_URL: "http://localhost:2024"
       MONGO_URI: "mongodb://mongo:27017"
       MONGO_DB_NAME: "mcp_marketplace"
       MONGO_REQUIRED: "true"
@@ -23,7 +24,7 @@ services:
       SUPER_ADMIN_EMAIL: "admin@platform.local"
       SUPER_ADMIN_PASSWORD: "ChangeMe123!dev"
     ports:
-      - "8080:8080"
+      - "2024:2024"
     depends_on:
       - mongo
 
@@ -32,7 +33,8 @@ services:
       context: ..
       dockerfile: webapp/Dockerfile
     environment:
-      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8080"
+      API_BASE_URL: "http://backend:2024"
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:2024"
       NEXT_PUBLIC_N8N_URL: "http://localhost:5678"
     ports:
       - "3000:3000"

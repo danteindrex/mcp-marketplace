@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
+const API_BASE = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:2024'
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8
 
 export async function GET() {
   try {
-    const upstream = await fetch(`${API_BASE}/auth/google/start`, {
+    const upstream = await fetch(`${API_BASE}/auth/oauth/google/start`, {
       method: 'GET',
       credentials: 'include',
       cache: 'no-store',

@@ -9,6 +9,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/server ./cmd/server
 FROM gcr.io/distroless/static-debian12
 WORKDIR /app
 COPY --from=build /out/server /app/server
-EXPOSE 8080
-ENV PORT=8080
+EXPOSE 2024
+ENV PORT=2024
 ENTRYPOINT ["/app/server"]
