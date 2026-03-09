@@ -48,6 +48,7 @@ type Config struct {
 	GitHubClientID             string
 	GitHubClientSecret         string
 	OAuthRedirectBase          string
+	MCPSDKEnabled              bool
 }
 
 func Load() Config {
@@ -139,6 +140,7 @@ func Load() Config {
 	if oauthRedirectBase == "" {
 		oauthRedirectBase = baseURL
 	}
+	mcpSDKEnabled := parseBool(os.Getenv("MCP_SDK_ENABLED"), false)
 
 	return Config{
 		Port:                       port,
@@ -181,6 +183,7 @@ func Load() Config {
 		GitHubClientID:             githubClientID,
 		GitHubClientSecret:         githubClientSecret,
 		OAuthRedirectBase:          oauthRedirectBase,
+		MCPSDKEnabled:              mcpSDKEnabled,
 	}
 }
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "MCP Gap Remediation Planner"
+  short_description: "Convert audit gaps into prioritized implementation backlog."
+  default_prompt: "Use the requirements audit findings to produce a phased backlog with owners, dependencies, and acceptance criteria."

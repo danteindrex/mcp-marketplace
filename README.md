@@ -27,6 +27,7 @@ export N8N_TIMEOUT_SECONDS="12"
 export SUPER_ADMIN_EMAIL="admin@platform.local"
 export SUPER_ADMIN_PASSWORD="<strong-password>"
 export JWT_SECRET="<strong-jwt-secret>"
+export MCP_SDK_ENABLED="true" # optional: enable MCP SDK-backed initialize/tools/list handling
 # in-memory fallback is disabled by design
 
 # x402 + payment rails

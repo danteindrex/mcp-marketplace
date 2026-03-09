@@ -388,6 +388,148 @@ func TestMarketplaceInstallAndMCPHub(t *testing.T) {
 	}
 }
 
+func TestMarketplaceInstallAndMCPHubWithSDKMode(t *testing.T) {
+	var upstreamCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("failed to decode upstream request: %v", err)
+		}
+		if body["method"] != "tools/call" {
+			t.Fatalf("unexpected upstream method: %v", body["method"])
+		}
+		params, ok := body["params"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected params to be an object, got %T (%v)", body["params"], body["params"])
+		}
+		if _, ok := params["arguments"].(map[string]interface{}); !ok {
+			t.Fatalf("expected params.arguments object, got %T", params["arguments"])
+		}
+		upstreamCalls.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      body["id"],
+			"result": map[string]interface{}{
+				"content": []map[string]interface{}{
+					{"type": "text", "text": "ok"},
+				},
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	h := newTestServerWithConfig(config.Config{
+		AllowInsecureDefaults: true,
+		X402Mode:              "disabled",
+		MCPSDKEnabled:         true,
+	})
+	buyerSignup := signup(t, h, "sdk-install-buyer@acme.local", "BuyerPass123!@", "buyer")
+	signup(t, h, "sdk-install-merchant@acme.local", "MerchantPass123!@", "merchant")
+	buyerToken := login(t, h, "sdk-install-buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "sdk-install-merchant@acme.local", "MerchantPass123!@")
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "SDK Installable Server",
+		"slug":                 "sdk-installable-server",
+		"description":          "Install flow test",
+		"category":             "integration",
+		"dockerImage":          "tenant/sdk-installable:1.0.0",
+		"canonicalResourceUri": upstream.URL,
+		"requiredScopes":       []string{"db:read", "db:write"},
+		"pricingType":          "free",
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+	serverSlug := createdBody["slug"].(string)
+	deploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/deploy", merchantToken, nil)
+	if deploy.Code != http.StatusOK {
+		t.Fatalf("deploy installable server status %d body=%s", deploy.Code, deploy.Body.String())
+	}
+	publish := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/publish", merchantToken, map[string]interface{}{"pricingAmount": 1})
+	if publish.Code != http.StatusOK {
+		t.Fatalf("publish installable server status %d body=%s", publish.Code, publish.Body.String())
+	}
+
+	install := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+serverSlug+"/install", buyerToken, map[string]interface{}{
+		"client": "vscode",
+	})
+	if install.Code != http.StatusCreated {
+		t.Fatalf("install endpoint status %d body=%s", install.Code, install.Body.String())
+	}
+
+	buyerUser := buyerSignup["user"].(map[string]interface{})
+	hubPath := "/mcp/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
+	hubToken := oauthAccessToken(t, h, buyerToken, buyerUser["tenantId"].(string), buyerUser["id"].(string), []string{"db:read", "db:write"})
+
+	initRes := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "init-1",
+		"method":  "initialize",
+	})
+	if initRes.Code != http.StatusOK {
+		t.Fatalf("mcp initialize status %d body=%s", initRes.Code, initRes.Body.String())
+	}
+	var initBody map[string]interface{}
+	_ = json.Unmarshal(initRes.Body.Bytes(), &initBody)
+	initResult, _ := initBody["result"].(map[string]interface{})
+	serverInfo, _ := initResult["serverInfo"].(map[string]interface{})
+	if serverInfo["name"] != "mcp-marketplace-hub" {
+		t.Fatalf("initialize serverInfo.name mismatch: %v", serverInfo["name"])
+	}
+
+	listRes := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "tools-list-1",
+		"method":  "tools/list",
+	})
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("mcp hub tools/list status %d body=%s", listRes.Code, listRes.Body.String())
+	}
+	var listBody map[string]interface{}
+	_ = json.Unmarshal(listRes.Body.Bytes(), &listBody)
+	listResult, _ := listBody["result"].(map[string]interface{})
+	tools, _ := listResult["tools"].([]interface{})
+	if len(tools) == 0 {
+		t.Fatalf("expected at least one tool in tools/list response")
+	}
+
+	firstTool, _ := tools[0].(map[string]interface{})
+	toolName, _ := firstTool["name"].(string)
+	if toolName == "" {
+		t.Fatalf("expected a tool name in tools/list response")
+	}
+
+	callRes := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "call-1",
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name": toolName,
+			"arguments": map[string]interface{}{
+				"query": "ping",
+			},
+		},
+	})
+	if callRes.Code != http.StatusOK {
+		t.Fatalf("mcp hub tools/call status %d body=%s", callRes.Code, callRes.Body.String())
+	}
+	var callBody map[string]interface{}
+	_ = json.Unmarshal(callRes.Body.Bytes(), &callBody)
+	if callBody["error"] != nil {
+		t.Fatalf("unexpected tools/call error: %s", callRes.Body.String())
+	}
+	if upstreamCalls.Load() != 1 {
+		t.Fatalf("expected one upstream tools/call invocation, got %d", upstreamCalls.Load())
+	}
+}
+
 func TestUserSettingsFlow(t *testing.T) {
 	h := newTestServer()
 	signup(t, h, "settings-buyer@acme.local", "BuyerPass123!@", "buyer")

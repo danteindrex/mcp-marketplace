@@ -2,14 +2,17 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/yourorg/mcp-marketplace/backend/internal/auth"
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
@@ -50,6 +53,9 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 	hub := a.ensureHubProfile(tenantID, userID)
 	routes := a.authorizedHubRoutes(claims, tenantID, userID, a.store.ListHubRoutes(hub.ID))
 	tools := mcpToolsFromRoutes(routes)
+	if a.cfg.MCPSDKEnabled {
+		tools = mcpToolsFromRoutesWithSDK(routes)
+	}
 
 	if r.Method == http.MethodGet {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -75,21 +81,25 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Method {
 	case "initialize":
+		result := map[string]interface{}{
+			"protocolVersion": "2025-11-05",
+			"serverInfo": map[string]string{
+				"name":    "mcp-marketplace-hub",
+				"version": "1.0.0",
+			},
+			"capabilities": map[string]interface{}{
+				"tools": map[string]bool{
+					"listChanged": false,
+				},
+			},
+		}
+		if a.cfg.MCPSDKEnabled {
+			result = mcpInitializeResultWithSDK()
+		}
 		writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
-			Result: map[string]interface{}{
-				"protocolVersion": "2025-11-05",
-				"serverInfo": map[string]string{
-					"name":    "mcp-marketplace-hub",
-					"version": "1.0.0",
-				},
-				"capabilities": map[string]interface{}{
-					"tools": map[string]bool{
-						"listChanged": false,
-					},
-				},
-			},
+			Result:  result,
 		})
 	case "tools/list":
 		writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
@@ -108,18 +118,12 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 		if len(req.Params) > 0 {
 			_ = json.Unmarshal(req.Params, &params)
 		}
-		var targetRoute models.HubRoute
-		toolExists := false
-		for _, route := range routes {
-			if !route.Enabled {
-				continue
-			}
-			if route.ToolName == params.Name {
-				targetRoute = route
-				toolExists = true
-				break
-			}
+		if a.cfg.MCPSDKEnabled && strings.TrimSpace(r.Header.Get("X-MCP-SDK-LEGACY")) != "1" {
+			resp := a.executeToolsCallViaSDKHandlers(r, req.ID, routes, params.Name, params.Arguments, params.Meta)
+			writeJSON(w, http.StatusOK, resp)
+			return
 		}
+		targetRoute, toolExists := resolveToolRoute(routes, params.Name, a.cfg.MCPSDKEnabled)
 		if !toolExists {
 			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
 				JSONRPC: "2.0",
@@ -449,25 +453,12 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 		if params.Meta != nil {
 			upstreamParams["_meta"] = params.Meta
 		}
-		upstreamParamsJSON, err := json.Marshal(upstreamParams)
-		if err != nil {
-			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Error: &mcpJSONRPCError{
-					Code:    -32603,
-					Message: "failed to build upstream request",
-					Data:    map[string]interface{}{"error": err.Error()},
-				},
-			})
-			return
-		}
 
 		upstreamReqBody := map[string]interface{}{
 			"jsonrpc": "2.0",
 			"id":      req.ID,
 			"method":  "tools/call",
-			"params":  upstreamParamsJSON,
+			"params":  upstreamParams,
 		}
 		upstreamReqBytes, err := json.Marshal(upstreamReqBody)
 		if err != nil {
@@ -751,4 +742,162 @@ func (a *App) findSettledByPaymentIdentifier(intents []models.X402Intent, paymen
 		}
 	}
 	return nil
+}
+
+func resolveToolRoute(routes []models.HubRoute, toolName string, sdkMode bool) (models.HubRoute, bool) {
+	normalized := strings.TrimSpace(toolName)
+	if normalized == "" {
+		return models.HubRoute{}, false
+	}
+
+	if !sdkMode {
+		for _, route := range routes {
+			if !route.Enabled {
+				continue
+			}
+			if route.ToolName == normalized {
+				return route, true
+			}
+		}
+		return models.HubRoute{}, false
+	}
+
+	var selected models.HubRoute
+	handlers := make(map[string]mcp.ToolHandler, len(routes))
+	for _, route := range routes {
+		if !route.Enabled {
+			continue
+		}
+		rt := route
+		handlers[rt.ToolName] = func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			selected = rt
+			return &mcp.CallToolResult{}, nil
+		}
+	}
+
+	handler, ok := handlers[normalized]
+	if !ok {
+		return models.HubRoute{}, false
+	}
+	if _, err := handler(context.Background(), nil); err != nil {
+		return models.HubRoute{}, false
+	}
+	if selected.ToolName == "" {
+		return models.HubRoute{}, false
+	}
+	return selected, true
+}
+
+func (a *App) executeToolsCallViaSDKHandlers(
+	r *http.Request,
+	reqID interface{},
+	routes []models.HubRoute,
+	toolName string,
+	arguments map[string]interface{},
+	meta map[string]interface{},
+) mcpJSONRPCResponse {
+	handlers := make(map[string]mcp.ToolHandler, len(routes))
+	for _, route := range routes {
+		if !route.Enabled {
+			continue
+		}
+		rt := route
+		handlers[rt.ToolName] = func(ctx context.Context, _ *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{}, nil
+		}
+	}
+
+	handler, ok := handlers[strings.TrimSpace(toolName)]
+	if !ok {
+		return mcpJSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      reqID,
+			Error: &mcpJSONRPCError{
+				Code:    -32601,
+				Message: "tool not found",
+			},
+		}
+	}
+
+	if _, err := handler(r.Context(), nil); err != nil {
+		return mcpJSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      reqID,
+			Error: &mcpJSONRPCError{
+				Code:    -32603,
+				Message: "sdk handler dispatch failed",
+				Data:    map[string]interface{}{"error": err.Error()},
+			},
+		}
+	}
+
+	legacyResp := a.invokeLegacyToolsCall(r, reqID, toolName, arguments, meta)
+	if legacyResp.JSONRPC == "" {
+		legacyResp.JSONRPC = "2.0"
+	}
+	if legacyResp.ID == nil {
+		legacyResp.ID = reqID
+	}
+	return legacyResp
+}
+
+func (a *App) invokeLegacyToolsCall(
+	r *http.Request,
+	reqID interface{},
+	toolName string,
+	arguments map[string]interface{},
+	meta map[string]interface{},
+) mcpJSONRPCResponse {
+	payload := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      reqID,
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      toolName,
+			"arguments": arguments,
+		},
+	}
+	if meta != nil {
+		params := payload["params"].(map[string]interface{})
+		params["_meta"] = meta
+	}
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return mcpJSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      reqID,
+			Error: &mcpJSONRPCError{
+				Code:    -32603,
+				Message: "failed to marshal legacy tools/call payload",
+				Data:    map[string]interface{}{"error": err.Error()},
+			},
+		}
+	}
+
+	legacyReq := httptest.NewRequest(http.MethodPost, r.URL.String(), bytes.NewReader(raw))
+	legacyReq = legacyReq.WithContext(r.Context())
+	legacyReq.Header = r.Header.Clone()
+	legacyReq.Header.Set("Content-Type", "application/json")
+	legacyReq.Header.Set("X-MCP-SDK-LEGACY", "1")
+
+	rec := httptest.NewRecorder()
+	a.mcpHub(rec, legacyReq)
+
+	var out mcpJSONRPCResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		return mcpJSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      reqID,
+			Error: &mcpJSONRPCError{
+				Code:    -32603,
+				Message: "failed to parse legacy tools/call response",
+				Data: map[string]interface{}{
+					"error": err.Error(),
+					"body":  rec.Body.String(),
+				},
+			},
+		}
+	}
+	return out
 }

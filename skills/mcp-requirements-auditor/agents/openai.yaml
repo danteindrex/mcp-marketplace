@@ -1,0 +1,4 @@
+interface:
+  display_name: "MCP Requirements Auditor"
+  short_description: "Trace requirements to code and report implementation gaps."
+  default_prompt: "Audit this repository against requirements.md and produce a severity-ranked missing-items report with file evidence."

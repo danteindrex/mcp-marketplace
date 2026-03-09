@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/modelcontextprotocol/go-sdk v1.3.1
 	github.com/pquerna/otp v1.5.0
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/crypto v0.48.0
