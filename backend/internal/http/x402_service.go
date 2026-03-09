@@ -29,12 +29,20 @@ type x402Service struct {
 	facilitatorURL string
 	apiKey         string
 	client         *http.Client
+	allowInsecure  bool
 }
 
 func newX402Service(cfg config.Config) *x402Service {
 	mode := strings.ToLower(strings.TrimSpace(cfg.X402Mode))
+	// Default to facilitator mode for real payment validation
+	// Set mode to "disabled" to bypass payment verification entirely
+	// Insecure defaults enables test mode for development/testing
 	if mode == "" {
-		mode = "mock"
+		if cfg.AllowInsecureDefaults {
+			mode = "test"
+		} else {
+			mode = "facilitator"
+		}
 	}
 	return &x402Service{
 		mode:           mode,
@@ -43,12 +51,38 @@ func newX402Service(cfg config.Config) *x402Service {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		allowInsecure: cfg.AllowInsecureDefaults,
 	}
 }
 
 func (s *x402Service) verifyAndSettle(ctx context.Context, requirement map[string]interface{}, paymentResponse map[string]interface{}) (x402VerificationResult, error) {
+	// Test mode - accept any payment for development/testing
+	if s.mode == "test" {
+		return x402VerificationResult{
+			Valid:             true,
+			PaymentIdentifier: "test_" + randomToken("verify_"),
+			Method:            "test",
+			Network:           stringFromAny(requirement["network"]),
+			Asset:             stringFromAny(requirement["asset"]),
+			TxHash:            "0xtest" + randomToken("tx_"),
+			Note:              "test verification accepted",
+		}, nil
+	}
+	// Real facilitator mode requires proper configuration
 	if s.mode != "facilitator" || s.facilitatorURL == "" {
-		return s.mockVerify(requirement, paymentResponse)
+		if s.mode == "disabled" {
+			// Disabled mode - skip verification entirely (for development/testing)
+			return x402VerificationResult{
+				Valid:             true,
+				PaymentIdentifier: "disabled",
+				Method:            "none",
+				Network:           stringFromAny(requirement["network"]),
+				Asset:             stringFromAny(requirement["asset"]),
+				Note:              "verification disabled",
+			}, nil
+		}
+		// Reject payments when facilitator mode is not properly configured
+		return x402VerificationResult{}, fmt.Errorf("x402 facilitator mode not configured: X402Mode must be 'facilitator' and X402FacilitatorURL must be set")
 	}
 
 	verifyPayload := map[string]interface{}{
@@ -110,37 +144,6 @@ func (s *x402Service) verifyAndSettle(ctx context.Context, requirement map[strin
 		Asset:             asset,
 		TxHash:            txHash,
 		Note:              note,
-	}, nil
-}
-
-func (s *x402Service) mockVerify(requirement map[string]interface{}, paymentResponse map[string]interface{}) (x402VerificationResult, error) {
-	paymentID := stringFromAny(paymentResponse["paymentIdentifier"])
-	if paymentID == "" {
-		paymentID = stringFromAny(paymentResponse["id"])
-	}
-	if paymentID == "" {
-		return x402VerificationResult{}, fmt.Errorf("payment response must include paymentIdentifier or id")
-	}
-	method := stringFromAny(paymentResponse["method"])
-	if method == "" {
-		method = "x402_wallet"
-	}
-	network := stringFromAny(requirement["network"])
-	if network == "" {
-		network = "base"
-	}
-	asset := stringFromAny(requirement["asset"])
-	if asset == "" {
-		asset = "USDC"
-	}
-	return x402VerificationResult{
-		Valid:             true,
-		PaymentIdentifier: paymentID,
-		Method:            method,
-		Network:           network,
-		Asset:             asset,
-		TxHash:            "mock_tx_" + hashAny(paymentResponse)[:16],
-		Note:              "mock verification accepted",
 	}, nil
 }
 

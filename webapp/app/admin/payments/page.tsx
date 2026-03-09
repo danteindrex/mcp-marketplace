@@ -102,7 +102,7 @@ export default function AdminPaymentsPage() {
 
         <Card className="p-6 space-y-2">
           <h2 className="text-xl font-bold">x402 + Stripe Status</h2>
-          <p className="text-sm">x402 mode: <span className="font-semibold">{overview.x402?.mode || 'mock'}</span></p>
+          <p className="text-sm">x402 mode: <span className="font-semibold">{overview.x402?.mode || 'not configured'}</span></p>
           <p className="text-sm">Facilitator: <span className="font-mono text-xs">{overview.x402?.facilitatorUrl || 'not configured'}</span></p>
           <p className="text-sm">Stripe Connect configured: <span className="font-semibold">{overview.stripeConnect?.configured ? 'yes' : 'no'}</span></p>
         </Card>

@@ -66,6 +66,10 @@ func (a *App) installMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}
+	if !a.isServerMarketplaceVisible(server) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
 	if claims.Role != models.RoleAdmin && claims.TenantID != server.TenantID && server.Status != "published" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
@@ -195,6 +199,10 @@ func (a *App) scopeCheckMarketplaceServer(w http.ResponseWriter, r *http.Request
 	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
 	server, found := a.store.GetServerBySlug(slug)
 	if !found {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
+		return
+	}
+	if !a.isServerMarketplaceVisible(server) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}

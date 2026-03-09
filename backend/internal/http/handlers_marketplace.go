@@ -8,7 +8,14 @@ import (
 )
 
 func (a *App) listMarketplaceServers(w http.ResponseWriter, r *http.Request) {
-	servers := a.store.ListMarketplaceServers()
+	all := a.store.ListMarketplaceServers()
+	servers := make([]models.Server, 0, len(all))
+	for i := range all {
+		a.normalizeServerLifecycleForView(&all[i])
+		if a.isServerMarketplaceVisible(all[i]) {
+			servers = append(servers, all[i])
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": servers, "count": len(servers)})
 }
 
@@ -19,12 +26,7 @@ func (a *App) getMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}
-	if server.Status != models.ServerStatusPublished {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
-		return
-	}
-	// Allow legacy records with empty deployment status while requiring deployed for new records.
-	if server.DeploymentStatus != "" && server.DeploymentStatus != models.ServerDeploymentDeployed {
+	if !a.isServerMarketplaceVisible(server) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not found"})
 		return
 	}

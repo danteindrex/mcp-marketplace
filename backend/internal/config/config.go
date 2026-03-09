@@ -43,6 +43,11 @@ type Config struct {
 	RateLimitPerMinute         int
 	TrustProxyHeaders          bool
 	AllowInsecureDefaults      bool
+	GoogleClientID             string
+	GoogleClientSecret         string
+	GitHubClientID             string
+	GitHubClientSecret         string
+	OAuthRedirectBase          string
 }
 
 func Load() Config {
@@ -65,8 +70,10 @@ func Load() Config {
 	n8nAPIKey := strings.TrimSpace(os.Getenv("N8N_API_KEY"))
 	n8nTimeoutSeconds := parsePositiveInt(os.Getenv("N8N_TIMEOUT_SECONDS"), 12)
 	x402Mode := strings.ToLower(trimASCII(os.Getenv("X402_MODE")))
+	// Default to facilitator mode for real payment validation
+	// Set X402_MODE="disabled" to bypass payment verification for development/testing
 	if x402Mode == "" {
-		x402Mode = "mock"
+		x402Mode = "facilitator"
 	}
 	facilitatorURL := strings.TrimSpace(os.Getenv("X402_FACILITATOR_URL"))
 	facilitatorAPIKey := strings.TrimSpace(os.Getenv("X402_FACILITATOR_API_KEY"))
@@ -123,6 +130,16 @@ func Load() Config {
 
 	rateLimit := parsePositiveInt(os.Getenv("RATE_LIMIT_PER_MINUTE"), 240)
 	trustProxyHeaders := parseBool(os.Getenv("TRUST_PROXY_HEADERS"), false)
+
+	googleClientID := strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID"))
+	googleClientSecret := strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_SECRET"))
+	githubClientID := strings.TrimSpace(os.Getenv("GITHUB_CLIENT_ID"))
+	githubClientSecret := strings.TrimSpace(os.Getenv("GITHUB_CLIENT_SECRET"))
+	oauthRedirectBase := strings.TrimSpace(os.Getenv("OAUTH_REDIRECT_BASE"))
+	if oauthRedirectBase == "" {
+		oauthRedirectBase = baseURL
+	}
+
 	return Config{
 		Port:                       port,
 		JWTPrivateKeyPEM:           jwtPrivateKeyPEM,
@@ -159,6 +176,11 @@ func Load() Config {
 		RateLimitPerMinute:         rateLimit,
 		TrustProxyHeaders:          trustProxyHeaders,
 		AllowInsecureDefaults:      allowInsecureDefaults,
+		GoogleClientID:             googleClientID,
+		GoogleClientSecret:         googleClientSecret,
+		GitHubClientID:             githubClientID,
+		GitHubClientSecret:         githubClientSecret,
+		OAuthRedirectBase:          oauthRedirectBase,
 	}
 }
 
@@ -170,9 +192,9 @@ func (c Config) Validate() error {
 		return fmt.Errorf("SUPER_ADMIN_EMAIL must be set")
 	}
 	switch strings.ToLower(strings.TrimSpace(c.X402Mode)) {
-	case "", "mock", "facilitator":
+	case "", "facilitator", "disabled":
 	default:
-		return fmt.Errorf("X402_MODE must be one of: mock, facilitator")
+		return fmt.Errorf("X402_MODE must be one of: facilitator, disabled")
 	}
 	if c.PlatformFeeBps < 0 || c.PlatformFeeBps > 10000 {
 		return fmt.Errorf("PLATFORM_FEE_BPS must be between 0 and 10000")

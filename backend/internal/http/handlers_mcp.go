@@ -1,13 +1,16 @@
 package http
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/yourorg/mcp-marketplace/backend/internal/auth"
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
 
@@ -45,7 +48,7 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hub := a.ensureHubProfile(tenantID, userID)
-	routes := a.store.ListHubRoutes(hub.ID)
+	routes := a.authorizedHubRoutes(claims, tenantID, userID, a.store.ListHubRoutes(hub.ID))
 	tools := mcpToolsFromRoutes(routes)
 
 	if r.Method == http.MethodGet {
@@ -424,23 +427,150 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		result := map[string]interface{}{
-			"content": []map[string]string{
-				{
-					"type": "text",
-					"text": "Tool executed by marketplace hub in demo mode.",
+		// Forward the tool/call request to the upstream MCP server
+		upstreamURL := server.CanonicalResourceURI
+		if upstreamURL == "" {
+			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error: &mcpJSONRPCError{
+					Code:    -32603,
+					Message: "upstream server URL not configured",
 				},
-			},
-			"isError": false,
+			})
+			return
 		}
-		if len(resultMeta) > 0 {
-			result["_meta"] = resultMeta
+
+		// Build the upstream MCP request
+		upstreamParams := map[string]interface{}{
+			"name":      params.Name,
+			"arguments": params.Arguments,
 		}
-		writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
-			JSONRPC: "2.0",
-			ID:      req.ID,
-			Result:  result,
-		})
+		if params.Meta != nil {
+			upstreamParams["_meta"] = params.Meta
+		}
+		upstreamParamsJSON, err := json.Marshal(upstreamParams)
+		if err != nil {
+			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error: &mcpJSONRPCError{
+					Code:    -32603,
+					Message: "failed to build upstream request",
+					Data:    map[string]interface{}{"error": err.Error()},
+				},
+			})
+			return
+		}
+
+		upstreamReqBody := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      req.ID,
+			"method":  "tools/call",
+			"params":  upstreamParamsJSON,
+		}
+		upstreamReqBytes, err := json.Marshal(upstreamReqBody)
+		if err != nil {
+			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error: &mcpJSONRPCError{
+					Code:    -32603,
+					Message: "failed to serialize upstream request",
+					Data:    map[string]interface{}{"error": err.Error()},
+				},
+			})
+			return
+		}
+
+		// Forward request to upstream MCP server
+		client := &http.Client{Timeout: 60 * time.Second}
+		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", upstreamURL, bytes.NewReader(upstreamReqBytes))
+		if err != nil {
+			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error: &mcpJSONRPCError{
+					Code:    -32603,
+					Message: "failed to create upstream request",
+					Data:    map[string]interface{}{"error": err.Error()},
+				},
+			})
+			return
+		}
+		upstreamReq.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(upstreamReq)
+		if err != nil {
+			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error: &mcpJSONRPCError{
+					Code:    -32001,
+					Message: "upstream server request failed",
+					Data:    map[string]interface{}{"error": err.Error()},
+				},
+			})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Read and parse upstream response
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error: &mcpJSONRPCError{
+					Code:    -32603,
+					Message: "failed to read upstream response",
+					Data:    map[string]interface{}{"error": err.Error()},
+				},
+			})
+			return
+		}
+
+		// Handle non-200 status codes
+		if resp.StatusCode != http.StatusOK {
+			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error: &mcpJSONRPCError{
+					Code:    -32001,
+					Message: "upstream server returned error",
+					Data: map[string]interface{}{
+						"statusCode": resp.StatusCode,
+						"body":       string(respBody),
+					},
+				},
+			})
+			return
+		}
+
+		// Parse upstream response
+		var upstreamResp mcpJSONRPCResponse
+		if err := json.Unmarshal(respBody, &upstreamResp); err != nil {
+			writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error: &mcpJSONRPCError{
+					Code:    -32603,
+					Message: "failed to parse upstream response",
+					Data:    map[string]interface{}{"error": err.Error()},
+				},
+			})
+			return
+		}
+
+		// Add result meta to the upstream response if payment was processed
+		if len(resultMeta) > 0 && upstreamResp.Result != nil {
+			if resultMap, ok := upstreamResp.Result.(map[string]interface{}); ok {
+				resultMap["_meta"] = resultMeta
+			}
+		}
+
+		// Return the upstream response as-is
+		writeJSON(w, http.StatusOK, upstreamResp)
 	default:
 		writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
 			JSONRPC: "2.0",
@@ -451,6 +581,57 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	}
+}
+
+func (a *App) authorizedHubRoutes(claims *auth.Claims, tenantID, userID string, routes []models.HubRoute) []models.HubRoute {
+	if claims == nil {
+		return nil
+	}
+	entitlements := a.store.ListEntitlements(tenantID, userID)
+	authorized := make([]models.HubRoute, 0, len(routes))
+	for _, route := range routes {
+		if !route.Enabled {
+			continue
+		}
+		server, ok := a.store.GetServerByID(route.ServerID)
+		if !ok {
+			continue
+		}
+		if !server.SupportsCloud {
+			continue
+		}
+		if claims.Role == models.RoleAdmin {
+			authorized = append(authorized, route)
+			continue
+		}
+		if server.TenantID == tenantID {
+			if hasAllScopes(claims.Scopes, server.RequiredScopes) {
+				authorized = append(authorized, route)
+			}
+			continue
+		}
+		entitlement, ok := entitlementForServer(entitlements, server.ID)
+		if !ok || !entitlement.CloudAllowed {
+			continue
+		}
+		if len(entitlement.AllowedScopes) > 0 && !hasAllScopes(entitlement.AllowedScopes, server.RequiredScopes) {
+			continue
+		}
+		if !hasAllScopes(claims.Scopes, server.RequiredScopes) {
+			continue
+		}
+		authorized = append(authorized, route)
+	}
+	return authorized
+}
+
+func hasAllScopes(granted []string, required []string) bool {
+	for _, scope := range required {
+		if !hasScope(granted, scope) {
+			return false
+		}
+	}
+	return true
 }
 
 func mcpToolsFromRoutes(routes []models.HubRoute) []map[string]interface{} {

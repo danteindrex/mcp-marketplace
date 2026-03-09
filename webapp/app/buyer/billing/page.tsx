@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, Download, Wallet } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Download, RefreshCw, Wallet } from 'lucide-react'
 import { AppShell } from '@/components/app-shell'
 import { LoadingState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
@@ -14,11 +14,14 @@ import {
   fetchBilling,
   fetchBuyerPaymentControls,
   fetchBuyerWalletTopUps,
+  fetchX402Intents,
   fetchInvoices,
   type Billing,
   type BuyerPaymentControls,
   type PaymentMethodCatalogItem,
   type WalletTopUp,
+  type X402Intent,
+  settleX402Intent,
   updateBuyerPaymentControls,
 } from '@/lib/api-client'
 import {
@@ -26,6 +29,7 @@ import {
   getPaymentMethodStatus,
   getPaymentMethodTitle,
 } from '@/lib/payment-methods'
+import { toast } from 'sonner'
 
 const planFeatures: Record<
   string,
@@ -88,6 +92,16 @@ interface StripeTopUpSessionResponse {
   }
 }
 
+interface X402IntentSummary {
+  items: X402Intent[]
+  count: number
+}
+
+interface IntentFeedback {
+  tone: 'success' | 'error'
+  message: string
+}
+
 const emptyBilling: Billing = {
   id: '',
   userId: '',
@@ -108,6 +122,52 @@ const emptyTopUpSummary: WalletTopUpSummary = {
   minimumTopUpUsd: 1,
   defaultTopUpUsd: 50,
   stripeConfigured: false,
+}
+
+const emptyX402IntentSummary: X402IntentSummary = {
+  items: [],
+  count: 0,
+}
+
+function formatDateTime(value?: string | Date | null, fallback = 'Not available') {
+  if (!value) return fallback
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime()) || date.getUTCFullYear() <= 1) return fallback
+  return date.toLocaleString()
+}
+
+function humanizeMethodId(value?: string | null) {
+  if (!value) return 'Not provided'
+  return value
+    .split('_')
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function getIntentStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+  switch (status) {
+    case 'settled':
+      return 'default'
+    case 'pending':
+      return 'secondary'
+    case 'failed':
+    case 'rejected':
+      return 'destructive'
+    default:
+      return 'outline'
+  }
+}
+
+function parseIntentChallenge(intent: X402Intent) {
+  if (!intent.challenge) return null
+  try {
+    const parsed = JSON.parse(intent.challenge)
+    const first = Array.isArray(parsed) ? parsed[0] : parsed
+    return first && typeof first === 'object' ? (first as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
 }
 
 function PaymentMethodStatusCard({
@@ -154,8 +214,11 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([])
   const [controls, setControls] = useState<BuyerPaymentControls | null>(null)
   const [topUpSummary, setTopUpSummary] = useState<WalletTopUpSummary>(emptyTopUpSummary)
+  const [x402IntentSummary, setX402IntentSummary] = useState<X402IntentSummary>(emptyX402IntentSummary)
   const [isSavingCaps, setIsSavingCaps] = useState(false)
   const [isCreatingTopup, setIsCreatingTopup] = useState(false)
+  const [settlingIntentId, setSettlingIntentId] = useState('')
+  const [intentFeedback, setIntentFeedback] = useState<Record<string, IntentFeedback>>({})
   const [topupAmountUsd, setTopupAmountUsd] = useState(50)
   const [topupNotice, setTopupNotice] = useState('')
   const [onrampClientSecret, setOnrampClientSecret] = useState('')
@@ -168,6 +231,10 @@ export default function BillingPage() {
     [billing.allowedMethods, controls?.policy?.allowedMethods],
   )
   const supportedMethods = useMemo(() => controls?.methods || [], [controls?.methods])
+  const paymentMethodLabels = useMemo(
+    () => new Map(supportedMethods.map(method => [method.id, getPaymentMethodTitle(method)])),
+    [supportedMethods],
+  )
   const readyAllowedMethods = useMemo(
     () =>
       supportedMethods.filter(method => getPaymentMethodStatus(method, allowedMethods).status === 'ready'),
@@ -182,14 +249,16 @@ export default function BillingPage() {
   )
 
   const refreshWalletData = useCallback(async () => {
-    const [bill, ctl, topupRes] = await Promise.all([
+    const [bill, ctl, topupRes, x402Res] = await Promise.all([
       fetchBilling(),
       fetchBuyerPaymentControls(),
       fetchBuyerWalletTopUps(),
+      fetchX402Intents(),
     ])
     setBilling(bill)
     setControls(ctl)
     setTopUpSummary(topupRes)
+    setX402IntentSummary(x402Res)
     if (topupRes.defaultTopUpUsd) {
       setTopupAmountUsd(Number(topupRes.defaultTopUpUsd))
     }
@@ -199,16 +268,18 @@ export default function BillingPage() {
     const loadData = async () => {
       setIsLoading(true)
       try {
-        const [bill, invs, ctl, topupRes] = await Promise.all([
+        const [bill, invs, ctl, topupRes, x402Res] = await Promise.all([
           fetchBilling(),
           fetchInvoices(),
           fetchBuyerPaymentControls(),
           fetchBuyerWalletTopUps(),
+          fetchX402Intents(),
         ])
         setBilling(bill)
         setInvoices(invs)
         setControls(ctl)
         setTopUpSummary(topupRes)
+        setX402IntentSummary(x402Res)
         if (topupRes.defaultTopUpUsd) {
           setTopupAmountUsd(Number(topupRes.defaultTopUpUsd))
         }
@@ -226,6 +297,37 @@ export default function BillingPage() {
         <LoadingState />
       </AppShell>
     )
+  }
+
+  const handleSettleWalletIntent = async (intent: X402Intent) => {
+    setSettlingIntentId(intent.id)
+    setIntentFeedback(prev => {
+      const next = { ...prev }
+      delete next[intent.id]
+      return next
+    })
+
+    try {
+      const settled = await settleX402Intent(intent.id)
+      if (settled?.status !== 'settled') {
+        const message = 'Settlement did not complete. Intent remains pending.'
+        setIntentFeedback(prev => ({ ...prev, [intent.id]: { tone: 'error', message } }))
+        toast.error(message)
+        return
+      }
+
+      await refreshWalletData()
+      const settledAt = formatDateTime(settled?.settledAt, 'just now')
+      const message = `Wallet debit settled at ${settledAt}.`
+      setIntentFeedback(prev => ({ ...prev, [intent.id]: { tone: 'success', message } }))
+      toast.success(message)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Intent settlement failed.'
+      setIntentFeedback(prev => ({ ...prev, [intent.id]: { tone: 'error', message } }))
+      toast.error(message)
+    } finally {
+      setSettlingIntentId('')
+    }
   }
 
   return (
@@ -600,7 +702,7 @@ export default function BillingPage() {
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span>Daily spend: {Number(controls.dailySpendUsdc || 0).toFixed(2)} USDC</span>
               <span>Monthly spend: {Number(controls.monthlySpendUsdc || 0).toFixed(2)} USDC</span>
-              <span>Facilitator mode: {controls.facilitatorMode || 'mock'}</span>
+              <span>Facilitator mode: {controls.facilitatorMode || 'not configured'}</span>
               <span>Wallet balance: {Number(controls.wallet?.balanceUsdc ?? controls.policy?.walletBalanceUsdc ?? 0).toFixed(2)} USDC</span>
             </div>
 
@@ -658,6 +760,120 @@ export default function BillingPage() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-bold">x402 Intent History</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Recovery state comes from `/v1/billing/x402/intents`. Pending wallet debits can be retried here when funding becomes available.
+              </p>
+            </div>
+            <Badge variant="outline">{x402IntentSummary.count} total</Badge>
+          </div>
+
+          {x402IntentSummary.items.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No x402 billing intents yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {x402IntentSummary.items.map(intent => {
+                const challenge = parseIntentChallenge(intent)
+                const paymentMethodLabel = paymentMethodLabels.get(intent.paymentMethod || '') || humanizeMethodId(intent.paymentMethod)
+                const createdAt = formatDateTime(intent.createdAt)
+                const settledAt = formatDateTime(intent.settledAt, intent.status === 'settled' ? 'Timestamp unavailable' : 'Not settled')
+                const challengeContext = [
+                  { label: 'Tool', value: String(challenge?.toolName || intent.toolName || '') },
+                  { label: 'Server', value: String(challenge?.serverSlug || challenge?.serverId || intent.serverId || '') },
+                  { label: 'Resource', value: String(challenge?.resource || intent.resource || '') },
+                  { label: 'Settlement scope', value: String(challenge?.settlementScope || '') },
+                  { label: 'Payment address', value: String(challenge?.paymentAddress || '') },
+                  { label: 'Idempotency key', value: String(challenge?.idempotencyKey || intent.idempotencyKey || '') },
+                ].filter(item => item.value)
+                const canRetryWalletSettlement = intent.status === 'pending' && intent.paymentMethod === 'wallet_balance'
+                const feedback = intentFeedback[intent.id]
+
+                return (
+                  <div key={intent.id} className="rounded-xl border border-border p-4 space-y-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">{intent.toolName || 'Untitled intent'}</p>
+                          <Badge variant={getIntentStatusVariant(intent.status)}>{intent.status}</Badge>
+                          {intent.verificationStatus && <Badge variant="outline">Verification: {intent.verificationStatus}</Badge>}
+                        </div>
+                        <p className="text-xs text-muted-foreground break-all">Intent ID: {intent.id}</p>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                          <span>Payment method: {paymentMethodLabel}</span>
+                          <span>Amount: {Number(intent.amountUsdc || 0).toFixed(2)} USDC</span>
+                          <span>Created: {createdAt}</span>
+                          <span>Settled: {settledAt}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {canRetryWalletSettlement ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={settlingIntentId === intent.id}
+                            onClick={() => handleSettleWalletIntent(intent)}
+                          >
+                            <RefreshCw className={`w-4 h-4 mr-2 ${settlingIntentId === intent.id ? 'animate-spin' : ''}`} />
+                            {settlingIntentId === intent.id ? 'Retrying...' : 'Retry Wallet Settle'}
+                          </Button>
+                        ) : intent.status === 'pending' ? (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 max-w-xs">
+                            Pending external settlement. Reuse the original x402 challenge in the install flow or payer wallet before retrying.
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {(challengeContext.length > 0 || intent.verificationNote || intent.paymentIdentifier || intent.facilitatorTx) && (
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {challengeContext.length > 0 && (
+                          <div className="rounded-lg bg-muted/40 p-3 space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requirement Context</p>
+                            <div className="space-y-1 text-sm">
+                              {challengeContext.map(item => (
+                                <p key={`${intent.id}-${item.label}`} className="break-all">
+                                  <span className="text-muted-foreground">{item.label}:</span> {item.value}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {(intent.verificationNote || intent.paymentIdentifier || intent.facilitatorTx) && (
+                          <div className="rounded-lg bg-muted/40 p-3 space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Settlement Details</p>
+                            <div className="space-y-1 text-sm">
+                              {intent.verificationNote && <p>{intent.verificationNote}</p>}
+                              {intent.paymentIdentifier && <p className="break-all"><span className="text-muted-foreground">Payment ID:</span> {intent.paymentIdentifier}</p>}
+                              {intent.facilitatorTx && <p className="break-all"><span className="text-muted-foreground">Facilitator TX:</span> {intent.facilitatorTx}</p>}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {feedback && (
+                      <div className={`rounded-lg border p-3 text-sm ${feedback.tone === 'error' ? 'border-red-200 bg-red-500/10 text-red-800 dark:border-red-900 dark:text-red-200' : 'border-green-200 bg-green-500/10 text-green-800 dark:border-green-900 dark:text-green-200'}`}>
+                        {feedback.message}
+                      </div>
+                    )}
+
+                    {intent.challenge && !challenge && (
+                      <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground break-all">
+                        Challenge payload is stored on this intent, but it could not be parsed into structured recovery details.
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </Card>

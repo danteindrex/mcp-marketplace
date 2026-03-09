@@ -4,10 +4,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
 
 type oauthClient struct {
@@ -34,10 +35,18 @@ type authCode struct {
 	Consumed            bool
 }
 
+type oauthStateData struct {
+	Provider    models.OAuthProvider
+	Nonce       string
+	CreatedAt   time.Time
+	CallbackURL string
+}
+
 type oauthState struct {
 	mu      sync.Mutex
 	clients map[string]oauthClient
 	codes   map[string]authCode
+	states  map[string]oauthStateData
 }
 
 func newOAuthState() *oauthState {
@@ -53,7 +62,8 @@ func newOAuthState() *oauthState {
 				CreatedAt:               now,
 			},
 		},
-		codes: map[string]authCode{},
+		codes:  map[string]authCode{},
+		states: map[string]oauthStateData{},
 	}
 }
 
@@ -99,5 +109,5 @@ func joinScopes(scopes []string) string {
 }
 
 func tokenAudience(resource string) string {
-	return fmt.Sprintf("aud:%s", resource)
+	return resource
 }

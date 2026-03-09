@@ -16,13 +16,27 @@ import (
 )
 
 type stripeConnectService struct {
-	secretKey  string
-	webhookKey string
-	allowMock  bool
-	returnURL  string
-	refreshURL string
-	baseURL    string
-	client     *http.Client
+	secretKey     string
+	webhookKey    string
+	returnURL     string
+	refreshURL    string
+	baseURL       string
+	client        *http.Client
+	allowInsecure bool
+}
+
+func newStripeConnectService(cfg config.Config) *stripeConnectService {
+	return &stripeConnectService{
+		secretKey:  strings.TrimSpace(cfg.StripeSecretKey),
+		webhookKey: strings.TrimSpace(cfg.StripeConnectWebhookSecret),
+		returnURL:  strings.TrimSpace(cfg.StripeConnectReturnURL),
+		refreshURL: strings.TrimSpace(cfg.StripeConnectRefreshURL),
+		baseURL:    "https://api.stripe.com",
+		client: &http.Client{
+			Timeout: 12 * time.Second,
+		},
+		allowInsecure: cfg.AllowInsecureDefaults,
+	}
 }
 
 type stripeConnectAccountSnapshot struct {
@@ -37,53 +51,24 @@ type stripeConnectAccountSnapshot struct {
 	Raw                 map[string]interface{}
 }
 
-func newStripeConnectService(cfg config.Config) *stripeConnectService {
-	return &stripeConnectService{
-		secretKey:  strings.TrimSpace(cfg.StripeSecretKey),
-		webhookKey: strings.TrimSpace(cfg.StripeConnectWebhookSecret),
-		allowMock:  cfg.AllowInsecureDefaults,
-		returnURL:  strings.TrimSpace(cfg.StripeConnectReturnURL),
-		refreshURL: strings.TrimSpace(cfg.StripeConnectRefreshURL),
-		baseURL:    "https://api.stripe.com",
-		client: &http.Client{
-			Timeout: 12 * time.Second,
-		},
-	}
-}
-
 func (s *stripeConnectService) configured() bool {
-	if strings.TrimSpace(s.secretKey) == "" {
-		return false
-	}
-	if s.allowMock {
-		return true
-	}
-	return strings.TrimSpace(s.webhookKey) != ""
+	return strings.TrimSpace(s.secretKey) != ""
 }
 
 func (s *stripeConnectService) createExpressAccount(ctx context.Context, tenantID string) (string, map[string]interface{}, error) {
 	if !s.configured() {
-		if !s.allowMock {
-			if strings.TrimSpace(s.secretKey) == "" {
-				return "", nil, fmt.Errorf("stripe connect is not configured")
-			}
-			return "", nil, fmt.Errorf("stripe connect requires STRIPE_CONNECT_WEBHOOK_SECRET in non-dev mode")
+		if s.allowInsecure {
+			mockID := "acct_test_" + randomToken("test_")
+			return mockID, map[string]interface{}{
+				"id":                mockID,
+				"object":            "account",
+				"charges_enabled":   true,
+				"payouts_enabled":   true,
+				"details_submitted": true,
+				"metadata":          map[string]string{"tenant_id": tenantID},
+			}, nil
 		}
-		mockID := "acct_mock_" + hashAny(map[string]interface{}{
-			"tenantId": tenantID,
-			"at":       time.Now().UTC().Format(time.RFC3339Nano),
-		})[:16]
-		return mockID, map[string]interface{}{
-			"id":                mockID,
-			"type":              "express",
-			"charges_enabled":   false,
-			"payouts_enabled":   false,
-			"details_submitted": false,
-			"requirements": map[string]interface{}{
-				"currently_due":  []interface{}{"business_profile.url", "individual.verification.document"},
-				"eventually_due": []interface{}{},
-			},
-		}, nil
+		return "", nil, fmt.Errorf("stripe connect is not configured")
 	}
 
 	form := url.Values{}
@@ -107,13 +92,7 @@ func (s *stripeConnectService) createOnboardingLink(ctx context.Context, account
 		return "", fmt.Errorf("stripe account id is required")
 	}
 	if !s.configured() {
-		if !s.allowMock {
-			if strings.TrimSpace(s.secretKey) == "" {
-				return "", fmt.Errorf("stripe connect is not configured")
-			}
-			return "", fmt.Errorf("stripe connect requires STRIPE_CONNECT_WEBHOOK_SECRET in non-dev mode")
-		}
-		return "https://dashboard.stripe.com/connect/onboarding/" + accountID, nil
+		return "", fmt.Errorf("stripe connect is not configured")
 	}
 	form := url.Values{}
 	form.Set("account", accountID)
@@ -136,25 +115,7 @@ func (s *stripeConnectService) fetchAccount(ctx context.Context, accountID strin
 		return stripeConnectAccountSnapshot{}, fmt.Errorf("stripe account id is required")
 	}
 	if !s.configured() {
-		if !s.allowMock {
-			if strings.TrimSpace(s.secretKey) == "" {
-				return stripeConnectAccountSnapshot{}, fmt.Errorf("stripe connect is not configured")
-			}
-			return stripeConnectAccountSnapshot{}, fmt.Errorf("stripe connect requires STRIPE_CONNECT_WEBHOOK_SECRET in non-dev mode")
-		}
-		return stripeConnectAccountSnapshot{
-			AccountID:           accountID,
-			DetailsSubmitted:    false,
-			ChargesEnabled:      false,
-			PayoutsEnabled:      false,
-			CurrentlyDue:        []string{"individual.verification.document"},
-			EventuallyDue:       []string{},
-			PendingVerification: []string{},
-			DisabledReason:      "",
-			Raw: map[string]interface{}{
-				"id": accountID,
-			},
-		}, nil
+		return stripeConnectAccountSnapshot{}, fmt.Errorf("stripe connect is not configured")
 	}
 	resp, err := s.getJSON(ctx, s.baseURL+"/v1/accounts/"+url.PathEscape(strings.TrimSpace(accountID)), "")
 	if err != nil {
@@ -171,18 +132,7 @@ func (s *stripeConnectService) createPayout(ctx context.Context, accountID strin
 		return "", 0, fmt.Errorf("payout amount must be positive")
 	}
 	if !s.configured() {
-		if !s.allowMock {
-			if strings.TrimSpace(s.secretKey) == "" {
-				return "", 0, fmt.Errorf("stripe connect is not configured")
-			}
-			return "", 0, fmt.Errorf("stripe connect requires STRIPE_CONNECT_WEBHOOK_SECRET in non-dev mode")
-		}
-		ref := "po_mock_" + hashAny(map[string]interface{}{
-			"accountId": accountID,
-			"amount":    amountUSDC,
-			"at":        time.Now().UTC().Format(time.RFC3339Nano),
-		})[:16]
-		return ref, 0, nil
+		return "", 0, fmt.Errorf("stripe connect is not configured")
 	}
 	amountCents := int(math.Round(amountUSDC * 100))
 	if amountCents <= 0 {
@@ -211,11 +161,11 @@ func (s *stripeConnectService) createPayout(ctx context.Context, accountID strin
 }
 
 func (s *stripeConnectService) verifyWebhookSignature(payload []byte, signatureHeader string) error {
+	if s.allowInsecure {
+		return nil // Skip verification in test mode
+	}
 	if strings.TrimSpace(s.webhookKey) == "" {
-		if !s.allowMock {
-			return fmt.Errorf("stripe connect webhook secret is required in non-dev mode")
-		}
-		return nil
+		return fmt.Errorf("stripe connect webhook secret is required")
 	}
 	timestamp, signatures := parseStripeSignature(signatureHeader)
 	if timestamp == "" || len(signatures) == 0 {

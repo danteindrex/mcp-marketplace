@@ -250,6 +250,37 @@ export interface WalletTopUp {
   fulfilledAt?: string
 }
 
+export interface X402Intent {
+  id: string
+  tenantId?: string
+  userId?: string
+  serverId: string
+  toolName: string
+  amountUsdc: number
+  network?: string
+  asset?: string
+  status: string
+  challenge?: string
+  paymentMethod?: string
+  paymentIdentifier?: string
+  idempotencyKey?: string
+  verificationStatus?: string
+  verificationNote?: string
+  facilitatorTx?: string
+  quantity?: number
+  remainingQuantity?: number
+  resource?: string
+  x402Version?: string
+  requestFingerprint?: string
+  platformFeeBps?: number
+  platformFeeUsdc?: number
+  sellerNetUsdc?: number
+  accountingPosted?: boolean
+  accountingRef?: string
+  createdAt?: string
+  settledAt?: string
+}
+
 export interface PaymentFeePolicy {
   id: string
   scope: 'global' | 'tenant' | 'server'
@@ -605,8 +636,40 @@ export async function settleX402Intent(
   return json
 }
 
-export async function fetchX402Intents() {
-  return apiGet<{ items: any[]; count: number }>('/v1/billing/x402/intents', 'buyer')
+export async function fetchX402Intents(): Promise<{ items: X402Intent[]; count: number }> {
+  const data = await apiGet<{ items: any[]; count: number }>('/v1/billing/x402/intents', 'buyer')
+  const items = (data.items || []).map(intent => ({
+    id: intent.id,
+    tenantId: intent.tenantId,
+    userId: intent.userId,
+    serverId: intent.serverId,
+    toolName: intent.toolName,
+    amountUsdc: Number(intent.amountUsdc || 0),
+    network: intent.network,
+    asset: intent.asset,
+    status: intent.status || 'pending',
+    challenge: intent.challenge,
+    paymentMethod: intent.paymentMethod,
+    paymentIdentifier: intent.paymentIdentifier,
+    idempotencyKey: intent.idempotencyKey,
+    verificationStatus: intent.verificationStatus,
+    verificationNote: intent.verificationNote,
+    facilitatorTx: intent.facilitatorTx,
+    quantity: intent.quantity,
+    remainingQuantity: intent.remainingQuantity,
+    resource: intent.resource,
+    x402Version: intent.x402Version,
+    requestFingerprint: intent.requestFingerprint,
+    platformFeeBps: intent.platformFeeBps,
+    platformFeeUsdc: intent.platformFeeUsdc,
+    sellerNetUsdc: intent.sellerNetUsdc,
+    accountingPosted: intent.accountingPosted,
+    accountingRef: intent.accountingRef,
+    createdAt: intent.createdAt,
+    settledAt: intent.settledAt,
+  }))
+
+  return { items, count: Number(data.count || items.length) }
 }
 
 export async function fetchSecurityEvents(severity?: string): Promise<SecurityEvent[]> {

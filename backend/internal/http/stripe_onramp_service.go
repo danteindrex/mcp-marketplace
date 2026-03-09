@@ -20,15 +20,15 @@ import (
 )
 
 type stripeOnrampService struct {
-	secretKey   string
-	webhookKey  string
-	allowMock   bool
-	returnURL   string
-	refreshURL  string
-	minTopupUSD float64
-	defaultUSD  float64
-	baseURL     string
-	client      *http.Client
+	secretKey     string
+	webhookKey    string
+	returnURL     string
+	refreshURL    string
+	minTopupUSD   float64
+	defaultUSD    float64
+	baseURL       string
+	client        *http.Client
+	allowInsecure bool
 }
 
 type stripeCreateSessionInput struct {
@@ -50,7 +50,6 @@ func newStripeOnrampService(cfg config.Config) *stripeOnrampService {
 	return &stripeOnrampService{
 		secretKey:   strings.TrimSpace(cfg.StripeSecretKey),
 		webhookKey:  strings.TrimSpace(cfg.StripeWebhookSecret),
-		allowMock:   cfg.AllowInsecureDefaults,
 		returnURL:   strings.TrimSpace(cfg.StripeOnrampReturnURL),
 		refreshURL:  strings.TrimSpace(cfg.StripeOnrampRefreshURL),
 		minTopupUSD: cfg.StripeOnrampMinUSD,
@@ -59,17 +58,12 @@ func newStripeOnrampService(cfg config.Config) *stripeOnrampService {
 		client: &http.Client{
 			Timeout: 12 * time.Second,
 		},
+		allowInsecure: cfg.AllowInsecureDefaults,
 	}
 }
 
 func (s *stripeOnrampService) configured() bool {
-	if strings.TrimSpace(s.secretKey) == "" {
-		return false
-	}
-	if s.allowMock {
-		return true
-	}
-	return strings.TrimSpace(s.webhookKey) != ""
+	return strings.TrimSpace(s.secretKey) != ""
 }
 
 func (s *stripeOnrampService) createSession(ctx context.Context, in stripeCreateSessionInput) (stripeOnrampSession, error) {
@@ -82,30 +76,21 @@ func (s *stripeOnrampService) createSession(ctx context.Context, in stripeCreate
 	}
 
 	if !s.configured() {
-		if !s.allowMock {
-			if strings.TrimSpace(s.secretKey) == "" {
-				return stripeOnrampSession{}, fmt.Errorf("stripe onramp is not configured")
-			}
-			return stripeOnrampSession{}, fmt.Errorf("stripe onramp requires STRIPE_WEBHOOK_SECRET in non-dev mode")
+		if s.allowInsecure {
+			mockID := "onramp_test_" + randomToken("test_")
+			return stripeOnrampSession{
+				ID:           mockID,
+				ClientSecret: "test_secret_" + mockID,
+				HostedURL:    "https://buy.stripe.com/test/" + mockID,
+				Raw: map[string]interface{}{
+					"id":            mockID,
+					"client_secret": "test_secret_" + mockID,
+					"url":           "https://buy.stripe.com/test/" + mockID,
+					"mode":          "test",
+				},
+			}, nil
 		}
-		mockID := "onramp_mock_" + hashAny(map[string]interface{}{
-			"tenantId": in.TenantID,
-			"userId":   in.UserID,
-			"amount":   amount,
-			"at":       time.Now().UTC().Format(time.RFC3339Nano),
-		})[:16]
-		return stripeOnrampSession{
-			ID:           mockID,
-			ClientSecret: "mock_client_secret_" + mockID,
-			HostedURL:    "",
-			Raw: map[string]interface{}{
-				"id":            mockID,
-				"object":        "crypto.onramp_session",
-				"status":        "requires_payment",
-				"source_amount": fmt.Sprintf("%.2f", amount),
-				"mode":          "mock",
-			},
-		}, nil
+		return stripeOnrampSession{}, fmt.Errorf("stripe onramp is not configured")
 	}
 
 	form := url.Values{}
@@ -141,11 +126,11 @@ func (s *stripeOnrampService) createSession(ctx context.Context, in stripeCreate
 }
 
 func (s *stripeOnrampService) verifyWebhookSignature(payload []byte, signatureHeader string) error {
+	if s.allowInsecure {
+		return nil // Skip verification in test mode
+	}
 	if strings.TrimSpace(s.webhookKey) == "" {
-		if !s.allowMock {
-			return fmt.Errorf("stripe webhook secret is required in non-dev mode")
-		}
-		return nil
+		return fmt.Errorf("stripe webhook secret is required")
 	}
 	timestamp, signatures := parseStripeSignature(signatureHeader)
 	if timestamp == "" || len(signatures) == 0 {

@@ -81,37 +81,109 @@ func (a *App) listBuyerInvoices(w http.ResponseWriter, r *http.Request) {
 func (a *App) merchantRevenue(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	servers := a.store.ListMerchantServers(claims.TenantID)
+
+	// Get real revenue data from X402 intents
+	allIntents := a.store.ListAllX402Intents()
+
+	// Group intents by server ID for revenue calculation
+	serverRevenue := make(map[string]float64)
+	serverCustomers := make(map[string]int)
+	for _, intent := range allIntents {
+		if intent.Status == "settled" && intent.SellerNetUSDC > 0 {
+			// Only count intents for servers owned by this merchant
+			for _, server := range servers {
+				if intent.ServerID == server.ID {
+					serverRevenue[server.ID] += intent.SellerNetUSDC
+					// Count unique customers per server (by tenant+user combination would be better but using intent count)
+					serverCustomers[server.ID]++
+				}
+			}
+		}
+	}
+
 	serverRows := make([]map[string]interface{}, 0, len(servers))
 	totalRevenue := 0.0
 	totalCustomers := 0
+	hasRealData := false
+
 	for _, server := range servers {
-		revenue := float64(server.InstallCount) * server.PricingAmount * 0.3
-		if server.PricingType == "free" {
-			revenue = 0
+		revenue := serverRevenue[server.ID]
+		customers := serverCustomers[server.ID]
+
+		// Fall back to install count if no real customers yet
+		if customers == 0 && server.InstallCount > 0 {
+			customers = server.InstallCount
 		}
+
+		if revenue > 0 || customers > 0 {
+			hasRealData = true
+		}
+
 		totalRevenue += revenue
-		totalCustomers += server.InstallCount
-		serverRows = append(serverRows, map[string]interface{}{
+		totalCustomers += customers
+
+		serverRow := map[string]interface{}{
 			"id":        server.ID,
 			"name":      server.Name,
 			"revenue":   revenue,
-			"customers": server.InstallCount,
-			"trend":     "+8%",
-		})
+			"customers": customers,
+		}
+
+		// Only include trend if we have real revenue data
+		if revenue > 0 {
+			serverRow["trend"] = "real"
+		} else {
+			serverRow["trend"] = nil
+		}
+
+		serverRows = append(serverRows, serverRow)
 	}
-	trend := []map[string]interface{}{
-		{"month": "Jan", "revenue": totalRevenue * 0.65, "subscriptions": totalRevenue * 0.45, "perCall": totalRevenue * 0.2},
-		{"month": "Feb", "revenue": totalRevenue * 0.75, "subscriptions": totalRevenue * 0.5, "perCall": totalRevenue * 0.25},
-		{"month": "Mar", "revenue": totalRevenue * 0.85, "subscriptions": totalRevenue * 0.55, "perCall": totalRevenue * 0.3},
-		{"month": "Apr", "revenue": totalRevenue * 0.9, "subscriptions": totalRevenue * 0.6, "perCall": totalRevenue * 0.3},
-		{"month": "May", "revenue": totalRevenue * 0.95, "subscriptions": totalRevenue * 0.62, "perCall": totalRevenue * 0.33},
-		{"month": "Jun", "revenue": totalRevenue, "subscriptions": totalRevenue * 0.64, "perCall": totalRevenue * 0.36},
+
+	// Calculate real trend from historical data if available
+	var trend []map[string]interface{}
+	if hasRealData && len(allIntents) > 0 {
+		// Group by month for trend data
+		monthlyRevenue := make(map[string]float64)
+		for _, intent := range allIntents {
+			if intent.Status == "settled" {
+				for _, server := range servers {
+					if intent.ServerID == server.ID {
+						monthKey := intent.SettledAt.Format("Jan")
+						monthlyRevenue[monthKey] += intent.SellerNetUSDC
+					}
+				}
+			}
+		}
+
+		// Only include trend if we have historical data
+		if len(monthlyRevenue) > 0 {
+			trend = []map[string]interface{}{}
+			for month, revenue := range monthlyRevenue {
+				trend = append(trend, map[string]interface{}{
+					"month":   month,
+					"revenue": revenue,
+				})
+			}
+		}
 	}
+
+	// If no real data, return explicit "no data" state
+	if !hasRealData {
+		trend = nil // Explicit no data
+	}
+
+	dataMessage := ""
+	if !hasRealData {
+		dataMessage = "No revenue data available. Revenue will appear once customers make payments."
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"totalRevenue":   totalRevenue,
 		"totalCustomers": totalCustomers,
 		"servers":        serverRows,
 		"trend":          trend,
+		"hasData":        hasRealData,
+		"dataMessage":    dataMessage,
 	})
 }
 
@@ -158,7 +230,8 @@ func (a *App) serverDeployments(w http.ResponseWriter, r *http.Request) {
 		"lifecycle": map[string]interface{}{
 			"marketplaceStatus": server.Status,
 			"deploymentStatus":  server.DeploymentStatus,
-			"canPublish":        server.DeploymentStatus == models.ServerDeploymentDeployed && server.PricingAmount > 0,
+			"canPublish":        a.serverPublishability(server).CanPublish,
+			"blockingReasons":   a.serverPublishability(server).BlockingReasons,
 			"priceSet":          server.PricingAmount > 0,
 			"deployedAt":        server.DeployedAt,
 		},

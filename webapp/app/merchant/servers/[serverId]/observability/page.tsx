@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { use } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Download } from 'lucide-react'
+import { ArrowLeft, Download, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
@@ -11,26 +11,43 @@ import { fetchServerObservability } from '@/lib/api-client'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { LineChart } from '@/components/retroui/charts/LineChart'
 
+interface ObservabilityMetrics {
+  p50LatencyMs: number
+  p95LatencyMs: number
+  errorRate: number
+  insufficientScopeCount: number
+  totalRequests: number
+  history?: Array<{
+    window: string
+    errors: number
+    latency: number
+    timestamp: string
+  }>
+}
+
 export default function ObservabilityPage({ params }: { params: Promise<{ serverId: string }> }) {
   const { serverId } = use(params)
   const [dateRange, setDateRange] = useState('24h')
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<{ metrics: ObservabilityMetrics } | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchServerObservability(serverId).then(setData)
+    fetchServerObservability(serverId)
+      .then((result) => setData(result as { metrics: ObservabilityMetrics } | null))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load observability data'))
   }, [serverId])
 
+  if (error) return <AppShell role="merchant"><div className="p-6"><div className="flex items-center gap-2 text-red-500"><AlertCircle className="w-5 h-5" /><p>Error loading observability: {error}</p></div></div></AppShell>
   if (!data) return <AppShell role="merchant"><div className="p-6">Loading...</div></AppShell>
 
   const bars = [
     { p: 'p50', latency: data.metrics.p50LatencyMs },
     { p: 'p95', latency: data.metrics.p95LatencyMs },
   ]
-  const trend = [
-    { window: 'T-3', errors: Math.max(0, data.metrics.insufficientScopeCount - 2), latency: data.metrics.p50LatencyMs - 6 },
-    { window: 'T-2', errors: Math.max(0, data.metrics.insufficientScopeCount - 1), latency: data.metrics.p50LatencyMs - 3 },
-    { window: 'T-1', errors: data.metrics.insufficientScopeCount, latency: data.metrics.p50LatencyMs },
-  ]
+
+  // Use real historical data from API if available, otherwise show empty state
+  const trend = data.metrics.history || []
+  const hasHistoricalData = trend.length > 0
 
   return (
     <AppShell role="merchant">
@@ -59,11 +76,18 @@ export default function ObservabilityPage({ params }: { params: Promise<{ server
 
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Recent Error/Latency Trend</h2>
-          <LineChart
-            data={trend}
-            index="window"
-            categories={['errors', 'latency']}
-          />
+          {hasHistoricalData ? (
+            <LineChart
+              data={trend}
+              index="window"
+              categories={['errors', 'latency']}
+            />
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="text-sm">No historical trend data available yet.</p>
+              <p className="text-xs mt-1">Error and latency trends will appear as data is collected over time.</p>
+            </div>
+          )}
         </Card>
       </div>
     </AppShell>

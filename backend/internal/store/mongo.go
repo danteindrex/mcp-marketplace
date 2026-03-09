@@ -20,28 +20,31 @@ import (
 const mongoTimeout = 8 * time.Second
 
 type MongoStore struct {
-	cfg          config.Config
-	client       *mongo.Client
-	db           *mongo.Database
-	users        *mongo.Collection
-	tenants      *mongo.Collection
-	servers      *mongo.Collection
-	entitlements *mongo.Collection
-	hubs         *mongo.Collection
-	hubRoutes    *mongo.Collection
-	connections  *mongo.Collection
-	security     *mongo.Collection
-	audit        *mongo.Collection
-	x402         *mongo.Collection
-	paymentPol   *mongo.Collection
-	topups       *mongo.Collection
-	feePol       *mongo.Collection
-	ledger       *mongo.Collection
-	payoutProf   *mongo.Collection
-	payouts      *mongo.Collection
-	deployTasks  *mongo.Collection
-	agents       *mongo.Collection
-	userSettings *mongo.Collection
+	cfg           config.Config
+	client        *mongo.Client
+	db            *mongo.Database
+	users         *mongo.Collection
+	tenants       *mongo.Collection
+	servers       *mongo.Collection
+	entitlements  *mongo.Collection
+	hubs          *mongo.Collection
+	hubRoutes     *mongo.Collection
+	connections   *mongo.Collection
+	security      *mongo.Collection
+	audit         *mongo.Collection
+	x402          *mongo.Collection
+	paymentPol    *mongo.Collection
+	topups        *mongo.Collection
+	feePol        *mongo.Collection
+	ledger        *mongo.Collection
+	payoutProf    *mongo.Collection
+	payouts       *mongo.Collection
+	deployTasks   *mongo.Collection
+	agents        *mongo.Collection
+	userSettings  *mongo.Collection
+	oauthAccounts *mongo.Collection
+	oauthClients  *mongo.Collection
+	oauthCodes    *mongo.Collection
 }
 
 func NewMongoStore(cfg config.Config) (*MongoStore, error) {
@@ -65,28 +68,31 @@ func NewMongoStore(cfg config.Config) (*MongoStore, error) {
 	}
 	db := client.Database(dbName)
 	s := &MongoStore{
-		cfg:          cfg,
-		client:       client,
-		db:           db,
-		users:        db.Collection("users"),
-		tenants:      db.Collection("tenants"),
-		servers:      db.Collection("servers"),
-		entitlements: db.Collection("entitlements"),
-		hubs:         db.Collection("hubs"),
-		hubRoutes:    db.Collection("hub_routes"),
-		connections:  db.Collection("connections"),
-		security:     db.Collection("security_events"),
-		audit:        db.Collection("audit_logs"),
-		x402:         db.Collection("x402_intents"),
-		paymentPol:   db.Collection("payment_policies"),
-		topups:       db.Collection("wallet_topups"),
-		feePol:       db.Collection("payment_fee_policies"),
-		ledger:       db.Collection("ledger_entries"),
-		payoutProf:   db.Collection("seller_payout_profiles"),
-		payouts:      db.Collection("payout_records"),
-		deployTasks:  db.Collection("deploy_tasks"),
-		agents:       db.Collection("local_agents"),
-		userSettings: db.Collection("user_settings"),
+		cfg:           cfg,
+		client:        client,
+		db:            db,
+		users:         db.Collection("users"),
+		tenants:       db.Collection("tenants"),
+		servers:       db.Collection("servers"),
+		entitlements:  db.Collection("entitlements"),
+		hubs:          db.Collection("hubs"),
+		hubRoutes:     db.Collection("hub_routes"),
+		connections:   db.Collection("connections"),
+		security:      db.Collection("security_events"),
+		audit:         db.Collection("audit_logs"),
+		x402:          db.Collection("x402_intents"),
+		paymentPol:    db.Collection("payment_policies"),
+		topups:        db.Collection("wallet_topups"),
+		feePol:        db.Collection("payment_fee_policies"),
+		ledger:        db.Collection("ledger_entries"),
+		payoutProf:    db.Collection("seller_payout_profiles"),
+		payouts:       db.Collection("payout_records"),
+		deployTasks:   db.Collection("deploy_tasks"),
+		agents:        db.Collection("local_agents"),
+		userSettings:  db.Collection("user_settings"),
+		oauthAccounts: db.Collection("oauth_accounts"),
+		oauthClients:  db.Collection("oauth_clients"),
+		oauthCodes:    db.Collection("oauth_auth_codes"),
 	}
 	if err := s.ensureIndexes(); err != nil {
 		return nil, err
@@ -247,6 +253,32 @@ func (s *MongoStore) ensureIndexes() error {
 			col: s.userSettings,
 			model: []mongo.IndexModel{
 				{Keys: bson.D{{Key: "userId", Value: 1}}, Options: options.Index().SetUnique(true)},
+			},
+		},
+		{
+			col: s.oauthAccounts,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "provider", Value: 1}, {Key: "providerId", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "userId", Value: 1}}},
+			},
+		},
+		{
+			col: s.oauthClients,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "clientId", Value: 1}}, Options: options.Index().SetUnique(true)},
+			},
+		},
+		{
+			col: s.oauthCodes,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "code", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "clientId", Value: 1}}},
+				{Keys: bson.D{{Key: "userId", Value: 1}}},
+				// TTL index for auto-expiration of auth codes
+				{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
 			},
 		},
 	}
@@ -448,6 +480,62 @@ func (s *MongoStore) UpdateUser(user models.User) bool {
 	return res.MatchedCount > 0
 }
 
+func (s *MongoStore) GetOAuthAccount(provider models.OAuthProvider, providerID string) (models.OAuthAccount, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var account models.OAuthAccount
+	err := s.oauthAccounts.FindOne(ctx, bson.M{"provider": provider, "providerId": providerID}).Decode(&account)
+	if err != nil {
+		return models.OAuthAccount{}, false
+	}
+	return account, true
+}
+
+func (s *MongoStore) GetOAuthAccountsByUserID(userID string) []models.OAuthAccount {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	cur, err := s.oauthAccounts.Find(ctx, bson.M{"userId": userID})
+	if err != nil {
+		return []models.OAuthAccount{}
+	}
+	accounts, err := decodeAll[models.OAuthAccount](cur)
+	if err != nil {
+		return []models.OAuthAccount{}
+	}
+	return accounts
+}
+
+func (s *MongoStore) CreateOAuthAccount(account models.OAuthAccount) models.OAuthAccount {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	account.ID = newPrefixedID("oauth")
+	account.CreatedAt = time.Now().UTC()
+	account.UpdatedAt = account.CreatedAt
+	_, _ = s.oauthAccounts.InsertOne(ctx, account)
+	return account
+}
+
+func (s *MongoStore) UpdateOAuthAccount(account models.OAuthAccount) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	account.UpdatedAt = time.Now().UTC()
+	res, err := s.oauthAccounts.ReplaceOne(ctx, bson.M{"id": account.ID}, account)
+	if err != nil {
+		return false
+	}
+	return res.MatchedCount > 0
+}
+
+func (s *MongoStore) DeleteOAuthAccount(provider models.OAuthProvider, providerID string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	res, err := s.oauthAccounts.DeleteOne(ctx, bson.M{"provider": provider, "providerId": providerID})
+	if err != nil {
+		return false
+	}
+	return res.DeletedCount > 0
+}
+
 func (s *MongoStore) CreateTenant(tenant models.Tenant) models.Tenant {
 	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
 	defer cancel()
@@ -460,7 +548,7 @@ func (s *MongoStore) CreateTenant(tenant models.Tenant) models.Tenant {
 func (s *MongoStore) ListMarketplaceServers() []models.Server {
 	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
 	defer cancel()
-	cur, err := s.servers.Find(ctx, bson.M{"status": "published"})
+	cur, err := s.servers.Find(ctx, bson.M{"status": models.ServerStatusPublished, "deploymentStatus": models.ServerDeploymentDeployed})
 	if err != nil {
 		return []models.Server{}
 	}
@@ -478,7 +566,7 @@ func (s *MongoStore) GetServerBySlug(slug string) (models.Server, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
 	defer cancel()
 	var server models.Server
-	err := s.servers.FindOne(ctx, bson.M{"slug": slug}).Decode(&server)
+	err := s.servers.FindOne(ctx, bson.M{"slug": slug, "status": models.ServerStatusPublished, "deploymentStatus": models.ServerDeploymentDeployed}).Decode(&server)
 	if err != nil {
 		return models.Server{}, false
 	}
@@ -518,12 +606,10 @@ func (s *MongoStore) CreateServer(server models.Server) models.Server {
 	defer cancel()
 	now := time.Now().UTC()
 	server.ID = newPrefixedID("srv")
-	if strings.TrimSpace(server.Status) == "" {
-		server.Status = models.ServerStatusDraft
-	}
-	if strings.TrimSpace(server.DeploymentStatus) == "" {
-		server.DeploymentStatus = models.ServerDeploymentPending
-	}
+	server.Status = models.ServerStatusDraft
+	server.DeploymentStatus = models.ServerDeploymentPending
+	server.PublishedAt = time.Time{}
+	server.DeployedAt = time.Time{}
 	server.CreatedAt = now
 	server.UpdatedAt = now
 	_, _ = s.servers.InsertOne(ctx, server)
@@ -1405,6 +1491,108 @@ func (s *MongoStore) UpsertUserSettings(settings models.UserSettings) models.Use
 	}
 	_, _ = s.userSettings.UpdateOne(ctx, bson.M{"userId": settings.UserID}, update, options.Update().SetUpsert(true))
 	return settings
+}
+
+// OAuthClient methods
+func (s *MongoStore) CreateOAuthClient(client models.OAuthClient) models.OAuthClient {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	client.ID = newPrefixedID("oauth_client")
+	client.CreatedAt = now
+	client.UpdatedAt = now
+	if client.ClientIDIssuedAt.IsZero() {
+		client.ClientIDIssuedAt = now
+	}
+	_, _ = s.oauthClients.InsertOne(ctx, client)
+	return client
+}
+
+func (s *MongoStore) GetOAuthClient(clientID string) (models.OAuthClient, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var client models.OAuthClient
+	err := s.oauthClients.FindOne(ctx, bson.M{"clientId": clientID}).Decode(&client)
+	if err != nil {
+		return models.OAuthClient{}, false
+	}
+	return client, true
+}
+
+func (s *MongoStore) ListOAuthClients() []models.OAuthClient {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
+	cur, err := s.oauthClients.Find(ctx, bson.M{}, opts)
+	if err != nil {
+		return []models.OAuthClient{}
+	}
+	clients, err := decodeAll[models.OAuthClient](cur)
+	if err != nil {
+		return []models.OAuthClient{}
+	}
+	return clients
+}
+
+func (s *MongoStore) DeleteOAuthClient(clientID string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	res, err := s.oauthClients.DeleteOne(ctx, bson.M{"clientId": clientID})
+	if err != nil {
+		return false
+	}
+	return res.DeletedCount > 0
+}
+
+// OAuthAuthCode methods (with TTL)
+func (s *MongoStore) CreateOAuthAuthCode(code models.OAuthAuthCode) models.OAuthAuthCode {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	code.ID = newPrefixedID("oauth_code")
+	code.CreatedAt = now
+	if code.ExpiresAt.IsZero() {
+		code.ExpiresAt = now.Add(5 * time.Minute)
+	}
+	code.Consumed = false
+	_, _ = s.oauthCodes.InsertOne(ctx, code)
+	return code
+}
+
+func (s *MongoStore) GetOAuthAuthCode(code string) (models.OAuthAuthCode, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var ac models.OAuthAuthCode
+	err := s.oauthCodes.FindOne(ctx, bson.M{"code": code}).Decode(&ac)
+	if err != nil {
+		return models.OAuthAuthCode{}, false
+	}
+	// Check if expired or consumed
+	if ac.Consumed || time.Now().UTC().After(ac.ExpiresAt) {
+		return models.OAuthAuthCode{}, false
+	}
+	return ac, true
+}
+
+func (s *MongoStore) ConsumeOAuthAuthCode(code string) (models.OAuthAuthCode, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	// First, find and atomically mark as consumed
+	filter := bson.M{
+		"code":      code,
+		"consumed":  false,
+		"expiresAt": bson.M{"$gt": time.Now().UTC()},
+	}
+	update := bson.M{
+		"$set": bson.M{"consumed": true},
+	}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	var ac models.OAuthAuthCode
+	err := s.oauthCodes.FindOneAndUpdate(ctx, filter, update, opts).Decode(&ac)
+	if err != nil {
+		return models.OAuthAuthCode{}, false
+	}
+	return ac, true
 }
 
 func (s *MongoStore) StoreType() string {

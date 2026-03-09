@@ -8,9 +8,11 @@ require (
 	github.com/pquerna/otp v1.5.0
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/crypto v0.48.0
+	golang.org/x/oauth2 v0.24.0
 )
 
 require (
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -38,6 +39,18 @@ func normalizeServerStatus(input, fallback string) (string, bool) {
 	}
 }
 
+type serverBlockingReason struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Field   string `json:"field,omitempty"`
+	Stage   string `json:"stage"`
+}
+
+type serverPublishability struct {
+	CanPublish      bool                   `json:"canPublish"`
+	BlockingReasons []serverBlockingReason `json:"blockingReasons"`
+}
+
 func (a *App) getMerchantServer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	server, ok := a.store.GetServerByID(id)
@@ -49,12 +62,14 @@ func (a *App) getMerchantServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.normalizeServerLifecycleForView(&server)
+	publishability := a.serverPublishability(server)
 	response := map[string]interface{}{
 		"server": server,
 		"lifecycle": map[string]interface{}{
 			"marketplaceStatus": server.Status,
 			"deploymentStatus":  server.DeploymentStatus,
-			"canPublish":        server.DeploymentStatus == models.ServerDeploymentDeployed && server.PricingAmount > 0,
+			"canPublish":        publishability.CanPublish,
+			"blockingReasons":   publishability.BlockingReasons,
 		},
 	}
 	if task, exists := a.store.GetDeployTaskByServer(server.ID); exists {
@@ -95,6 +110,10 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be draft, published, or archived"})
 		return
 	}
+	if status != models.ServerStatusDraft {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "new servers must start as draft and not_deployed"})
+		return
+	}
 	now := time.Now().UTC()
 	server := models.Server{
 		TenantID:             claims.TenantID,
@@ -127,12 +146,6 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 	if err := a.validateEnabledPaymentMethods(server.PaymentMethods); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
-	}
-	if status == models.ServerStatusPublished {
-		server.DeploymentStatus = models.ServerDeploymentDeployed
-		server.DeployedAt = now
-		server.DeployedBy = claims.UserID
-		server.PublishedAt = now
 	}
 	if tenant, ok := a.store.GetTenantByID(claims.TenantID); ok {
 		server.Author = tenant.Name
@@ -199,18 +212,21 @@ func (a *App) updateMerchantServer(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be draft, published, or archived"})
 			return
 		}
+		if normalizedStatus == models.ServerStatusPublished {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "use the publish endpoint to publish a server"})
+			return
+		}
 		server.Status = normalizedStatus
 	}
-	if server.Status == models.ServerStatusPublished && server.PricingAmount <= 0 {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "price must be set before publish"})
-		return
-	}
-	if server.Status == models.ServerStatusPublished && server.DeploymentStatus != models.ServerDeploymentDeployed {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "server must be deployed before publish"})
-		return
-	}
-	if server.Status == models.ServerStatusPublished && server.PublishedAt.IsZero() {
-		server.PublishedAt = time.Now().UTC()
+	if server.Status == models.ServerStatusPublished {
+		publishability := a.serverPublishability(server)
+		if !publishability.CanPublish {
+			writeJSON(w, publishabilityStatusCode(publishability), map[string]interface{}{
+				"error":           "published servers must remain publishable",
+				"blockingReasons": publishability.BlockingReasons,
+			})
+			return
+		}
 	}
 	if server.Status != models.ServerStatusPublished {
 		server.PublishedAt = time.Time{}
@@ -298,12 +314,8 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 		})
 		a.triggerDeployWorker()
 		writeJSON(w, http.StatusAccepted, map[string]interface{}{
-			"server": server,
-			"lifecycle": map[string]interface{}{
-				"marketplaceStatus": server.Status,
-				"deploymentStatus":  server.DeploymentStatus,
-				"canPublish":        false,
-			},
+			"server":    server,
+			"lifecycle": a.serverLifecyclePayload(server),
 			"queue": map[string]interface{}{
 				"taskId":        task.ID,
 				"status":        task.Status,
@@ -345,12 +357,8 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"server": server,
-		"lifecycle": map[string]interface{}{
-			"marketplaceStatus": server.Status,
-			"deploymentStatus":  server.DeploymentStatus,
-			"canPublish":        server.PricingAmount > 0,
-		},
+		"server":    server,
+		"lifecycle": a.serverLifecyclePayload(server),
 		"n8n": map[string]interface{}{
 			"configured":  false,
 			"workflowId":  server.N8nWorkflowID,
@@ -387,12 +395,12 @@ func (a *App) publishMerchantServer(w http.ResponseWriter, r *http.Request) {
 	if req.PricingAmount != nil {
 		server.PricingAmount = *req.PricingAmount
 	}
-	if server.DeploymentStatus != models.ServerDeploymentDeployed {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "deploy server before publishing to marketplace"})
-		return
-	}
-	if server.PricingAmount <= 0 {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "price must be set before publish"})
+	publishability := a.serverPublishability(server)
+	if !publishability.CanPublish {
+		writeJSON(w, publishabilityStatusCode(publishability), map[string]interface{}{
+			"error":           "server is not publishable",
+			"blockingReasons": publishability.BlockingReasons,
+		})
 		return
 	}
 	now := time.Now().UTC()
@@ -413,12 +421,8 @@ func (a *App) publishMerchantServer(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"server": server,
-		"lifecycle": map[string]interface{}{
-			"marketplaceStatus": server.Status,
-			"deploymentStatus":  server.DeploymentStatus,
-			"canPublish":        true,
-		},
+		"server":    server,
+		"lifecycle": a.serverLifecyclePayload(server),
 	})
 }
 
@@ -431,6 +435,59 @@ func (a *App) normalizeServerLifecycleForView(server *models.Server) {
 	}
 }
 
+func (a *App) serverPublishability(server models.Server) serverPublishability {
+	reasons := make([]serverBlockingReason, 0, 4)
+	if server.Status == models.ServerStatusArchived {
+		reasons = append(reasons, serverBlockingReason{Code: "server_archived", Message: "Archived servers cannot be published.", Stage: "marketplace", Field: "status"})
+	}
+	if server.DeploymentStatus != models.ServerDeploymentDeployed {
+		reasons = append(reasons, serverBlockingReason{Code: "server_not_deployed", Message: "Deploy the server before publishing.", Stage: "deployment", Field: "deploymentStatus"})
+	}
+	if server.PricingAmount <= 0 {
+		reasons = append(reasons, serverBlockingReason{Code: "pricing_amount_required", Message: "Set a positive price before publishing.", Stage: "pricing", Field: "pricingAmount"})
+	}
+	if server.PricingType == "x402" {
+		if len(server.PaymentMethods) == 0 {
+			reasons = append(reasons, serverBlockingReason{Code: "payment_methods_required", Message: "x402 servers need at least one enabled payment method.", Stage: "payments", Field: "paymentMethods"})
+		} else if err := a.validateEnabledPaymentMethods(server.PaymentMethods); err != nil {
+			reasons = append(reasons, serverBlockingReason{Code: "payment_methods_disabled", Message: err.Error(), Stage: "payments", Field: "paymentMethods"})
+		}
+	}
+	return serverPublishability{CanPublish: len(reasons) == 0, BlockingReasons: reasons}
+}
+
+func (a *App) serverLifecyclePayload(server models.Server) map[string]interface{} {
+	publishability := a.serverPublishability(server)
+	return map[string]interface{}{
+		"marketplaceStatus": server.Status,
+		"deploymentStatus":  server.DeploymentStatus,
+		"canPublish":        publishability.CanPublish,
+		"blockingReasons":   publishability.BlockingReasons,
+	}
+}
+
+func (a *App) isServerMarketplaceVisible(server models.Server) bool {
+	a.normalizeServerLifecycleForView(&server)
+	if server.Status != models.ServerStatusPublished || server.DeploymentStatus != models.ServerDeploymentDeployed {
+		return false
+	}
+	return a.serverPublishability(server).CanPublish
+}
+
+func publishabilityStatusCode(publishability serverPublishability) int {
+	for _, reason := range publishability.BlockingReasons {
+		if reason.Stage == "deployment" || reason.Stage == "marketplace" {
+			return http.StatusConflict
+		}
+	}
+	if slices.ContainsFunc(publishability.BlockingReasons, func(reason serverBlockingReason) bool {
+		return reason.Stage == "pricing" || reason.Stage == "payments"
+	}) {
+		return http.StatusUnprocessableEntity
+	}
+	return http.StatusConflict
+}
+
 func (a *App) serverObservability(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	server, ok := a.store.GetServerByID(id)
@@ -441,14 +498,67 @@ func (a *App) serverObservability(w http.ResponseWriter, r *http.Request) {
 	if !a.ensureServerTenantAccess(w, r, server) {
 		return
 	}
+
+	// Get real metrics from X402 intents if available
+	allIntents := a.store.ListAllX402Intents()
+	var totalRequests int
+	var settledAmount float64
+	var pendingCount int
+
+	for _, intent := range allIntents {
+		if intent.ServerID == server.ID {
+			totalRequests++
+			if intent.Status == "settled" {
+				settledAmount += intent.SellerNetUSDC
+			} else if intent.Status == "pending" || intent.Status == "created" {
+				pendingCount++
+			}
+		}
+	}
+
+	// Return real data or explicit "no data" state
+	hasData := totalRequests > 0
+	metrics := map[string]interface{}{
+		"hasData": hasData,
+	}
+
+	if hasData {
+		// Calculate real metrics from actual data
+		errorCount := 0
+		for _, intent := range allIntents {
+			if intent.ServerID == server.ID && intent.Status == "settled" {
+				if intent.VerificationStatus == "failed" || intent.VerificationStatus == "rejected" {
+					errorCount++
+				}
+			}
+		}
+
+		errorRate := 0.0
+		if totalRequests > 0 {
+			errorRate = float64(errorCount) / float64(totalRequests)
+		}
+
+		metrics["p50LatencyMs"] = nil // No latency tracking available
+		metrics["p95LatencyMs"] = nil // No latency tracking available
+		metrics["errorRate"] = errorRate
+		metrics["totalRequests"] = totalRequests
+		metrics["settledRevenue"] = settledAmount
+		metrics["pendingCount"] = pendingCount
+		metrics["insufficientScopeCount"] = errorCount
+	} else {
+		metrics["p50LatencyMs"] = nil
+		metrics["p95LatencyMs"] = nil
+		metrics["errorRate"] = nil
+		metrics["totalRequests"] = 0
+		metrics["settledRevenue"] = 0.0
+		metrics["pendingCount"] = 0
+		metrics["insufficientScopeCount"] = 0
+		metrics["message"] = "No observability data available. Metrics will appear once the server receives traffic."
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"serverId": server.ID,
-		"metrics": map[string]interface{}{
-			"p50LatencyMs":           82,
-			"p95LatencyMs":           250,
-			"errorRate":              0.014,
-			"insufficientScopeCount": 5,
-		},
+		"metrics":  metrics,
 	})
 }
 
@@ -507,7 +617,8 @@ func (a *App) serverPricing(w http.ResponseWriter, r *http.Request) {
 		"lifecycle": map[string]interface{}{
 			"marketplaceStatus": server.Status,
 			"deploymentStatus":  server.DeploymentStatus,
-			"canPublish":        server.DeploymentStatus == models.ServerDeploymentDeployed && server.PricingAmount > 0,
+			"canPublish":        a.serverPublishability(server).CanPublish,
+			"blockingReasons":   a.serverPublishability(server).BlockingReasons,
 		},
 	})
 }

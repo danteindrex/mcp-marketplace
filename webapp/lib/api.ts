@@ -78,6 +78,27 @@ export async function signupWithCredentials(payload: {
   return res.json()
 }
 
+type OAuthStartResponse = {
+  authorization_url?: string
+  error?: string
+}
+
+export async function startOAuthFlow(provider: 'google' | 'github'): Promise<string> {
+  const res = await fetch(`/api/auth/${provider}/start`, {
+    method: 'GET',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({} as { error?: string }))
+    throw new Error(body.error || `Failed to start ${provider} OAuth`)
+  }
+  const data = await res.json() as OAuthStartResponse
+  if (!data.authorization_url) {
+    throw new Error('No authorization URL returned')
+  }
+  return data.authorization_url
+}
+
 async function parseError(res: Response, fallback: string): Promise<Error> {
   const body = await res.json().catch(() => ({} as { error?: string }))
   return new Error(body.error || fallback)

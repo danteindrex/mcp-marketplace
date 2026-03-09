@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/yourorg/mcp-marketplace/backend/internal/auth"
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
@@ -173,9 +174,31 @@ func (a *App) authenticateWithPurpose(expectedPurpose string, next http.Handler)
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "tenant mismatch"})
 			return
 		}
+		if expectedPurpose == auth.TokenPurposeOAuthAccess {
+			expectedResource := a.hubResourceForSubject(chi.URLParam(r, "tenantID"), chi.URLParam(r, "userID"))
+			actualResource := strings.TrimSpace(claims.Resource)
+			canonicalResource, _, _, ok := canonicalHubResource(a.cfg.BaseURL, actualResource)
+			if !ok || canonicalResource != expectedResource {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token resource mismatch"})
+				return
+			}
+			if len(claims.Audience) > 0 && !containsAudience(claims.Audience, expectedResource) {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token audience mismatch"})
+				return
+			}
+		}
 		ctx := context.WithValue(r.Context(), claimsKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func containsAudience(audiences []string, expected string) bool {
+	for _, audience := range audiences {
+		if strings.TrimSpace(audience) == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func tokenFromRequest(r *http.Request) string {

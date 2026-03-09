@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
 
 type dcrRequest struct {
@@ -16,8 +18,19 @@ type dcrRequest struct {
 }
 
 func (a *App) oauthProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
+	resource := strings.TrimSpace(r.URL.Query().Get("resource"))
+	if resource == "" {
+		resource = strings.TrimRight(a.cfg.BaseURL, "/") + "/mcp/hub/{tenantID}/{userID}"
+	} else {
+		canonical, _, _, ok := canonicalHubResource(a.cfg.BaseURL, resource)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource"})
+			return
+		}
+		resource = canonical
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"resource":                 a.cfg.BaseURL + "/mcp/hub",
+		"resource":                 resource,
 		"authorization_servers":    []string{a.cfg.BaseURL},
 		"bearer_methods_supported": []string{"header"},
 		"scopes_supported":         []string{"mcp:invoke", "mcp:manage", "db:read", "db:write", "documents:read", "ai:inference"},
@@ -49,8 +62,6 @@ func (a *App) oauthRegisterClient(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_client_metadata"})
 		return
 	}
-	a.oauth.mu.Lock()
-	defer a.oauth.mu.Unlock()
 	clientID := randomToken("cli_")
 	clientSecret := randomToken("sec_")
 	if req.TokenEndpointAuthMethod == "" {
@@ -65,21 +76,20 @@ func (a *App) oauthRegisterClient(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.oauth.clients[clientID] = oauthClient{
+	client := a.store.CreateOAuthClient(models.OAuthClient{
 		ClientID:                clientID,
 		ClientName:              req.ClientName,
 		RedirectURIs:            req.RedirectURIs,
 		GrantTypes:              req.GrantTypes,
 		TokenEndpointAuthMethod: req.TokenEndpointAuthMethod,
 		ClientSecret:            clientSecret,
-		CreatedAt:               time.Now().UTC(),
-	}
+	})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"client_id":                  clientID,
-		"client_secret":              clientSecret,
-		"redirect_uris":              req.RedirectURIs,
-		"grant_types":                req.GrantTypes,
-		"token_endpoint_auth_method": req.TokenEndpointAuthMethod,
+		"client_id":                  client.ClientID,
+		"client_secret":              client.ClientSecret,
+		"redirect_uris":              client.RedirectURIs,
+		"grant_types":                client.GrantTypes,
+		"token_endpoint_auth_method": client.TokenEndpointAuthMethod,
 	})
 }
 
@@ -102,11 +112,12 @@ func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_request"})
 		return
 	}
-	tenantID, userID, ok := parseResourceSubject(resource)
+	canonicalResource, tenantID, userID, ok := canonicalHubResource(a.cfg.BaseURL, resource)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource"})
 		return
 	}
+	resource = canonicalResource
 	if claims.UserID != userID || claims.TenantID != tenantID {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "resource subject mismatch"})
 		return
@@ -115,15 +126,13 @@ func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource_subject"})
 		return
 	}
-	a.oauth.mu.Lock()
-	client, ok := a.oauth.clients[clientID]
+	client, ok := a.store.GetOAuthClient(clientID)
 	if !ok || !containsString(client.RedirectURIs, redirectURI) {
-		a.oauth.mu.Unlock()
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_client_or_redirect"})
 		return
 	}
 	code := randomToken("code_")
-	a.oauth.codes[code] = authCode{
+	_ = a.store.CreateOAuthAuthCode(models.OAuthAuthCode{
 		Code:                code,
 		ClientID:            clientID,
 		UserID:              userID,
@@ -134,8 +143,7 @@ func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 		ExpiresAt:           time.Now().UTC().Add(5 * time.Minute),
-	}
-	a.oauth.mu.Unlock()
+	})
 
 	rURL, _ := url.Parse(redirectURI)
 	params := rURL.Query()
@@ -149,20 +157,6 @@ func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		"code":        code,
 		"state":       state,
 	})
-}
-
-func parseResourceSubject(resource string) (tenantID, userID string, ok bool) {
-	clean := strings.TrimSuffix(resource, "/")
-	parts := strings.Split(clean, "/")
-	if len(parts) < 2 {
-		return "", "", false
-	}
-	tenantID = parts[len(parts)-2]
-	userID = parts[len(parts)-1]
-	if tenantID == "" || userID == "" {
-		return "", "", false
-	}
-	return tenantID, userID, true
 }
 
 func (a *App) oauthToken(w http.ResponseWriter, r *http.Request) {
@@ -182,38 +176,36 @@ func (a *App) oauthToken(w http.ResponseWriter, r *http.Request) {
 	redirectURI := r.PostFormValue("redirect_uri")
 	verifier := r.PostFormValue("code_verifier")
 	resource := r.PostFormValue("resource")
-
-	a.oauth.mu.Lock()
-	client, ok := a.oauth.clients[clientID]
+	canonicalResource, _, _, ok := canonicalHubResource(a.cfg.BaseURL, resource)
 	if !ok {
-		a.oauth.mu.Unlock()
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource"})
+		return
+	}
+	resource = canonicalResource
+
+	client, ok := a.store.GetOAuthClient(clientID)
+	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client"})
 		return
 	}
 	if strings.EqualFold(client.TokenEndpointAuthMethod, "client_secret_post") && client.ClientSecret != clientSecret {
-		a.oauth.mu.Unlock()
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client_secret"})
 		return
 	}
-	ac, ok := a.oauth.codes[code]
+	ac, ok := a.store.GetOAuthAuthCode(code)
 	if !ok || ac.Consumed || time.Now().UTC().After(ac.ExpiresAt) {
-		a.oauth.mu.Unlock()
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant"})
 		return
 	}
 	if ac.ClientID != clientID || ac.RedirectURI != redirectURI || ac.Resource != resource {
-		a.oauth.mu.Unlock()
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant_binding"})
 		return
 	}
 	if !verifyPKCE(verifier, ac.CodeChallengeMethod, ac.CodeChallenge) {
-		a.oauth.mu.Unlock()
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_code_verifier"})
 		return
 	}
-	ac.Consumed = true
-	a.oauth.codes[code] = ac
-	a.oauth.mu.Unlock()
+	ac, _ = a.store.ConsumeOAuthAuthCode(code)
 
 	user, ok := a.store.GetUserByID(ac.UserID)
 	if !ok {

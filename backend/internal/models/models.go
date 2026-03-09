@@ -10,6 +10,14 @@ const (
 	RoleAdmin    Role = "admin"
 )
 
+// OAuthProvider represents an OAuth identity provider
+type OAuthProvider string
+
+const (
+	OAuthProviderGoogle OAuthProvider = "google"
+	OAuthProviderGitHub OAuthProvider = "github"
+)
+
 const (
 	ServerStatusDraft     = "draft"
 	ServerStatusPublished = "published"
@@ -44,6 +52,20 @@ type User struct {
 	MFATOTPSecret string    `json:"-" bson:"mfaTotpSecret,omitempty"`
 	CreatedAt     time.Time `json:"createdAt" bson:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt" bson:"updatedAt"`
+}
+
+// OAuthAccount represents an OAuth-linked account
+type OAuthAccount struct {
+	ID           string        `json:"id" bson:"id"`
+	UserID       string        `json:"userId" bson:"userId"`
+	Provider     OAuthProvider `json:"provider" bson:"provider"`
+	ProviderID   string        `json:"providerId" bson:"providerId"` // unique ID from the OAuth provider
+	Email        string        `json:"email" bson:"email"`
+	AccessToken  string        `json:"-" bson:"accessToken,omitempty"`
+	RefreshToken string        `json:"-" bson:"refreshToken,omitempty"`
+	ExpiresAt    time.Time     `json:"-" bson:"expiresAt,omitempty"`
+	CreatedAt    time.Time     `json:"createdAt" bson:"createdAt"`
+	UpdatedAt    time.Time     `json:"updatedAt" bson:"updatedAt"`
 }
 
 type Tenant struct {
@@ -376,4 +398,36 @@ type UserSettings struct {
 	Preferences   UserPreferences      `json:"preferences" bson:"preferences"`
 	Notifications NotificationSettings `json:"notifications" bson:"notifications"`
 	UpdatedAt     time.Time            `json:"updatedAt" bson:"updatedAt"`
+}
+
+// OAuthClient represents a registered OAuth client
+type OAuthClient struct {
+	ID                      string    `json:"id" bson:"id"`
+	ClientID                string    `json:"clientId" bson:"clientId"`
+	ClientName              string    `json:"clientName" bson:"clientName"`
+	RedirectURIs            []string  `json:"redirectUris" bson:"redirectUris"`
+	GrantTypes              []string  `json:"grantTypes" bson:"grantTypes"`
+	TokenEndpointAuthMethod string    `json:"tokenEndpointAuthMethod" bson:"tokenEndpointAuthMethod"`
+	ClientSecret            string    `json:"clientSecret,omitempty" bson:"clientSecret,omitempty"`
+	ClientIDIssuedAt        time.Time `json:"clientIdIssuedAt" bson:"clientIdIssuedAt"`
+	ClientSecretExpiresAt   time.Time `json:"clientSecretExpiresAt,omitempty" bson:"clientSecretExpiresAt,omitempty"`
+	CreatedAt               time.Time `json:"createdAt" bson:"createdAt"`
+	UpdatedAt               time.Time `json:"updatedAt" bson:"updatedAt"`
+}
+
+// OAuthAuthCode represents an OAuth authorization code with TTL support
+type OAuthAuthCode struct {
+	ID                  string    `json:"id" bson:"id"`
+	Code                string    `json:"code" bson:"code"`
+	ClientID            string    `json:"clientId" bson:"clientId"`
+	UserID              string    `json:"userId" bson:"userId"`
+	TenantID            string    `json:"tenantId" bson:"tenantId"`
+	RedirectURI         string    `json:"redirectUri" bson:"redirectUri"`
+	Resource            string    `json:"resource" bson:"resource"`
+	Scopes              []string  `json:"scopes" bson:"scopes"`
+	CodeChallenge       string    `json:"codeChallenge" bson:"codeChallenge"`
+	CodeChallengeMethod string    `json:"codeChallengeMethod" bson:"codeChallengeMethod"`
+	ExpiresAt           time.Time `json:"expiresAt" bson:"expiresAt"`
+	Consumed            bool      `json:"consumed" bson:"consumed"`
+	CreatedAt           time.Time `json:"createdAt" bson:"createdAt"`
 }

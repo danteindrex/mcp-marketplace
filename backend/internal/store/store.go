@@ -11,6 +11,14 @@ type Store interface {
 	GetUserByID(id string) (models.User, bool)
 	CreateUser(user models.User) (models.User, bool)
 	UpdateUser(user models.User) bool
+
+	// OAuth account methods
+	GetOAuthAccount(provider models.OAuthProvider, providerID string) (models.OAuthAccount, bool)
+	GetOAuthAccountsByUserID(userID string) []models.OAuthAccount
+	CreateOAuthAccount(account models.OAuthAccount) models.OAuthAccount
+	UpdateOAuthAccount(account models.OAuthAccount) bool
+	DeleteOAuthAccount(provider models.OAuthProvider, providerID string) bool
+
 	CreateTenant(tenant models.Tenant) models.Tenant
 	ListMarketplaceServers() []models.Server
 	GetServerBySlug(slug string) (models.Server, bool)
@@ -67,4 +75,15 @@ type Store interface {
 	UpsertLocalAgent(agent models.LocalAgent) models.LocalAgent
 	GetUserSettings(userID string) (models.UserSettings, bool)
 	UpsertUserSettings(settings models.UserSettings) models.UserSettings
+
+	// OAuth client methods
+	CreateOAuthClient(client models.OAuthClient) models.OAuthClient
+	GetOAuthClient(clientID string) (models.OAuthClient, bool)
+	ListOAuthClients() []models.OAuthClient
+	DeleteOAuthClient(clientID string) bool
+
+	// OAuth auth code methods (with TTL)
+	CreateOAuthAuthCode(code models.OAuthAuthCode) models.OAuthAuthCode
+	GetOAuthAuthCode(code string) (models.OAuthAuthCode, bool)
+	ConsumeOAuthAuthCode(code string) (models.OAuthAuthCode, bool)
 }

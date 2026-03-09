@@ -19,81 +19,88 @@ import (
 )
 
 type MemoryStore struct {
-	mu           sync.RWMutex
-	persistPath  string
-	users        map[string]models.User
-	usersByEmail map[string]string
-	tenants      map[string]models.Tenant
-	servers      map[string]models.Server
-	entitlements map[string]models.Entitlement
-	hubs         map[string]models.HubProfile
-	hubRoutes    map[string][]models.HubRoute
-	connections  map[string]models.Connection
-	security     map[string]models.SecurityEvent
-	audit        map[string]models.AuditLog
-	x402         map[string]models.X402Intent
-	paymentPol   map[string]models.PaymentPolicy
-	topups       map[string]models.WalletTopUp
-	feePol       map[string]models.PaymentFeePolicy
-	ledger       map[string]models.LedgerEntry
-	payoutProf   map[string]models.SellerPayoutProfile
-	payouts      map[string]models.PayoutRecord
-	deployTasks  map[string]models.DeployTask
-	deployBySrv  map[string]string
-	agents       map[string]models.LocalAgent
-	userSettings map[string]models.UserSettings
-	seq          int
+	mu            sync.RWMutex
+	persistPath   string
+	users         map[string]models.User
+	usersByEmail  map[string]string
+	tenants       map[string]models.Tenant
+	servers       map[string]models.Server
+	entitlements  map[string]models.Entitlement
+	hubs          map[string]models.HubProfile
+	hubRoutes     map[string][]models.HubRoute
+	connections   map[string]models.Connection
+	security      map[string]models.SecurityEvent
+	audit         map[string]models.AuditLog
+	x402          map[string]models.X402Intent
+	paymentPol    map[string]models.PaymentPolicy
+	topups        map[string]models.WalletTopUp
+	feePol        map[string]models.PaymentFeePolicy
+	ledger        map[string]models.LedgerEntry
+	payoutProf    map[string]models.SellerPayoutProfile
+	payouts       map[string]models.PayoutRecord
+	deployTasks   map[string]models.DeployTask
+	deployBySrv   map[string]string
+	agents        map[string]models.LocalAgent
+	userSettings  map[string]models.UserSettings
+	oauthAccounts map[string]models.OAuthAccount  // key: "provider:providerId"
+	oauthClients  map[string]models.OAuthClient   // key: clientID
+	oauthCodes    map[string]models.OAuthAuthCode // key: code
+	seq           int
 }
 
 type diskState struct {
-	Users        map[string]models.User                `json:"users"`
-	UsersByEmail map[string]string                     `json:"usersByEmail"`
-	Tenants      map[string]models.Tenant              `json:"tenants"`
-	Servers      map[string]models.Server              `json:"servers"`
-	Entitlements map[string]models.Entitlement         `json:"entitlements"`
-	Hubs         map[string]models.HubProfile          `json:"hubs"`
-	HubRoutes    map[string][]models.HubRoute          `json:"hubRoutes"`
-	Connections  map[string]models.Connection          `json:"connections"`
-	Security     map[string]models.SecurityEvent       `json:"security"`
-	Audit        map[string]models.AuditLog            `json:"audit"`
-	X402         map[string]models.X402Intent          `json:"x402"`
-	PaymentPol   map[string]models.PaymentPolicy       `json:"paymentPolicies"`
-	TopUps       map[string]models.WalletTopUp         `json:"walletTopups"`
-	FeePol       map[string]models.PaymentFeePolicy    `json:"paymentFeePolicies"`
-	Ledger       map[string]models.LedgerEntry         `json:"ledgerEntries"`
-	PayoutProf   map[string]models.SellerPayoutProfile `json:"sellerPayoutProfiles"`
-	Payouts      map[string]models.PayoutRecord        `json:"payoutRecords"`
-	DeployTasks  map[string]models.DeployTask          `json:"deployTasks"`
-	DeployBySrv  map[string]string                     `json:"deployTasksByServer"`
-	Agents       map[string]models.LocalAgent          `json:"agents"`
-	UserSettings map[string]models.UserSettings        `json:"userSettings"`
-	Seq          int                                   `json:"seq"`
+	Users         map[string]models.User                `json:"users"`
+	UsersByEmail  map[string]string                     `json:"usersByEmail"`
+	Tenants       map[string]models.Tenant              `json:"tenants"`
+	Servers       map[string]models.Server              `json:"servers"`
+	Entitlements  map[string]models.Entitlement         `json:"entitlements"`
+	Hubs          map[string]models.HubProfile          `json:"hubs"`
+	HubRoutes     map[string][]models.HubRoute          `json:"hubRoutes"`
+	Connections   map[string]models.Connection          `json:"connections"`
+	Security      map[string]models.SecurityEvent       `json:"security"`
+	Audit         map[string]models.AuditLog            `json:"audit"`
+	X402          map[string]models.X402Intent          `json:"x402"`
+	PaymentPol    map[string]models.PaymentPolicy       `json:"paymentPolicies"`
+	TopUps        map[string]models.WalletTopUp         `json:"walletTopups"`
+	FeePol        map[string]models.PaymentFeePolicy    `json:"paymentFeePolicies"`
+	Ledger        map[string]models.LedgerEntry         `json:"ledgerEntries"`
+	PayoutProf    map[string]models.SellerPayoutProfile `json:"sellerPayoutProfiles"`
+	Payouts       map[string]models.PayoutRecord        `json:"payoutRecords"`
+	DeployTasks   map[string]models.DeployTask          `json:"deployTasks"`
+	DeployBySrv   map[string]string                     `json:"deployTasksByServer"`
+	Agents        map[string]models.LocalAgent          `json:"agents"`
+	UserSettings  map[string]models.UserSettings        `json:"userSettings"`
+	OAuthAccounts map[string]models.OAuthAccount        `json:"oauthAccounts"`
+	OAuthClients  map[string]models.OAuthClient         `json:"oauthClients"`
+	Seq           int                                   `json:"seq"`
 }
 
 func (s *MemoryStore) snapshotLocked() diskState {
 	return diskState{
-		Users:        s.users,
-		UsersByEmail: s.usersByEmail,
-		Tenants:      s.tenants,
-		Servers:      s.servers,
-		Entitlements: s.entitlements,
-		Hubs:         s.hubs,
-		HubRoutes:    s.hubRoutes,
-		Connections:  s.connections,
-		Security:     s.security,
-		Audit:        s.audit,
-		X402:         s.x402,
-		PaymentPol:   s.paymentPol,
-		TopUps:       s.topups,
-		FeePol:       s.feePol,
-		Ledger:       s.ledger,
-		PayoutProf:   s.payoutProf,
-		Payouts:      s.payouts,
-		DeployTasks:  s.deployTasks,
-		DeployBySrv:  s.deployBySrv,
-		Agents:       s.agents,
-		UserSettings: s.userSettings,
-		Seq:          s.seq,
+		Users:         s.users,
+		UsersByEmail:  s.usersByEmail,
+		Tenants:       s.tenants,
+		Servers:       s.servers,
+		Entitlements:  s.entitlements,
+		Hubs:          s.hubs,
+		HubRoutes:     s.hubRoutes,
+		Connections:   s.connections,
+		Security:      s.security,
+		Audit:         s.audit,
+		X402:          s.x402,
+		PaymentPol:    s.paymentPol,
+		TopUps:        s.topups,
+		FeePol:        s.feePol,
+		Ledger:        s.ledger,
+		PayoutProf:    s.payoutProf,
+		Payouts:       s.payouts,
+		DeployTasks:   s.deployTasks,
+		DeployBySrv:   s.deployBySrv,
+		Agents:        s.agents,
+		UserSettings:  s.userSettings,
+		OAuthAccounts: s.oauthAccounts,
+		OAuthClients:  s.oauthClients,
+		Seq:           s.seq,
 	}
 }
 
@@ -199,6 +206,12 @@ func (s *MemoryStore) loadFromDisk() bool {
 	if state.UserSettings == nil {
 		state.UserSettings = map[string]models.UserSettings{}
 	}
+	if state.OAuthAccounts == nil {
+		state.OAuthAccounts = map[string]models.OAuthAccount{}
+	}
+	if state.OAuthClients == nil {
+		state.OAuthClients = map[string]models.OAuthClient{}
+	}
 
 	s.users = state.Users
 	s.usersByEmail = state.UsersByEmail
@@ -221,6 +234,8 @@ func (s *MemoryStore) loadFromDisk() bool {
 	s.deployBySrv = state.DeployBySrv
 	s.agents = state.Agents
 	s.userSettings = state.UserSettings
+	s.oauthAccounts = state.OAuthAccounts
+	s.oauthClients = state.OAuthClients
 	s.seq = state.Seq
 	return true
 }
@@ -228,28 +243,31 @@ func (s *MemoryStore) loadFromDisk() bool {
 func NewMemoryStore(cfg config.Config) *MemoryStore {
 	now := time.Now().UTC()
 	s := &MemoryStore{
-		persistPath:  cfg.DataFilePath,
-		users:        map[string]models.User{},
-		usersByEmail: map[string]string{},
-		tenants:      map[string]models.Tenant{},
-		servers:      map[string]models.Server{},
-		entitlements: map[string]models.Entitlement{},
-		hubs:         map[string]models.HubProfile{},
-		hubRoutes:    map[string][]models.HubRoute{},
-		connections:  map[string]models.Connection{},
-		security:     map[string]models.SecurityEvent{},
-		audit:        map[string]models.AuditLog{},
-		x402:         map[string]models.X402Intent{},
-		paymentPol:   map[string]models.PaymentPolicy{},
-		topups:       map[string]models.WalletTopUp{},
-		feePol:       map[string]models.PaymentFeePolicy{},
-		ledger:       map[string]models.LedgerEntry{},
-		payoutProf:   map[string]models.SellerPayoutProfile{},
-		payouts:      map[string]models.PayoutRecord{},
-		deployTasks:  map[string]models.DeployTask{},
-		deployBySrv:  map[string]string{},
-		agents:       map[string]models.LocalAgent{},
-		userSettings: map[string]models.UserSettings{},
+		persistPath:   cfg.DataFilePath,
+		users:         map[string]models.User{},
+		usersByEmail:  map[string]string{},
+		tenants:       map[string]models.Tenant{},
+		servers:       map[string]models.Server{},
+		entitlements:  map[string]models.Entitlement{},
+		hubs:          map[string]models.HubProfile{},
+		hubRoutes:     map[string][]models.HubRoute{},
+		connections:   map[string]models.Connection{},
+		security:      map[string]models.SecurityEvent{},
+		audit:         map[string]models.AuditLog{},
+		x402:          map[string]models.X402Intent{},
+		paymentPol:    map[string]models.PaymentPolicy{},
+		topups:        map[string]models.WalletTopUp{},
+		feePol:        map[string]models.PaymentFeePolicy{},
+		ledger:        map[string]models.LedgerEntry{},
+		payoutProf:    map[string]models.SellerPayoutProfile{},
+		payouts:       map[string]models.PayoutRecord{},
+		deployTasks:   map[string]models.DeployTask{},
+		deployBySrv:   map[string]string{},
+		agents:        map[string]models.LocalAgent{},
+		userSettings:  map[string]models.UserSettings{},
+		oauthAccounts: map[string]models.OAuthAccount{},
+		oauthClients:  map[string]models.OAuthClient{},
+		oauthCodes:    map[string]models.OAuthAuthCode{},
 	}
 	if s.loadFromDisk() {
 		// Remove legacy seeded catalog records from older demo builds.
@@ -423,6 +441,66 @@ func (s *MemoryStore) UpdateUser(user models.User) bool {
 	return true
 }
 
+// oauthAccountKey generates a unique key for OAuth account lookup
+func oauthAccountKey(provider models.OAuthProvider, providerID string) string {
+	return string(provider) + ":" + providerID
+}
+
+func (s *MemoryStore) GetOAuthAccount(provider models.OAuthProvider, providerID string) (models.OAuthAccount, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	account, ok := s.oauthAccounts[oauthAccountKey(provider, providerID)]
+	return account, ok
+}
+
+func (s *MemoryStore) GetOAuthAccountsByUserID(userID string) []models.OAuthAccount {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.OAuthAccount, 0)
+	for _, account := range s.oauthAccounts {
+		if account.UserID == userID {
+			out = append(out, account)
+		}
+	}
+	return out
+}
+
+func (s *MemoryStore) CreateOAuthAccount(account models.OAuthAccount) models.OAuthAccount {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	account.ID = s.next("oauth")
+	account.CreatedAt = time.Now().UTC()
+	account.UpdatedAt = account.CreatedAt
+	s.oauthAccounts[oauthAccountKey(account.Provider, account.ProviderID)] = account
+	s.persistLocked()
+	return account
+}
+
+func (s *MemoryStore) UpdateOAuthAccount(account models.OAuthAccount) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := oauthAccountKey(account.Provider, account.ProviderID)
+	if _, ok := s.oauthAccounts[key]; !ok {
+		return false
+	}
+	account.UpdatedAt = time.Now().UTC()
+	s.oauthAccounts[key] = account
+	s.persistLocked()
+	return true
+}
+
+func (s *MemoryStore) DeleteOAuthAccount(provider models.OAuthProvider, providerID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := oauthAccountKey(provider, providerID)
+	if _, ok := s.oauthAccounts[key]; !ok {
+		return false
+	}
+	delete(s.oauthAccounts, key)
+	s.persistLocked()
+	return true
+}
+
 func (s *MemoryStore) CreateTenant(tenant models.Tenant) models.Tenant {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -438,7 +516,7 @@ func (s *MemoryStore) ListMarketplaceServers() []models.Server {
 	defer s.mu.RUnlock()
 	out := make([]models.Server, 0, len(s.servers))
 	for _, server := range s.servers {
-		if server.Status == "published" {
+		if server.Status == "published" && server.DeploymentStatus == models.ServerDeploymentDeployed {
 			out = append(out, server)
 		}
 	}
@@ -449,7 +527,7 @@ func (s *MemoryStore) GetServerBySlug(slug string) (models.Server, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, server := range s.servers {
-		if server.Slug == slug {
+		if server.Slug == slug && server.Status == models.ServerStatusPublished && server.DeploymentStatus == models.ServerDeploymentDeployed {
 			return server, true
 		}
 	}
@@ -479,12 +557,10 @@ func (s *MemoryStore) CreateServer(server models.Server) models.Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	server.ID = s.next("srv")
-	if strings.TrimSpace(server.Status) == "" {
-		server.Status = models.ServerStatusDraft
-	}
-	if strings.TrimSpace(server.DeploymentStatus) == "" {
-		server.DeploymentStatus = models.ServerDeploymentPending
-	}
+	server.Status = models.ServerStatusDraft
+	server.DeploymentStatus = models.ServerDeploymentPending
+	server.PublishedAt = time.Time{}
+	server.DeployedAt = time.Time{}
 	server.CreatedAt = time.Now().UTC()
 	server.UpdatedAt = server.CreatedAt
 	s.servers[server.ID] = server
@@ -1137,6 +1213,98 @@ func (s *MemoryStore) UpsertUserSettings(settings models.UserSettings) models.Us
 	s.userSettings[settings.UserID] = settings
 	s.persistLocked()
 	return settings
+}
+
+// OAuthClient methods
+func (s *MemoryStore) CreateOAuthClient(client models.OAuthClient) models.OAuthClient {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	client.ID = s.next("oauth_client")
+	client.CreatedAt = time.Now().UTC()
+	client.UpdatedAt = client.CreatedAt
+	if client.ClientIDIssuedAt.IsZero() {
+		client.ClientIDIssuedAt = client.CreatedAt
+	}
+	s.oauthClients[client.ClientID] = client
+	s.persistLocked()
+	return client
+}
+
+func (s *MemoryStore) GetOAuthClient(clientID string) (models.OAuthClient, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	client, ok := s.oauthClients[clientID]
+	return client, ok
+}
+
+func (s *MemoryStore) ListOAuthClients() []models.OAuthClient {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.OAuthClient, 0, len(s.oauthClients))
+	for _, client := range s.oauthClients {
+		out = append(out, client)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out
+}
+
+func (s *MemoryStore) DeleteOAuthClient(clientID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.oauthClients[clientID]; !ok {
+		return false
+	}
+	delete(s.oauthClients, clientID)
+	s.persistLocked()
+	return true
+}
+
+// OAuthAuthCode methods (with TTL cleanup)
+func (s *MemoryStore) CreateOAuthAuthCode(code models.OAuthAuthCode) models.OAuthAuthCode {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	code.ID = s.next("oauth_code")
+	code.CreatedAt = time.Now().UTC()
+	if code.ExpiresAt.IsZero() {
+		code.ExpiresAt = time.Now().UTC().Add(5 * time.Minute)
+	}
+	code.Consumed = false
+	s.oauthCodes[code.Code] = code
+	s.persistLocked()
+	return code
+}
+
+func (s *MemoryStore) GetOAuthAuthCode(code string) (models.OAuthAuthCode, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ac, ok := s.oauthCodes[code]
+	if !ok {
+		return models.OAuthAuthCode{}, false
+	}
+	// Check if expired
+	if time.Now().UTC().After(ac.ExpiresAt) {
+		return models.OAuthAuthCode{}, false
+	}
+	return ac, true
+}
+
+func (s *MemoryStore) ConsumeOAuthAuthCode(code string) (models.OAuthAuthCode, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ac, ok := s.oauthCodes[code]
+	if !ok {
+		return models.OAuthAuthCode{}, false
+	}
+	// Check if expired or already consumed
+	if ac.Consumed || time.Now().UTC().After(ac.ExpiresAt) {
+		return models.OAuthAuthCode{}, false
+	}
+	ac.Consumed = true
+	s.oauthCodes[code] = ac
+	s.persistLocked()
+	return ac, true
 }
 
 func (s *MemoryStore) StoreType() string {

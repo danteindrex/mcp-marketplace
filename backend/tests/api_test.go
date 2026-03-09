@@ -17,11 +17,15 @@ import (
 	"github.com/yourorg/mcp-marketplace/backend/internal/auth"
 	"github.com/yourorg/mcp-marketplace/backend/internal/config"
 	api "github.com/yourorg/mcp-marketplace/backend/internal/http"
+	storemodels "github.com/yourorg/mcp-marketplace/backend/internal/models"
 	"github.com/yourorg/mcp-marketplace/backend/internal/store"
 )
 
 func newTestServer() http.Handler {
-	return newTestServerWithConfig(config.Config{AllowInsecureDefaults: true})
+	return newTestServerWithConfig(config.Config{
+		AllowInsecureDefaults: true,
+		X402Mode:              "disabled",
+	})
 }
 
 func newTestServerWithConfig(cfg config.Config) http.Handler {
@@ -45,9 +49,29 @@ func newTestServerWithConfig(cfg config.Config) http.Handler {
 	return api.NewRouter(cfg, st, jwt)
 }
 
+func newTestServerWithStore(cfg config.Config, st store.Store) http.Handler {
+	if cfg.Port == "" {
+		cfg.Port = "8080"
+	}
+	if cfg.BaseURL == "" {
+		cfg.BaseURL = "http://localhost:8080"
+	}
+	if cfg.SuperAdminEmail == "" {
+		cfg.SuperAdminEmail = "admin@platform.local"
+	}
+	if cfg.SuperAdminPassword == "" {
+		cfg.SuperAdminPassword = "admin-pass"
+	}
+	jwt, err := auth.NewJWTManager(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return api.NewRouter(cfg, st, jwt)
+}
+
 func oauthAccessToken(t *testing.T, h http.Handler, appToken string, tenantID string, userID string, scopes []string) string {
 	t.Helper()
-	resource := "https://mcp.marketplace.local/hub/" + tenantID + "/" + userID
+	resource := "http://localhost:8080/mcp/hub/" + tenantID + "/" + userID
 	dcr := call(t, h, http.MethodPost, "/oauth/register", "", map[string]interface{}{
 		"client_name":                "Test OAuth Client",
 		"redirect_uris":              []string{"http://127.0.0.1:33418"},
@@ -140,6 +164,45 @@ func call(t *testing.T, h http.Handler, method, path string, token string, paylo
 	return res
 }
 
+func blockingReasonCodes(t *testing.T, res *httptest.ResponseRecorder) []string {
+	t.Helper()
+	var body map[string]interface{}
+	_ = json.Unmarshal(res.Body.Bytes(), &body)
+	items, _ := body["blockingReasons"].([]interface{})
+	codes := make([]string, 0, len(items))
+	for _, item := range items {
+		reason, _ := item.(map[string]interface{})
+		code, _ := reason["code"].(string)
+		if code != "" {
+			codes = append(codes, code)
+		}
+	}
+	return codes
+}
+
+func storeServerFixture(name, slug string, pricingAmount float64, paymentMethods []string) storemodels.Server {
+	now := time.Now().UTC()
+	return storemodels.Server{
+		TenantID:             "tenant_fixture",
+		Author:               "Fixture Merchant",
+		Name:                 name,
+		Slug:                 slug,
+		Description:          "fixture",
+		Category:             "integration",
+		Version:              "1.0.0",
+		DockerImage:          "tenant/fixture:1.0.0",
+		CanonicalResourceURI: "https://mcp.marketplace.local/resource/" + slug,
+		RequiredScopes:       []string{"db:read"},
+		PricingType:          "x402",
+		PricingAmount:        pricingAmount,
+		SupportsCloud:        true,
+		SupportsLocal:        true,
+		PaymentMethods:       paymentMethods,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
+}
+
 type failingHealthStore struct {
 	store.Store
 }
@@ -178,6 +241,15 @@ func TestPublicEndpoints(t *testing.T) {
 	}
 	if res := call(t, h, http.MethodGet, "/.well-known/oauth-protected-resource", "", nil); res.Code != http.StatusOK {
 		t.Fatalf("protected resource metadata status %d", res.Code)
+	}
+	if res := call(t, h, http.MethodGet, "/.well-known/oauth-protected-resource?resource=http://localhost:8080/mcp/hub/tenant-a/user-a/", "", nil); res.Code != http.StatusOK {
+		t.Fatalf("protected resource metadata canonical status %d body=%s", res.Code, res.Body.String())
+	} else {
+		var body map[string]interface{}
+		_ = json.Unmarshal(res.Body.Bytes(), &body)
+		if body["resource"] != "http://localhost:8080/mcp/hub/tenant-a/user-a" {
+			t.Fatalf("expected canonical protected resource, got %v", body["resource"])
+		}
 	}
 	if res := call(t, h, http.MethodGet, "/.well-known/oauth-authorization-server", "", nil); res.Code != http.StatusOK {
 		t.Fatalf("authorization server metadata status %d", res.Code)
@@ -266,7 +338,6 @@ func TestMarketplaceInstallAndMCPHub(t *testing.T) {
 		"canonicalResourceUri": "https://mcp.marketplace.local/resource/installable-server",
 		"requiredScopes":       []string{"db:read", "db:write"},
 		"pricingType":          "free",
-		"status":               "published",
 		"supportsCloud":        true,
 		"supportsLocal":        true,
 	})
@@ -277,6 +348,14 @@ func TestMarketplaceInstallAndMCPHub(t *testing.T) {
 	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
 	serverID := createdBody["id"].(string)
 	serverSlug := createdBody["slug"].(string)
+	deploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/deploy", merchantToken, nil)
+	if deploy.Code != http.StatusOK {
+		t.Fatalf("deploy installable server status %d body=%s", deploy.Code, deploy.Body.String())
+	}
+	publish := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/publish", merchantToken, map[string]interface{}{"pricingAmount": 1})
+	if publish.Code != http.StatusOK {
+		t.Fatalf("publish installable server status %d body=%s", publish.Code, publish.Body.String())
+	}
 
 	install := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+serverSlug+"/install", buyerToken, map[string]interface{}{
 		"client": "vscode",
@@ -399,6 +478,12 @@ func TestMerchantAccessControl(t *testing.T) {
 	var createdBody map[string]interface{}
 	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
 	id := createdBody["id"].(string)
+	if createdBody["status"] != "draft" {
+		t.Fatalf("expected new merchant server to start as draft, got %v", createdBody["status"])
+	}
+	if createdBody["deploymentStatus"] != "not_deployed" {
+		t.Fatalf("expected new merchant server to start as not_deployed, got %v", createdBody["deploymentStatus"])
+	}
 	if res := call(t, h, http.MethodGet, "/v1/merchant/servers/"+id+"/pricing", merchantToken, nil); res.Code != http.StatusOK {
 		t.Fatalf("pricing status %d", res.Code)
 	}
@@ -440,6 +525,9 @@ func TestMerchantDeployThenPublishLifecycle(t *testing.T) {
 	if publishBeforeDeploy.Code != http.StatusConflict {
 		t.Fatalf("expected publish before deploy to fail with 409, got %d body=%s", publishBeforeDeploy.Code, publishBeforeDeploy.Body.String())
 	}
+	if codes := blockingReasonCodes(t, publishBeforeDeploy); !strings.Contains(strings.Join(codes, ","), "server_not_deployed") {
+		t.Fatalf("expected deployment blocker, got %v", codes)
+	}
 
 	deploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/deploy", merchantToken, map[string]interface{}{
 		"deploymentTarget": "us-west-1",
@@ -452,6 +540,9 @@ func TestMerchantDeployThenPublishLifecycle(t *testing.T) {
 	publishWithoutPrice := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/publish", merchantToken, nil)
 	if publishWithoutPrice.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected publish without price to fail with 422, got %d body=%s", publishWithoutPrice.Code, publishWithoutPrice.Body.String())
+	}
+	if codes := blockingReasonCodes(t, publishWithoutPrice); !strings.Contains(strings.Join(codes, ","), "pricing_amount_required") {
+		t.Fatalf("expected pricing blocker, got %v", codes)
 	}
 
 	updatePrice := call(t, h, http.MethodPut, "/v1/merchant/servers/"+serverID, merchantToken, map[string]interface{}{
@@ -469,6 +560,120 @@ func TestMerchantDeployThenPublishLifecycle(t *testing.T) {
 
 	if res := call(t, h, http.MethodGet, "/v1/marketplace/servers/"+serverSlug, "", nil); res.Code != http.StatusOK {
 		t.Fatalf("marketplace detail should be available after publish, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestMerchantServerRejectsDirectPublishedBypasses(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "bypass-merchant@acme.local", "MerchantPass123!@", "merchant")
+	merchantToken := login(t, h, "bypass-merchant@acme.local", "MerchantPass123!@")
+
+	createPublished := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":        "Bypass Server",
+		"slug":        "bypass-server",
+		"dockerImage": "tenant/bypass:1.0.0",
+		"status":      "published",
+	})
+	if createPublished.Code != http.StatusBadRequest {
+		t.Fatalf("expected direct published create to fail, got %d body=%s", createPublished.Code, createPublished.Body.String())
+	}
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Protected Published Server",
+		"slug":                 "protected-published-server",
+		"description":          "Prevent invalid published updates",
+		"category":             "automation",
+		"dockerImage":          "tenant/protected:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/protected-published-server",
+		"requiredScopes":       []string{"db:read"},
+		"pricingType":          "x402",
+		"pricingAmount":        1.0,
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+
+	deploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/deploy", merchantToken, nil)
+	if deploy.Code != http.StatusOK {
+		t.Fatalf("deploy status %d body=%s", deploy.Code, deploy.Body.String())
+	}
+	publish := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/publish", merchantToken, nil)
+	if publish.Code != http.StatusOK {
+		t.Fatalf("publish status %d body=%s", publish.Code, publish.Body.String())
+	}
+
+	updatePublished := call(t, h, http.MethodPut, "/v1/merchant/servers/"+serverID, merchantToken, map[string]interface{}{
+		"pricingType":   "x402",
+		"pricingAmount": 0.0,
+	})
+	if updatePublished.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected invalid published update to fail, got %d body=%s", updatePublished.Code, updatePublished.Body.String())
+	}
+	if codes := blockingReasonCodes(t, updatePublished); !strings.Contains(strings.Join(codes, ","), "pricing_amount_required") {
+		t.Fatalf("expected pricing blocker, got %v", codes)
+	}
+
+	serverRes := call(t, h, http.MethodGet, "/v1/merchant/servers/"+serverID, merchantToken, nil)
+	if serverRes.Code != http.StatusOK {
+		t.Fatalf("get server status %d body=%s", serverRes.Code, serverRes.Body.String())
+	}
+	var serverBody map[string]interface{}
+	_ = json.Unmarshal(serverRes.Body.Bytes(), &serverBody)
+	serverObj := serverBody["server"].(map[string]interface{})
+	if serverObj["status"] != "published" {
+		t.Fatalf("expected server to remain published after rejected update, got %v", serverObj["status"])
+	}
+	if serverObj["pricingAmount"].(float64) != 1.0 {
+		t.Fatalf("expected original pricing amount to remain intact, got %v", serverObj["pricingAmount"])
+	}
+}
+
+func TestMarketplaceOnlyExposesValidPublishedAndDeployedServers(t *testing.T) {
+	cfg := config.Config{
+		Port:                  "8080",
+		BaseURL:               "http://localhost:8080",
+		SuperAdminEmail:       "admin@platform.local",
+		SuperAdminPassword:    "admin-pass",
+		AllowInsecureDefaults: true,
+	}
+	st := store.NewMemoryStore(cfg)
+	h := newTestServerWithStore(cfg, st)
+
+	valid := st.CreateServer(storeServerFixture("Visible Server", "visible-server", 1.0, []string{"x402_wallet"}))
+	valid.Status = "published"
+	valid.DeploymentStatus = "deployed"
+	st.UpdateServer(valid)
+
+	invalid := st.CreateServer(storeServerFixture("Hidden Server", "hidden-server", 0.0, []string{"x402_wallet"}))
+	invalid.Status = "published"
+	invalid.DeploymentStatus = "deployed"
+	st.UpdateServer(invalid)
+
+	list := call(t, h, http.MethodGet, "/v1/marketplace/servers", "", nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("marketplace list status %d body=%s", list.Code, list.Body.String())
+	}
+	var listBody map[string]interface{}
+	_ = json.Unmarshal(list.Body.Bytes(), &listBody)
+	items := listBody["items"].([]interface{})
+	if len(items) != 1 {
+		t.Fatalf("expected only one visible marketplace server, got %d body=%s", len(items), list.Body.String())
+	}
+	visible := items[0].(map[string]interface{})
+	if visible["slug"] != "visible-server" {
+		t.Fatalf("expected valid published server in marketplace, got %v", visible["slug"])
+	}
+
+	if res := call(t, h, http.MethodGet, "/v1/marketplace/servers/visible-server", "", nil); res.Code != http.StatusOK {
+		t.Fatalf("expected valid marketplace detail, got %d body=%s", res.Code, res.Body.String())
+	}
+	if res := call(t, h, http.MethodGet, "/v1/marketplace/servers/hidden-server", "", nil); res.Code != http.StatusNotFound {
+		t.Fatalf("expected invalid marketplace detail hidden, got %d body=%s", res.Code, res.Body.String())
 	}
 }
 
@@ -644,7 +849,7 @@ func TestOAuthAuthorizationCodePKCEFlow(t *testing.T) {
 	buyerSignup := signup(t, h, "oauth-buyer@acme.local", "BuyerPass123!@", "buyer")
 	buyerToken := login(t, h, "oauth-buyer@acme.local", "BuyerPass123!@")
 	buyerUser := buyerSignup["user"].(map[string]interface{})
-	resource := "https://mcp.marketplace.local/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
+	resource := "http://localhost:8080/mcp/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
 
 	dcr := call(t, h, http.MethodPost, "/oauth/register", "", map[string]interface{}{
 		"client_name":                "Test Client",
@@ -682,6 +887,12 @@ func TestOAuthAuthorizationCodePKCEFlow(t *testing.T) {
 	var tokenBody map[string]interface{}
 	_ = json.Unmarshal(res.Body.Bytes(), &tokenBody)
 	accessToken := tokenBody["access_token"].(string)
+	if tokenBody["resource"] != resource {
+		t.Fatalf("expected token resource %s, got %v", resource, tokenBody["resource"])
+	}
+	if tokenBody["audience"] != resource {
+		t.Fatalf("expected token audience %s, got %v", resource, tokenBody["audience"])
+	}
 	hubPath := "/mcp/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
 	if hubWithAppToken := call(t, h, http.MethodGet, hubPath, buyerToken, nil); hubWithAppToken.Code != http.StatusUnauthorized {
 		t.Fatalf("expected app token rejected by mcp hub, got %d body=%s", hubWithAppToken.Code, hubWithAppToken.Body.String())
@@ -691,6 +902,41 @@ func TestOAuthAuthorizationCodePKCEFlow(t *testing.T) {
 	}
 	if hubWithOAuthToken := call(t, h, http.MethodGet, hubPath, accessToken, nil); hubWithOAuthToken.Code != http.StatusOK {
 		t.Fatalf("expected oauth token accepted by mcp hub, got %d body=%s", hubWithOAuthToken.Code, hubWithOAuthToken.Body.String())
+	}
+}
+
+func TestOAuthAuthorizeRejectsNonCanonicalResource(t *testing.T) {
+	h := newTestServer()
+	buyerSignup := signup(t, h, "oauth-canonical@acme.local", "BuyerPass123!@", "buyer")
+	buyerToken := login(t, h, "oauth-canonical@acme.local", "BuyerPass123!@")
+	buyerUser := buyerSignup["user"].(map[string]interface{})
+
+	dcr := call(t, h, http.MethodPost, "/oauth/register", "", map[string]interface{}{
+		"client_name":                "Canonical Resource Test Client",
+		"redirect_uris":              []string{"http://127.0.0.1:33418"},
+		"grant_types":                []string{"authorization_code"},
+		"token_endpoint_auth_method": "none",
+	})
+	if dcr.Code != http.StatusCreated {
+		t.Fatalf("dcr status %d body=%s", dcr.Code, dcr.Body.String())
+	}
+	var dcrBody map[string]interface{}
+	_ = json.Unmarshal(dcr.Body.Bytes(), &dcrBody)
+	clientID := dcrBody["client_id"].(string)
+
+	verifier := "canonical-verifier-1234567890"
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	resource := "https://mcp.marketplace.local/mcp/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
+	authorizePath := "/oauth/authorize?response_type=code&client_id=" + clientID + "&redirect_uri=http://127.0.0.1:33418&state=abc123&resource=" + resource + "&scope=db:read&code_challenge=" + challenge + "&code_challenge_method=S256"
+	authRes := call(t, h, http.MethodGet, authorizePath, buyerToken, nil)
+	if authRes.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid resource for off-origin hub URL, got %d body=%s", authRes.Code, authRes.Body.String())
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(authRes.Body.Bytes(), &body)
+	if body["error"] != "invalid_resource" {
+		t.Fatalf("expected invalid_resource error, got %v", body["error"])
 	}
 }
 
@@ -714,7 +960,7 @@ func TestOAuthAuthorizeRejectsResourceImpersonation(t *testing.T) {
 	clientID := dcrBody["client_id"].(string)
 
 	userBMeta := userB["user"].(map[string]interface{})
-	resourceB := "https://mcp.marketplace.local/hub/" + userBMeta["tenantId"].(string) + "/" + userBMeta["id"].(string)
+	resourceB := "http://localhost:8080/mcp/hub/" + userBMeta["tenantId"].(string) + "/" + userBMeta["id"].(string)
 	_ = userA // kept to make intent explicit for test setup
 	verifier := "impersonation-verifier-1234567890"
 	sum := sha256.Sum256([]byte(verifier))
@@ -723,6 +969,109 @@ func TestOAuthAuthorizeRejectsResourceImpersonation(t *testing.T) {
 	authRes := call(t, h, http.MethodGet, authorizePath, tokenA, nil)
 	if authRes.Code != http.StatusForbidden {
 		t.Fatalf("expected forbidden for impersonation attempt, got %d body=%s", authRes.Code, authRes.Body.String())
+	}
+}
+
+func TestMCPHubFiltersToolsByScopeAndCloudEntitlement(t *testing.T) {
+	h := newTestServer()
+	buyerSignup := signup(t, h, "hub-filter-buyer@acme.local", "BuyerPass123!@", "buyer")
+	signup(t, h, "hub-filter-merchant@acme.local", "MerchantPass123!@", "merchant")
+	buyerToken := login(t, h, "hub-filter-buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "hub-filter-merchant@acme.local", "MerchantPass123!@")
+	adminToken := login(t, h, "admin@platform.local", "admin-pass")
+	buyerUser := buyerSignup["user"].(map[string]interface{})
+
+	createServer := func(name, slug string, scopes []string) string {
+		t.Helper()
+		created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+			"name":                 name,
+			"slug":                 slug,
+			"description":          "Hub filter test",
+			"category":             "integration",
+			"dockerImage":          "tenant/" + slug + ":1.0.0",
+			"canonicalResourceUri": "https://mcp.marketplace.local/resource/" + slug,
+			"requiredScopes":       scopes,
+			"pricingType":          "free",
+			"supportsCloud":        true,
+			"supportsLocal":        true,
+		})
+		if created.Code != http.StatusCreated {
+			t.Fatalf("create server %s status %d body=%s", slug, created.Code, created.Body.String())
+		}
+		var body map[string]interface{}
+		_ = json.Unmarshal(created.Body.Bytes(), &body)
+		return body["id"].(string)
+	}
+
+	allowedServerID := createServer("Allowed Cloud Tool", "allowed-cloud-tool", []string{"db:read"})
+	scopeBlockedServerID := createServer("Scope Blocked Tool", "scope-blocked-tool", []string{"db:read", "db:write"})
+	cloudBlockedServerID := createServer("Cloud Blocked Tool", "cloud-blocked-tool", []string{"db:read"})
+
+	grant := func(serverID string, scopes []string, cloudAllowed bool) {
+		t.Helper()
+		res := call(t, h, http.MethodPost, "/v1/admin/entitlements", adminToken, map[string]interface{}{
+			"tenantId":      buyerUser["tenantId"],
+			"userId":        buyerUser["id"],
+			"serverId":      serverID,
+			"allowedScopes": scopes,
+			"cloudAllowed":  cloudAllowed,
+			"localAllowed":  true,
+		})
+		if res.Code != http.StatusCreated {
+			t.Fatalf("grant entitlement status %d body=%s", res.Code, res.Body.String())
+		}
+	}
+
+	grant(allowedServerID, []string{"db:read"}, true)
+	grant(scopeBlockedServerID, []string{"db:read"}, true)
+	grant(cloudBlockedServerID, []string{"db:read"}, false)
+
+	hubToken := oauthAccessToken(t, h, buyerToken, buyerUser["tenantId"].(string), buyerUser["id"].(string), []string{"db:read"})
+	hubPath := "/mcp/hub/" + buyerUser["tenantId"].(string) + "/" + buyerUser["id"].(string)
+
+	listRes := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "tools-list-filtered",
+		"method":  "tools/list",
+	})
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("tools/list status %d body=%s", listRes.Code, listRes.Body.String())
+	}
+	var listBody map[string]interface{}
+	_ = json.Unmarshal(listRes.Body.Bytes(), &listBody)
+	result := listBody["result"].(map[string]interface{})
+	tools := result["tools"].([]interface{})
+	toolNames := map[string]bool{}
+	for _, raw := range tools {
+		tool := raw.(map[string]interface{})
+		toolNames[tool["name"].(string)] = true
+	}
+	if !toolNames["invoke_allowed_cloud_tool"] {
+		t.Fatalf("expected granted cloud tool in tools/list, got %v", toolNames)
+	}
+	if toolNames["invoke_scope_blocked_tool"] {
+		t.Fatalf("expected scope-blocked tool to be filtered, got %v", toolNames)
+	}
+	if toolNames["invoke_cloud_blocked_tool"] {
+		t.Fatalf("expected cloud-blocked tool to be filtered, got %v", toolNames)
+	}
+
+	callRes := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "call-filtered-tool",
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name": "invoke_scope_blocked_tool",
+		},
+	})
+	if callRes.Code != http.StatusOK {
+		t.Fatalf("tools/call status %d body=%s", callRes.Code, callRes.Body.String())
+	}
+	var callBody map[string]interface{}
+	_ = json.Unmarshal(callRes.Body.Bytes(), &callBody)
+	errorBody := callBody["error"].(map[string]interface{})
+	if errorBody["message"] != "tool not found" {
+		t.Fatalf("expected filtered tool call to return tool not found, got %v", errorBody)
 	}
 }
 
@@ -831,6 +1180,25 @@ func TestSettleX402IntentRequiresOwner(t *testing.T) {
 
 func TestMCPToolsCallX402MetaFlow(t *testing.T) {
 	h := newTestServer()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      "mcp-pay-2",
+			"result": map[string]interface{}{
+				"content": []map[string]string{{
+					"type": "text",
+					"text": "upstream tool executed",
+				}},
+				"isError": false,
+			},
+		})
+	}))
+	defer upstream.Close()
 	buyerSignup := signup(t, h, "mcp-buyer@acme.local", "BuyerPass123!@", "buyer")
 	signup(t, h, "mcp-merchant@acme.local", "MerchantPass123!@", "merchant")
 	adminToken := login(t, h, "admin@platform.local", "admin-pass")
@@ -844,7 +1212,7 @@ func TestMCPToolsCallX402MetaFlow(t *testing.T) {
 		"description":          "paid tool",
 		"category":             "ai",
 		"dockerImage":          "tenant/mcp-paid:1.0.0",
-		"canonicalResourceUri": "https://mcp.marketplace.local/resource/mcp-paid-tool",
+		"canonicalResourceUri": upstream.URL,
 		"requiredScopes":       []string{"documents:read"},
 		"pricingType":          "x402",
 		"pricingAmount":        0.05,
@@ -1255,7 +1623,6 @@ func TestPaidInstallFlowAndInstallAutoSettle(t *testing.T) {
 		"requiredScopes":       []string{"documents:read"},
 		"pricingType":          "x402",
 		"pricingAmount":        0.5,
-		"status":               "published",
 		"supportsCloud":        true,
 		"supportsLocal":        true,
 		"paymentMethods":       []string{"wallet_balance"},
@@ -1265,7 +1632,14 @@ func TestPaidInstallFlowAndInstallAutoSettle(t *testing.T) {
 	}
 	var createdABody map[string]interface{}
 	_ = json.Unmarshal(createdA.Body.Bytes(), &createdABody)
+	serverIDA := createdABody["id"].(string)
 	slugA := createdABody["slug"].(string)
+	if deployA := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverIDA+"/deploy", merchantToken, nil); deployA.Code != http.StatusOK {
+		t.Fatalf("deploy server A status %d body=%s", deployA.Code, deployA.Body.String())
+	}
+	if publishA := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverIDA+"/publish", merchantToken, nil); publishA.Code != http.StatusOK {
+		t.Fatalf("publish server A status %d body=%s", publishA.Code, publishA.Body.String())
+	}
 
 	installNeedsPayment := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+slugA+"/install", buyerToken, map[string]interface{}{
 		"client":        "vscode",
@@ -1305,7 +1679,6 @@ func TestPaidInstallFlowAndInstallAutoSettle(t *testing.T) {
 		"requiredScopes":       []string{"documents:read"},
 		"pricingType":          "x402",
 		"pricingAmount":        0.25,
-		"status":               "published",
 		"supportsCloud":        true,
 		"supportsLocal":        true,
 		"paymentMethods":       []string{"wallet_balance"},
@@ -1315,7 +1688,14 @@ func TestPaidInstallFlowAndInstallAutoSettle(t *testing.T) {
 	}
 	var createdBBody map[string]interface{}
 	_ = json.Unmarshal(createdB.Body.Bytes(), &createdBBody)
+	serverIDB := createdBBody["id"].(string)
 	slugB := createdBBody["slug"].(string)
+	if deployB := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverIDB+"/deploy", merchantToken, nil); deployB.Code != http.StatusOK {
+		t.Fatalf("deploy server B status %d body=%s", deployB.Code, deployB.Body.String())
+	}
+	if publishB := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverIDB+"/publish", merchantToken, nil); publishB.Code != http.StatusOK {
+		t.Fatalf("publish server B status %d body=%s", publishB.Code, publishB.Body.String())
+	}
 
 	autoSettleInstall := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+slugB+"/install", buyerToken, map[string]interface{}{
 		"client":        "vscode",
@@ -1422,18 +1802,18 @@ func TestPaymentMethodCatalogIsTruthfulAndDefaultsStaySafe(t *testing.T) {
 		item := raw.(map[string]interface{})
 		byID[item["id"].(string)] = item
 	}
-	if byID["stripe"]["enabled"] != false || byID["stripe"]["readiness"] != "placeholder" {
-		t.Fatalf("expected stripe to be disabled placeholder, got %v", byID["stripe"])
+	if byID["stripe"]["enabled"] != false || byID["stripe"]["readiness"] != "not_configured" {
+		t.Fatalf("expected stripe to be disabled not_configured, got %v", byID["stripe"])
 	}
-	if byID["coinbase_commerce"]["enabled"] != false || byID["coinbase_commerce"]["readiness"] != "placeholder" {
-		t.Fatalf("expected coinbase_commerce to be disabled placeholder, got %v", byID["coinbase_commerce"])
+	if byID["coinbase_commerce"]["enabled"] != false || byID["coinbase_commerce"]["readiness"] != "not_configured" {
+		t.Fatalf("expected coinbase_commerce to be disabled not_configured, got %v", byID["coinbase_commerce"])
 	}
 
 	blocked := call(t, h, http.MethodPut, "/v1/buyer/payments/controls", buyerToken, map[string]interface{}{
 		"allowedMethods": []string{"stripe"},
 	})
 	if blocked.Code != http.StatusBadRequest {
-		t.Fatalf("expected placeholder payment method to be rejected, got %d body=%s", blocked.Code, blocked.Body.String())
+		t.Fatalf("expected not_configured payment method to be rejected, got %d body=%s", blocked.Code, blocked.Body.String())
 	}
 }
 
