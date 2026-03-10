@@ -1,112 +1,149 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, AlertCircle, CheckCircle2, Loader } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
+import { AppShell } from '@/components/app-shell'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AppShell } from '@/components/app-shell'
+import { Textarea } from '@/components/ui/textarea'
 import { createMerchantServer } from '@/lib/api-client'
 import { toast } from 'sonner'
 
-export default function ImportDockerPage() {
-  const [step, setStep] = useState<'url' | 'scanning' | 'review'>('url')
-  const [dockerUrl, setDockerUrl] = useState('')
-  const [registryAuth, setRegistryAuth] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+type CreateServerForm = {
+  dockerImage: string
+  containerPort: string
+  name: string
+  slug: string
+  description: string
+  category: string
+  canonicalResourceUri: string
+  requiredScopes: string
+  pricingType: string
+  pricingAmount: string
+  supportsLocal: boolean
+  supportsCloud: boolean
+}
 
-  const [scanResults, setScanResults] = useState<{
-    name: string
-    slug: string
-    version: string
-    description: string
-    baseSize: number
-    layers: number
-    sbom: { libraries: string[]; vulnerabilities: number }
-  } | null>(null)
+function toSlug(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50)
+}
 
-  const toSlug = (value: string) =>
-    value
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 50)
-
-  const handleScan = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!dockerUrl) {
-      toast.error('Please enter a Docker image URL')
-      return
-    }
-
-    setIsLoading(true)
-    setStep('scanning')
-
-    const imageRef = dockerUrl.trim()
-    const imageNameWithTag = imageRef.split('/').pop() || 'mcp-agent'
-    const imageName = imageNameWithTag.split(':')[0] || 'mcp-agent'
-    const tag = imageNameWithTag.split(':')[1] || 'latest'
-    const derivedName = imageName
-      .split('-')
+function deriveServerName(imageRef: string) {
+  const imageNameWithTag = imageRef.split('/').pop() || 'mcp-server'
+  const imageName = imageNameWithTag.split(':')[0] || 'mcp-server'
+  return (
+    imageName
+      .split(/[-_]/)
       .filter(Boolean)
       .map(part => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ')
-      .trim() || 'MCP Agent'
-    const derivedSlug = toSlug(imageName) || 'mcp-agent'
+      .trim() || 'MCP Server'
+  )
+}
 
-    setTimeout(() => {
-      setScanResults({
-        name: derivedName,
-        slug: derivedSlug,
-        version: tag,
-        description: `${derivedName} imported from Docker image ${imageRef}`,
-        baseSize: 486,
-        layers: 12,
-        sbom: {
-          libraries: ['postgres-driver:15.2', 'langchain:0.1.0', 'nodejs:20.10.0'],
-          vulnerabilities: 2,
-        },
-      })
-      setIsLoading(false)
-      setStep('review')
-    }, 2000)
+function parseScopes(raw: string) {
+  return raw
+    .split(',')
+    .map(scope => scope.trim())
+    .filter(Boolean)
+}
+
+export default function ImportDockerPage() {
+  const [form, setForm] = useState<CreateServerForm>({
+    dockerImage: '',
+    containerPort: '3000',
+    name: '',
+    slug: '',
+    description: '',
+    category: 'automation',
+    canonicalResourceUri: '',
+    requiredScopes: 'agent:invoke',
+    pricingType: 'x402',
+    pricingAmount: '1',
+    supportsLocal: true,
+    supportsCloud: true,
+  })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const parsedScopes = useMemo(() => parseScopes(form.requiredScopes), [form.requiredScopes])
+
+  const applyImageDefaults = (value: string) => {
+    const trimmed = value.trim()
+    const nextName = form.name || deriveServerName(trimmed)
+    const nextSlug = form.slug || toSlug(nextName)
+    setForm(current => ({
+      ...current,
+      dockerImage: value,
+      name: current.name || nextName,
+      slug: current.slug || nextSlug,
+      canonicalResourceUri:
+        current.canonicalResourceUri || (nextSlug ? `https://example.com/mcp/${nextSlug}` : ''),
+      description:
+        current.description || (nextName ? `${nextName} deployed from ${trimmed}` : ''),
+    }))
   }
 
-  const handleImport = async () => {
-    if (!scanResults) return
-    setIsLoading(true)
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    const dockerImage = form.dockerImage.trim()
+    const name = form.name.trim()
+    const slug = toSlug(form.slug)
+    const canonicalResourceUri = form.canonicalResourceUri.trim()
+    const containerPort = Number(form.containerPort)
+    const pricingAmount = Number(form.pricingAmount)
+
+    if (!dockerImage || !name || !slug || !canonicalResourceUri) {
+      toast.error('Docker image, name, slug, and canonical resource URI are required.')
+      return
+    }
+    if (!Number.isInteger(containerPort) || containerPort <= 0 || containerPort > 65535) {
+      toast.error('Enter a valid exposed container port.')
+      return
+    }
+
+    if (!Number.isFinite(pricingAmount) || pricingAmount <= 0) {
+      toast.error('Enter a positive price before creating the server.')
+      return
+    }
+
+    setIsSubmitting(true)
     try {
       const created = await createMerchantServer({
-        name: scanResults.name,
-        slug: scanResults.slug,
-        description: scanResults.description,
-        category: 'automation',
-        dockerImage: dockerUrl.trim(),
-        canonicalResourceUri: `https://mcp.marketplace.local/resource/${scanResults.slug}`,
-        requiredScopes: ['agent:invoke'],
-        pricingType: 'x402',
-        pricingAmount: 0,
-        supportsCloud: true,
-        supportsLocal: true,
+        name,
+        slug,
+        description: form.description.trim(),
+        category: form.category.trim() || 'automation',
+        dockerImage,
+        containerPort,
+        canonicalResourceUri,
+        requiredScopes: parsedScopes,
+        pricingType: form.pricingType,
+        pricingAmount,
+        supportsCloud: form.supportsCloud,
+        supportsLocal: form.supportsLocal,
         status: 'draft',
       })
-      toast.success('Server imported as draft')
+      toast.success('Server created as a draft. Continue to deployments.')
       window.location.href = `/merchant/servers/${created.id}/deployments`
-    } catch (e: any) {
-      toast.error(e?.message || 'Import failed')
+    } catch (error: any) {
+      toast.error(error?.message || 'Server creation failed')
     } finally {
-      setIsLoading(false)
+      setIsSubmitting(false)
     }
   }
 
   return (
     <AppShell role="merchant">
       <div className="max-w-4xl mx-auto p-6 space-y-6">
-        {/* Header */}
         <Link
           href="/merchant/servers"
           className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors w-fit"
@@ -116,190 +153,197 @@ export default function ImportDockerPage() {
         </Link>
 
         <div>
-          <h1 className="text-3xl font-bold mb-2">Import Docker Image</h1>
+          <h1 className="text-3xl font-bold mb-2">Create Server from Docker Image</h1>
           <p className="text-muted-foreground">
-            Import your MCP server from Docker Hub or a private registry
+            Enter the real metadata the backend needs and create the draft directly. No mock scan
+            or generated review data is used here.
           </p>
         </div>
 
-        {/* Step 1: URL Input */}
-        {step === 'url' && (
-          <Card className="p-8 max-w-2xl">
-            <h2 className="text-2xl font-bold mb-6">Docker Image URL</h2>
+        <Card className="p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="docker-image">Docker Image</Label>
+              <Input
+                id="docker-image"
+                placeholder="docker.io/myorg/mcp-server:1.0.0"
+                value={form.dockerImage}
+                onChange={event => applyImageDefaults(event.target.value)}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use a real image reference that your deployment workflow can pull.
+              </p>
+            </div>
 
-            <form onSubmit={handleScan} className="space-y-6">
-              <div>
-                <Label htmlFor="docker-url" className="mb-2 block">
-                  Docker Image URL
-                </Label>
+            <div className="space-y-2">
+              <Label htmlFor="container-port">Exposed Container Port</Label>
+              <Input
+                id="container-port"
+                type="number"
+                min="1"
+                max="65535"
+                value={form.containerPort}
+                onChange={event =>
+                  setForm(current => ({ ...current, containerPort: event.target.value }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Required for real container deployment. For example, `3000` for `samanhappy/mcphub`.
+              </p>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="server-name">Name</Label>
                 <Input
-                  id="docker-url"
-                  placeholder="e.g., docker.io/myorg/postgres-assistant:2.1.0"
-                  value={dockerUrl}
-                  onChange={e => setDockerUrl(e.target.value)}
-                  className="font-mono text-sm"
+                  id="server-name"
+                  value={form.name}
+                  onChange={event => setForm(current => ({ ...current, name: event.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground mt-2">
-                  Include the tag and registry. Public registries don't require authentication.
-                </p>
               </div>
-
-              <div>
-                <Label htmlFor="registry-auth" className="mb-2 block">
-                  Registry Authentication (Optional)
-                </Label>
+              <div className="space-y-2">
+                <Label htmlFor="server-slug">Slug</Label>
                 <Input
-                  id="registry-auth"
-                  placeholder="username:password or auth token"
-                  type="password"
-                  value={registryAuth}
-                  onChange={e => setRegistryAuth(e.target.value)}
+                  id="server-slug"
+                  value={form.slug}
+                  onChange={event =>
+                    setForm(current => ({ ...current, slug: toSlug(event.target.value) }))
+                  }
                 />
-                <p className="text-xs text-muted-foreground mt-2">
-                  Only needed for private registries
-                </p>
-              </div>
-
-              <div className="bg-blue-500/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                <p className="text-sm text-blue-900 dark:text-blue-100">
-                  We'll scan your image for security vulnerabilities and generate an SBOM (Software Bill of Materials).
-                </p>
-              </div>
-
-              <Button type="submit" disabled={isLoading} className="w-full">
-                {isLoading ? 'Scanning...' : 'Scan & Import'}
-              </Button>
-            </form>
-          </Card>
-        )}
-
-        {/* Step 2: Scanning */}
-        {step === 'scanning' && (
-          <Card className="p-8 max-w-2xl">
-            <div className="text-center space-y-6">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-                <Loader className="w-8 h-8 text-primary animate-spin" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold mb-2">Scanning Docker Image</h2>
-                <p className="text-muted-foreground">This may take a minute...</p>
-              </div>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p>Pulling image metadata</p>
-                <p>Analyzing layers</p>
-                <p>Scanning for vulnerabilities</p>
-                <p>Generating SBOM</p>
               </div>
             </div>
-          </Card>
-        )}
 
-        {/* Step 3: Review */}
-        {step === 'review' && scanResults && (
-          <div className="space-y-6">
-            {/* Image Info */}
-            <Card className="p-8">
-              <h2 className="text-2xl font-bold mb-6">Review Scan Results</h2>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="category">Category</Label>
+                <Input
+                  id="category"
+                  value={form.category}
+                  onChange={event =>
+                    setForm(current => ({ ...current, category: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="canonical-uri">Canonical Resource URI</Label>
+                <Input
+                  id="canonical-uri"
+                  placeholder="https://example.com/mcp/my-server"
+                  value={form.canonicalResourceUri}
+                  onChange={event =>
+                    setForm(current => ({ ...current, canonicalResourceUri: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
 
-              <div className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                rows={4}
+                value={form.description}
+                onChange={event =>
+                  setForm(current => ({ ...current, description: event.target.value }))
+                }
+              />
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="required-scopes">Required Scopes</Label>
+                <Input
+                  id="required-scopes"
+                  placeholder="agent:invoke,files:read"
+                  value={form.requiredScopes}
+                  onChange={event =>
+                    setForm(current => ({ ...current, requiredScopes: event.target.value }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated. Parsed as {parsedScopes.length} scope
+                  {parsedScopes.length === 1 ? '' : 's'}.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="pricing-type">Pricing Type</Label>
+                  <select
+                    id="pricing-type"
+                    value={form.pricingType}
+                    onChange={event =>
+                      setForm(current => ({ ...current, pricingType: event.target.value }))
+                    }
+                    className="px-3 py-2 rounded-md border border-input bg-background text-sm w-full"
+                  >
+                    <option value="x402">x402</option>
+                    <option value="subscription">subscription</option>
+                    <option value="free">free</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pricing-amount">Price (USDC)</Label>
+                  <Input
+                    id="pricing-amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.pricingAmount}
+                    onChange={event =>
+                      setForm(current => ({ ...current, pricingAmount: event.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="flex items-start gap-3 rounded-lg border border-border p-4">
+                <input
+                  type="checkbox"
+                  checked={form.supportsLocal}
+                  onChange={event =>
+                    setForm(current => ({ ...current, supportsLocal: event.target.checked }))
+                  }
+                  className="mt-1"
+                />
                 <div>
-                  <h3 className="font-semibold mb-4">Server Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Name</p>
-                      <p className="font-medium">{scanResults.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Version</p>
-                      <p className="font-medium">v{scanResults.version}</p>
-                    </div>
-                    <div className="md:col-span-2">
-                      <p className="text-sm text-muted-foreground mb-1">Description</p>
-                      <p className="text-sm">{scanResults.description}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-6">
-                  <h3 className="font-semibold mb-4">Image Metrics</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card className="p-4 bg-muted/50 border-border">
-                      <p className="text-sm text-muted-foreground mb-1">Compressed Size</p>
-                      <p className="text-2xl font-bold">{scanResults.baseSize}MB</p>
-                    </Card>
-                    <Card className="p-4 bg-muted/50 border-border">
-                      <p className="text-sm text-muted-foreground mb-1">Docker Layers</p>
-                      <p className="text-2xl font-bold">{scanResults.layers}</p>
-                    </Card>
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-6">
-                  <h3 className="font-semibold mb-4">SBOM - Software Bill of Materials</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-sm font-medium mb-2">Base Libraries</p>
-                      <div className="space-y-2">
-                        {scanResults.sbom.libraries.map((lib, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 text-sm p-2 bg-muted/50 rounded"
-                          >
-                            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                            {lib}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {scanResults.sbom.vulnerabilities > 0 && (
-                      <div className="bg-amber-500/10 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <p className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
-                              {scanResults.sbom.vulnerabilities} Known Vulnerabilities
-                            </p>
-                            <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
-                              Review and update dependencies if needed before publishing
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-green-500/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                  <p className="text-sm text-green-900 dark:text-green-100">
-                    ✓ Image scan complete. Ready to import.
+                  <p className="font-medium">Supports local install</p>
+                  <p className="text-sm text-muted-foreground">
+                    Buyers can connect this server to local MCP clients.
                   </p>
                 </div>
-              </div>
-            </Card>
+              </label>
 
-            {/* Actions */}
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setStep('url')
-                  setScanResults(null)
-                }}
-                disabled={isLoading}
-              >
-                Back
-              </Button>
-              <Button
-                onClick={handleImport}
-                disabled={isLoading}
-                className="flex-1"
-              >
-                {isLoading ? 'Importing...' : 'Import Server'}
-              </Button>
+              <label className="flex items-start gap-3 rounded-lg border border-border p-4">
+                <input
+                  type="checkbox"
+                  checked={form.supportsCloud}
+                  onChange={event =>
+                    setForm(current => ({ ...current, supportsCloud: event.target.checked }))
+                  }
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium">Supports cloud deployment</p>
+                  <p className="text-sm text-muted-foreground">
+                    Deployment workflows can target hosted runtimes for this image.
+                  </p>
+                </div>
+              </label>
             </div>
-          </div>
-        )}
+
+            <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+              The backend creates this server immediately in draft state. Deployment, payment
+              configuration, and publish still happen on the later seller pages.
+            </div>
+
+            <Button type="submit" disabled={isSubmitting} className="w-full">
+              {isSubmitting ? 'Creating draft...' : 'Create Draft Server'}
+            </Button>
+          </form>
+        </Card>
       </div>
     </AppShell>
   )

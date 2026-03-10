@@ -42,6 +42,7 @@ type MongoStore struct {
 	deployTasks   *mongo.Collection
 	agents        *mongo.Collection
 	userSettings  *mongo.Collection
+	integrations  *mongo.Collection
 	oauthAccounts *mongo.Collection
 	oauthClients  *mongo.Collection
 	oauthCodes    *mongo.Collection
@@ -90,6 +91,7 @@ func NewMongoStore(cfg config.Config) (*MongoStore, error) {
 		deployTasks:   db.Collection("deploy_tasks"),
 		agents:        db.Collection("local_agents"),
 		userSettings:  db.Collection("user_settings"),
+		integrations:  db.Collection("platform_integration_settings"),
 		oauthAccounts: db.Collection("oauth_accounts"),
 		oauthClients:  db.Collection("oauth_clients"),
 		oauthCodes:    db.Collection("oauth_auth_codes"),
@@ -253,6 +255,12 @@ func (s *MongoStore) ensureIndexes() error {
 			col: s.userSettings,
 			model: []mongo.IndexModel{
 				{Keys: bson.D{{Key: "userId", Value: 1}}, Options: options.Index().SetUnique(true)},
+			},
+		},
+		{
+			col: s.integrations,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "key", Value: 1}}, Options: options.Index().SetUnique(true)},
 			},
 		},
 		{
@@ -1490,6 +1498,38 @@ func (s *MongoStore) UpsertUserSettings(settings models.UserSettings) models.Use
 		},
 	}
 	_, _ = s.userSettings.UpdateOne(ctx, bson.M{"userId": settings.UserID}, update, options.Update().SetUpsert(true))
+	return settings
+}
+
+func (s *MongoStore) GetPlatformIntegrationSettings() (models.PlatformIntegrationSettings, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var settings models.PlatformIntegrationSettings
+	err := s.integrations.FindOne(ctx, bson.M{"key": "platform"}).Decode(&settings)
+	if err != nil {
+		return models.PlatformIntegrationSettings{}, false
+	}
+	return settings, true
+}
+
+func (s *MongoStore) UpsertPlatformIntegrationSettings(settings models.PlatformIntegrationSettings) models.PlatformIntegrationSettings {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	settings.Key = "platform"
+	settings.UpdatedAt = time.Now().UTC()
+	update := bson.M{
+		"$set": bson.M{
+			"key":       settings.Key,
+			"google":    settings.Google,
+			"github":    settings.GitHub,
+			"stripe":    settings.Stripe,
+			"x402":      settings.X402,
+			"n8n":       settings.N8N,
+			"updatedBy": settings.UpdatedBy,
+			"updatedAt": settings.UpdatedAt,
+		},
+	}
+	_, _ = s.integrations.UpdateOne(ctx, bson.M{"key": settings.Key}, update, options.Update().SetUpsert(true))
 	return settings
 }
 

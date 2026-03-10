@@ -2,16 +2,13 @@ package http
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
 
 func (a *App) startDeployWorker() {
-	if a.n8n == nil || !a.n8n.configured() {
-		return
-	}
-
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
@@ -38,10 +35,6 @@ func (a *App) triggerDeployWorker() {
 }
 
 func (a *App) processDeployQueue(ctx context.Context, limit int) {
-	if a.n8n == nil || !a.n8n.configured() {
-		return
-	}
-
 	now := time.Now().UTC()
 	tasks := a.store.ListDueDeployTasks(now, limit)
 	for _, task := range tasks {
@@ -72,7 +65,29 @@ func (a *App) processDeployTask(ctx context.Context, task models.DeployTask) {
 		return
 	}
 
-	result, err := a.n8n.deployWorkflow(ctx, server, task.PreferredWorkflowID)
+	target := strings.TrimSpace(task.DeploymentTarget)
+	if target == "" {
+		target = strings.TrimSpace(server.DeploymentTarget)
+	}
+	if target == "" {
+		target = "local-docker"
+	}
+
+	var (
+		result n8nDeployResult
+		err    error
+	)
+	switch target {
+	case "local-docker":
+		result, err = a.currentDockerRuntime().deployContainer(ctx, server)
+	default:
+		n8n := a.currentN8NService()
+		if n8n == nil || !n8n.configured() {
+			err = &n8nHTTPError{status: 503, message: "n8n deployment is not configured"}
+		} else {
+			result, err = n8n.deployWorkflow(ctx, server, task.PreferredWorkflowID)
+		}
+	}
 	if err != nil {
 		a.handleDeployTaskFailure(task, server, err)
 		return
@@ -92,6 +107,12 @@ func (a *App) processDeployTask(ctx context.Context, task models.DeployTask) {
 	}
 	if result.WorkflowURL != "" {
 		server.N8nWorkflowURL = result.WorkflowURL
+	}
+	if result.RuntimeContainerID != "" {
+		server.RuntimeContainerID = result.RuntimeContainerID
+	}
+	if result.RuntimeURL != "" {
+		server.CanonicalResourceURI = result.RuntimeURL
 	}
 	if server.Status != models.ServerStatusPublished {
 		server.Status = models.ServerStatusDraft
@@ -117,6 +138,7 @@ func (a *App) processDeployTask(ctx context.Context, task models.DeployTask) {
 		Metadata: map[string]interface{}{
 			"workflowId":  server.N8nWorkflowID,
 			"workflowUrl": server.N8nWorkflowURL,
+			"runtimeUrl":  server.CanonicalResourceURI,
 			"attempts":    task.AttemptCount,
 		},
 	})

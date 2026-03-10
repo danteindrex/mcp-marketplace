@@ -46,6 +46,23 @@ type stripeOnrampSession struct {
 	Raw          map[string]interface{}
 }
 
+type stripeAPIError struct {
+	Provider string
+	Status   int
+	Message  string
+}
+
+func (e *stripeAPIError) Error() string {
+	msg := strings.TrimSpace(e.Message)
+	if msg == "" {
+		msg = http.StatusText(e.Status)
+	}
+	if strings.TrimSpace(e.Provider) == "" {
+		return msg
+	}
+	return e.Provider + ": " + msg
+}
+
 func newStripeOnrampService(cfg config.Config) *stripeOnrampService {
 	return &stripeOnrampService{
 		secretKey:   strings.TrimSpace(cfg.StripeSecretKey),
@@ -191,10 +208,10 @@ func (s *stripeOnrampService) postForm(ctx context.Context, endpoint string, for
 		return nil, err
 	}
 	defer resp.Body.Close()
-	return decodeStripeResponse(resp)
+	return decodeStripeResponse(resp, "stripe onramp")
 }
 
-func decodeStripeResponse(resp *http.Response) (map[string]interface{}, error) {
+func decodeStripeResponse(resp *http.Response, provider string) (map[string]interface{}, error) {
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -207,14 +224,14 @@ func decodeStripeResponse(resp *http.Response) (map[string]interface{}, error) {
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		if msg := stringFromAny(out["error"]); msg != "" {
-			return nil, fmt.Errorf("stripe onramp error: %s", msg)
+			return nil, &stripeAPIError{Provider: provider, Status: resp.StatusCode, Message: msg}
 		}
 		if errObj, ok := out["error"].(map[string]interface{}); ok {
 			if msg := stringFromAny(errObj["message"]); msg != "" {
-				return nil, fmt.Errorf("stripe onramp error: %s", msg)
+				return nil, &stripeAPIError{Provider: provider, Status: resp.StatusCode, Message: msg}
 			}
 		}
-		return nil, fmt.Errorf("stripe onramp status %d", resp.StatusCode)
+		return nil, &stripeAPIError{Provider: provider, Status: resp.StatusCode, Message: strings.TrimSpace(string(raw))}
 	}
 	return out, nil
 }

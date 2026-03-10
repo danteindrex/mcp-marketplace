@@ -88,6 +88,7 @@ type Server struct {
 	Category             string    `json:"category" bson:"category"`
 	Version              string    `json:"version" bson:"version"`
 	DockerImage          string    `json:"dockerImage" bson:"dockerImage"`
+	ContainerPort        int       `json:"containerPort,omitempty" bson:"containerPort,omitempty"`
 	CanonicalResourceURI string    `json:"canonicalResourceUri" bson:"canonicalResourceUri"`
 	RequiredScopes       []string  `json:"requiredScopes" bson:"requiredScopes"`
 	PricingType          string    `json:"pricingType" bson:"pricingType"`
@@ -103,6 +104,7 @@ type Server struct {
 	DeployedAt           time.Time `json:"deployedAt,omitempty" bson:"deployedAt,omitempty"`
 	N8nWorkflowID        string    `json:"n8nWorkflowId,omitempty" bson:"n8nWorkflowId,omitempty"`
 	N8nWorkflowURL       string    `json:"n8nWorkflowUrl,omitempty" bson:"n8nWorkflowUrl,omitempty"`
+	RuntimeContainerID   string    `json:"runtimeContainerId,omitempty" bson:"runtimeContainerId,omitempty"`
 	PublishedAt          time.Time `json:"publishedAt,omitempty" bson:"publishedAt,omitempty"`
 	SupportsLocal        bool      `json:"supportsLocal" bson:"supportsLocal"`
 	SupportsCloud        bool      `json:"supportsCloud" bson:"supportsCloud"`
@@ -113,6 +115,24 @@ type Server struct {
 	MonthlyCapUSDC       float64   `json:"monthlyCapUsdc,omitempty" bson:"monthlyCapUsdc,omitempty"`
 	UpdatedAt            time.Time `json:"updatedAt" bson:"updatedAt"`
 	CreatedAt            time.Time `json:"createdAt" bson:"createdAt"`
+	Builder              AgentBuilderConfig `json:"builder,omitempty" bson:"builder,omitempty"`
+}
+
+type AgentBuilderTool struct {
+	Name         string            `json:"name" bson:"name"`
+	Description  string            `json:"description,omitempty" bson:"description,omitempty"`
+	InputSchema  map[string]string `json:"inputSchema,omitempty" bson:"inputSchema,omitempty"`
+	OutputSchema map[string]string `json:"outputSchema,omitempty" bson:"outputSchema,omitempty"`
+}
+
+type AgentBuilderConfig struct {
+	Framework     string             `json:"framework,omitempty" bson:"framework,omitempty"`
+	Template      string             `json:"template,omitempty" bson:"template,omitempty"`
+	Instructions  string             `json:"instructions,omitempty" bson:"instructions,omitempty"`
+	ScopeMappings []string           `json:"scopeMappings,omitempty" bson:"scopeMappings,omitempty"`
+	ToolCatalog   []AgentBuilderTool `json:"toolCatalog,omitempty" bson:"toolCatalog,omitempty"`
+	LastEditedBy  string             `json:"lastEditedBy,omitempty" bson:"lastEditedBy,omitempty"`
+	LastEditedAt  time.Time          `json:"lastEditedAt,omitempty" bson:"lastEditedAt,omitempty"`
 }
 
 type DeployTask struct {
@@ -398,6 +418,48 @@ type UserSettings struct {
 	Preferences   UserPreferences      `json:"preferences" bson:"preferences"`
 	Notifications NotificationSettings `json:"notifications" bson:"notifications"`
 	UpdatedAt     time.Time            `json:"updatedAt" bson:"updatedAt"`
+}
+
+type OAuthProviderSettings struct {
+	ClientID     string `json:"clientId,omitempty" bson:"clientId,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty" bson:"clientSecret,omitempty"`
+	RedirectBase string `json:"redirectBase,omitempty" bson:"redirectBase,omitempty"`
+}
+
+type StripeIntegrationSettings struct {
+	SecretKey            string  `json:"secretKey,omitempty" bson:"secretKey,omitempty"`
+	PublishableKey       string  `json:"publishableKey,omitempty" bson:"publishableKey,omitempty"`
+	WebhookSecret        string  `json:"webhookSecret,omitempty" bson:"webhookSecret,omitempty"`
+	OnrampReturnURL      string  `json:"onrampReturnUrl,omitempty" bson:"onrampReturnUrl,omitempty"`
+	OnrampRefreshURL     string  `json:"onrampRefreshUrl,omitempty" bson:"onrampRefreshUrl,omitempty"`
+	OnrampMinUSD         float64 `json:"onrampMinUsd,omitempty" bson:"onrampMinUsd,omitempty"`
+	OnrampDefaultUSD     float64 `json:"onrampDefaultUsd,omitempty" bson:"onrampDefaultUsd,omitempty"`
+	ConnectReturnURL     string  `json:"connectReturnUrl,omitempty" bson:"connectReturnUrl,omitempty"`
+	ConnectRefreshURL    string  `json:"connectRefreshUrl,omitempty" bson:"connectRefreshUrl,omitempty"`
+	ConnectWebhookSecret string  `json:"connectWebhookSecret,omitempty" bson:"connectWebhookSecret,omitempty"`
+}
+
+type X402IntegrationSettings struct {
+	Mode             string `json:"mode,omitempty" bson:"mode,omitempty"`
+	FacilitatorURL   string `json:"facilitatorUrl,omitempty" bson:"facilitatorUrl,omitempty"`
+	FacilitatorAPIKey string `json:"facilitatorApiKey,omitempty" bson:"facilitatorApiKey,omitempty"`
+}
+
+type N8NIntegrationSettings struct {
+	BaseURL        string `json:"baseUrl,omitempty" bson:"baseUrl,omitempty"`
+	APIKey         string `json:"apiKey,omitempty" bson:"apiKey,omitempty"`
+	TimeoutSeconds int    `json:"timeoutSeconds,omitempty" bson:"timeoutSeconds,omitempty"`
+}
+
+type PlatformIntegrationSettings struct {
+	Key       string                    `json:"key" bson:"key"`
+	Google    OAuthProviderSettings     `json:"google" bson:"google"`
+	GitHub    OAuthProviderSettings     `json:"github" bson:"github"`
+	Stripe    StripeIntegrationSettings `json:"stripe" bson:"stripe"`
+	X402      X402IntegrationSettings   `json:"x402" bson:"x402"`
+	N8N       N8NIntegrationSettings    `json:"n8n" bson:"n8n"`
+	UpdatedBy string                    `json:"updatedBy,omitempty" bson:"updatedBy,omitempty"`
+	UpdatedAt time.Time                 `json:"updatedAt" bson:"updatedAt"`
 }
 
 // OAuthClient represents a registered OAuth client

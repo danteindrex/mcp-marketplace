@@ -17,7 +17,7 @@ import {
 import { AppSidebar } from './sidebar'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { Breadcrumb } from '@/components/retroui'
-import { clearAuthSession } from '@/lib/auth-session'
+import { logoutAndRedirect } from '@/lib/auth-session'
 import { fetchCurrentUser } from '@/lib/api-client'
 
 export interface AppShellProps {
@@ -26,7 +26,7 @@ export interface AppShellProps {
   userEmail?: string
 }
 
-export function AppShell({ children, role = 'buyer', userEmail = 'user@example.com' }: AppShellProps) {
+export function AppShell({ children, role = 'buyer', userEmail = '' }: AppShellProps) {
   const { theme, setTheme } = useTheme()
   const router = useRouter()
   const pathname = usePathname()
@@ -87,13 +87,13 @@ export function AppShell({ children, role = 'buyer', userEmail = 'user@example.c
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon">
                     <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                      {resolvedEmail.charAt(0).toUpperCase()}
+                      {(resolvedEmail.trim().charAt(0) || '?').toUpperCase()}
                     </div>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel className="flex flex-col">
-                    <span className="text-sm font-medium">{resolvedEmail}</span>
+                    <span className="text-sm font-medium">{resolvedEmail || 'Account'}</span>
                     <span className="text-xs text-muted-foreground">{resolvedRole}</span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -110,7 +110,7 @@ export function AppShell({ children, role = 'buyer', userEmail = 'user@example.c
                     className="text-red-600"
                     onSelect={event => {
                       event.preventDefault()
-                      void clearAuthSession().then(() => router.push('/login'))
+                      void logoutAndRedirect('/login')
                     }}
                   >
                     <LogOut className="w-4 h-4 mr-2" />

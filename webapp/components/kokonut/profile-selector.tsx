@@ -63,7 +63,10 @@ export function ProfileSelector({
         </DropdownMenuItem>
         {onSettings && (
           <DropdownMenuItem
-            onClick={onSettings}
+            onSelect={event => {
+              event.preventDefault()
+              onSettings()
+            }}
             className="flex items-center gap-2 cursor-pointer"
           >
             <Settings className="h-4 w-4" />
@@ -73,7 +76,10 @@ export function ProfileSelector({
         <DropdownMenuSeparator />
         {onLogout && (
           <DropdownMenuItem
-            onClick={onLogout}
+            onSelect={event => {
+              event.preventDefault()
+              onLogout()
+            }}
             className="flex items-center gap-2 cursor-pointer text-red-600 dark:text-red-400"
           >
             <LogOut className="h-4 w-4" />

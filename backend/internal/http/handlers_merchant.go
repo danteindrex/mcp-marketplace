@@ -84,6 +84,7 @@ type createServerRequest struct {
 	Description          string   `json:"description"`
 	Category             string   `json:"category"`
 	DockerImage          string   `json:"dockerImage"`
+	ContainerPort        int      `json:"containerPort"`
 	CanonicalResourceURI string   `json:"canonicalResourceUri"`
 	RequiredScopes       []string `json:"requiredScopes"`
 	PricingType          string   `json:"pricingType"`
@@ -115,6 +116,10 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC()
+	containerPort := req.ContainerPort
+	if containerPort <= 0 {
+		containerPort = 3000
+	}
 	server := models.Server{
 		TenantID:             claims.TenantID,
 		Author:               claims.TenantID,
@@ -124,6 +129,7 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		Category:             req.Category,
 		Version:              "1.0.0",
 		DockerImage:          req.DockerImage,
+		ContainerPort:        containerPort,
 		CanonicalResourceURI: req.CanonicalResourceURI,
 		RequiredScopes:       req.RequiredScopes,
 		PricingType:          req.PricingType,
@@ -176,6 +182,9 @@ func (a *App) updateMerchantServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DockerImage != "" {
 		server.DockerImage = req.DockerImage
+	}
+	if req.ContainerPort > 0 {
+		server.ContainerPort = req.ContainerPort
 	}
 	if req.CanonicalResourceURI != "" {
 		server.CanonicalResourceURI = req.CanonicalResourceURI
@@ -273,7 +282,12 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	if a.n8n != nil && a.n8n.configured() {
+	target := strings.TrimSpace(server.DeploymentTarget)
+	if target == "" {
+		target = "local-docker"
+		server.DeploymentTarget = target
+	}
+	if target == "local-docker" || (a.currentN8NService() != nil && a.currentN8NService().configured()) {
 		preferredWorkflowID := strings.TrimSpace(req.N8nWorkflowID)
 		if preferredWorkflowID == "" {
 			preferredWorkflowID = strings.TrimSpace(server.N8nWorkflowID)
@@ -324,47 +338,14 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 				"nextAttemptAt": task.NextAttemptAt,
 			},
 			"n8n": map[string]interface{}{
-				"configured":  true,
+				"configured":  a.currentN8NService() != nil && a.currentN8NService().configured(),
 				"workflowId":  server.N8nWorkflowID,
 				"workflowUrl": server.N8nWorkflowURL,
 			},
 		})
 		return
 	}
-
-	server.DeploymentStatus = models.ServerDeploymentDeployed
-	server.DeployedAt = now
-	server.DeployedBy = claims.UserID
-	// Deploying exposes the agent endpoint while keeping marketplace listing as draft.
-	if server.Status != models.ServerStatusPublished {
-		server.Status = models.ServerStatusDraft
-		server.PublishedAt = time.Time{}
-	}
-	server.UpdatedAt = now
-	a.store.UpdateServer(server)
-	a.store.AddAuditLog(models.AuditLog{
-		TenantID:   claims.TenantID,
-		ActorID:    claims.UserID,
-		Action:     "server.deploy",
-		TargetType: "server",
-		TargetID:   server.ID,
-		Outcome:    "success",
-		Metadata: map[string]interface{}{
-			"deploymentStatus":  server.DeploymentStatus,
-			"marketplaceStatus": server.Status,
-			"workflowId":        server.N8nWorkflowID,
-			"workflowUrl":       server.N8nWorkflowURL,
-		},
-	})
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"server":    server,
-		"lifecycle": a.serverLifecyclePayload(server),
-		"n8n": map[string]interface{}{
-			"configured":  false,
-			"workflowId":  server.N8nWorkflowID,
-			"workflowUrl": server.N8nWorkflowURL,
-		},
-	})
+	writeJSON(w, http.StatusConflict, map[string]string{"error": "no deployment provider is configured for this target"})
 }
 
 type publishServerRequest struct {

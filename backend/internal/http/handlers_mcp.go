@@ -315,7 +315,7 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 				}
 
 				if !creditOK {
-					verifyRes, verr := a.x402.verifyAndSettle(r.Context(), requirement, paymentResponse)
+					verifyRes, verr := a.currentX402Service().verifyAndSettle(r.Context(), requirement, paymentResponse)
 					if verr != nil {
 						writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
 							JSONRPC: "2.0",

@@ -2,6 +2,11 @@
 .DS_Store
 Thumbs.db
 
+# Root env files
+.env
+.env.*
+!.env.example
+
 # Backend local artifacts
 backend/.gocache/
 backend/.gomodcache/

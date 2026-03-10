@@ -75,6 +75,8 @@ type Store interface {
 	UpsertLocalAgent(agent models.LocalAgent) models.LocalAgent
 	GetUserSettings(userID string) (models.UserSettings, bool)
 	UpsertUserSettings(settings models.UserSettings) models.UserSettings
+	GetPlatformIntegrationSettings() (models.PlatformIntegrationSettings, bool)
+	UpsertPlatformIntegrationSettings(settings models.PlatformIntegrationSettings) models.PlatformIntegrationSettings
 
 	// OAuth client methods
 	CreateOAuthClient(client models.OAuthClient) models.OAuthClient

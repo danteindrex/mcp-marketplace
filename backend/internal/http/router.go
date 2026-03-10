@@ -20,6 +20,7 @@ type App struct {
 	stripeOnramp   *stripeOnrampService
 	stripeConnect  *stripeConnectService
 	n8n            *n8nService
+	dockerRuntime  *dockerRuntime
 	deployTrigger  chan struct{}
 	allowedOrigins map[string]struct{}
 	rateLimiter    *ipRateLimiter
@@ -40,6 +41,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 		stripeOnramp:   newStripeOnrampService(cfg),
 		stripeConnect:  newStripeConnectService(cfg),
 		n8n:            newN8NService(cfg),
+		dockerRuntime:  newDockerRuntime(cfg),
 		deployTrigger:  make(chan struct{}, 1),
 		allowedOrigins: allowedOrigins,
 		rateLimiter:    newIPRateLimiter(cfg.RateLimitPerMinute, cfg.RateLimitPerMinute/4),
@@ -57,6 +59,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 	r.Use(app.securityHeaders)
 
 	r.Get("/health", app.health)
+	r.Get("/v1/runtime-config", app.getRuntimeConfig)
 	r.Post("/auth/signup", app.signup)
 	r.Post("/auth/login", app.login)
 	r.Get("/auth/oauth/google/start", app.oauthGoogleStart)
@@ -126,6 +129,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 				m.Get("/merchant/servers/{id}/pricing", app.serverPricing)
 				m.Get("/merchant/servers/{id}/deployments", app.serverDeployments)
 				m.Get("/merchant/servers/{id}/builder", app.serverBuilder)
+				m.Put("/merchant/servers/{id}/builder", app.serverBuilder)
 				m.Get("/merchant/payments/overview", app.merchantPaymentsOverview)
 				m.Get("/merchant/payments/payout-profile", app.merchantPayoutProfile)
 				m.Put("/merchant/payments/payout-profile", app.merchantPayoutProfile)
@@ -143,6 +147,8 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 				a.Get("/admin/security-events", app.listSecurityEvents)
 				a.Get("/admin/audit-logs", app.listAuditLogs)
 				a.Get("/admin/client-compatibility", app.clientCompatibility)
+				a.Get("/admin/integrations", app.adminIntegrations)
+				a.Put("/admin/integrations", app.adminIntegrations)
 				a.Get("/admin/payments/overview", app.adminPaymentsOverview)
 				a.Get("/admin/payments/fee-policies", app.adminFeePolicies)
 				a.Put("/admin/payments/fee-policies", app.adminFeePolicies)

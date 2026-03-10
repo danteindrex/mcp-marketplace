@@ -26,6 +26,7 @@ type updateMerchantPayoutProfileRequest struct {
 func (a *App) merchantPayoutProfile(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	profile := a.effectiveSellerPayoutProfile(claims.TenantID)
+	stripeConnect := a.currentStripeConnectService()
 	if r.Method == http.MethodPut {
 		var req updateMerchantPayoutProfileRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -63,7 +64,7 @@ func (a *App) merchantPayoutProfile(w http.ResponseWriter, r *http.Request) {
 		"payableUsdc":    sellerPayableBalance(entries, claims.TenantID),
 		"recentPayouts":  a.store.ListPayoutRecords(claims.TenantID, 20),
 		"payoutMethods":  a.payoutMethodsCatalog(),
-		"stripeConnect":  map[string]interface{}{"configured": a.stripeConnect.configured()},
+		"stripeConnect":  map[string]interface{}{"configured": stripeConnect.configured()},
 		"reconciliation": map[string]interface{}{"imbalances": transactionImbalances(entries)},
 	})
 }
@@ -71,10 +72,15 @@ func (a *App) merchantPayoutProfile(w http.ResponseWriter, r *http.Request) {
 func (a *App) createMerchantStripeOnboardingLink(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	profile := a.effectiveSellerPayoutProfile(claims.TenantID)
+	stripeConnect := a.currentStripeConnectService()
 	if strings.TrimSpace(profile.StripeAccountID) == "" {
-		accountID, raw, err := a.stripeConnect.createExpressAccount(r.Context(), claims.TenantID)
+		accountID, raw, err := stripeConnect.createExpressAccount(r.Context(), claims.TenantID)
 		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			status := http.StatusBadGateway
+			if stripeErr, ok := err.(*stripeAPIError); ok && stripeErr.Status == http.StatusBadRequest {
+				status = http.StatusConflict
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
 			return
 		}
 		profile.StripeAccountID = accountID
@@ -82,9 +88,13 @@ func (a *App) createMerchantStripeOnboardingLink(w http.ResponseWriter, r *http.
 			applyConnectSnapshot(&profile, connectSnapshotFromObject(raw))
 		}
 	}
-	link, err := a.stripeConnect.createOnboardingLink(r.Context(), profile.StripeAccountID)
+	link, err := stripeConnect.createOnboardingLink(r.Context(), profile.StripeAccountID)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		status := http.StatusBadGateway
+		if stripeErr, ok := err.(*stripeAPIError); ok && stripeErr.Status == http.StatusBadRequest {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
 	profile.PreferredMethod = "stripe_connect"
@@ -93,20 +103,25 @@ func (a *App) createMerchantStripeOnboardingLink(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"onboardingUrl": link,
 		"profile":       profile,
-		"configured":    a.stripeConnect.configured(),
+		"configured":    stripeConnect.configured(),
 	})
 }
 
 func (a *App) refreshMerchantStripeKYC(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	profile := a.effectiveSellerPayoutProfile(claims.TenantID)
+	stripeConnect := a.currentStripeConnectService()
 	if strings.TrimSpace(profile.StripeAccountID) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stripe account is not connected"})
 		return
 	}
-	snapshot, err := a.stripeConnect.fetchAccount(r.Context(), profile.StripeAccountID)
+	snapshot, err := stripeConnect.fetchAccount(r.Context(), profile.StripeAccountID)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		status := http.StatusBadGateway
+		if stripeErr, ok := err.(*stripeAPIError); ok && stripeErr.Status == http.StatusBadRequest {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
 	applyConnectSnapshot(&profile, snapshot)
@@ -465,7 +480,7 @@ func (a *App) adminRunPayout(w http.ResponseWriter, r *http.Request) {
 
 	switch method {
 	case "stripe_connect":
-		ref, fee, err := a.stripeConnect.createPayout(r.Context(), profile.StripeAccountID, amount, map[string]string{
+		ref, fee, err := a.currentStripeConnectService().createPayout(r.Context(), profile.StripeAccountID, amount, map[string]string{
 			"tenant_id": tenantID,
 			"payout_id": record.ID,
 		})
@@ -523,7 +538,7 @@ func (a *App) handleStripeConnectWebhook(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid webhook payload"})
 		return
 	}
-	if err := a.stripeConnect.verifyWebhookSignature(payload, r.Header.Get("Stripe-Signature")); err != nil {
+	if err := a.currentStripeConnectService().verifyWebhookSignature(payload, r.Header.Get("Stripe-Signature")); err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
 		return
 	}
@@ -650,7 +665,7 @@ func (a *App) payoutMethodsCatalog() []map[string]interface{} {
 			"id":          "stripe_connect",
 			"displayName": "Stripe Connect",
 			"enabled":     true,
-			"configured":  a.stripeConnect.configured(),
+			"configured":  a.currentStripeConnectService().configured(),
 			"notes":       "Hosted onboarding with Stripe KYC requirements and managed payouts.",
 			"docs":        "https://docs.stripe.com/connect",
 		},

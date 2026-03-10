@@ -23,6 +23,7 @@ import { LightModeOnly, DarkModeOnly } from '@/components/theme-aware'
 import { Button as RetroButton, Card as RetroCard, Badge as RetroBadge } from '@/components/retroui'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { FAQSection, FooterSection } from '@/components/blocks/marketing'
+import { fetchCurrentUser, type CurrentUser } from '@/lib/api-client'
 
 const features = [
   { icon: Zap, title: 'Easy Installation', description: 'One-click setup with automatic scope negotiation and permission management' },
@@ -81,6 +82,8 @@ const pricingPlans = [
 
 export default function HomePage() {
   const [featuredServers, setFeaturedServers] = useState<Server[]>([])
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [authResolved, setAuthResolved] = useState(false)
   const browseFillClass = '!bg-[hsl(0_84%_71%)] !text-[hsl(240_10%_10%)] !border-black'
   const publishFillClass = '!bg-[hsl(174_62%_56%)] !text-[hsl(240_10%_10%)] !border-black'
   const orangeBrutalButtonClass = 'bg-[hsl(var(--chart-3))] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1'
@@ -99,7 +102,17 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchFeaturedServers().then(setFeaturedServers).catch(() => setFeaturedServers([]))
+    fetchCurrentUser()
+      .then(setCurrentUser)
+      .finally(() => setAuthResolved(true))
   }, [])
+
+  const dashboardPath =
+    currentUser?.role === 'admin'
+      ? '/admin/tenants'
+      : currentUser?.role === 'merchant'
+        ? '/merchant/onboarding'
+        : '/buyer/dashboard'
 
   const categories = [
     { name: 'Data', count: featuredServers.filter(s => s.category === 'data').length },
@@ -145,14 +158,22 @@ export default function HomePage() {
 
             <DarkModeOnly>
               <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" asChild className={publishBrutalButtonClass}><Link href="/login">Login</Link></Button>
-                <Button size="sm" asChild className={browseBrutalButtonClass}><Link href="/marketplace">Get Started</Link></Button>
+                {currentUser ? (
+                  <Button variant="outline" size="sm" asChild className={publishBrutalButtonClass}><Link href={dashboardPath}>Dashboard</Link></Button>
+                ) : authResolved ? (
+                  <Button variant="outline" size="sm" asChild className={publishBrutalButtonClass}><Link href="/login">Login</Link></Button>
+                ) : null}
+                <Button size="sm" asChild className={browseBrutalButtonClass}><Link href="/marketplace">{currentUser ? 'Open Marketplace' : 'Get Started'}</Link></Button>
               </div>
             </DarkModeOnly>
             <LightModeOnly>
               <div className="flex items-center gap-2">
-                <RetroButton variant="outline" size="sm" asChild className={publishFillClass}><Link href="/login">Login</Link></RetroButton>
-                <RetroButton size="sm" asChild className={browseFillClass}><Link href="/marketplace">Get Started</Link></RetroButton>
+                {currentUser ? (
+                  <RetroButton variant="outline" size="sm" asChild className={publishFillClass}><Link href={dashboardPath}>Dashboard</Link></RetroButton>
+                ) : authResolved ? (
+                  <RetroButton variant="outline" size="sm" asChild className={publishFillClass}><Link href="/login">Login</Link></RetroButton>
+                ) : null}
+                <RetroButton size="sm" asChild className={browseFillClass}><Link href="/marketplace">{currentUser ? 'Open Marketplace' : 'Get Started'}</Link></RetroButton>
               </div>
             </LightModeOnly>
           </div>

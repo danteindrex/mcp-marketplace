@@ -14,6 +14,7 @@ import {
   fetchBilling,
   fetchBuyerPaymentControls,
   fetchBuyerWalletTopUps,
+  fetchRuntimeConfig,
   fetchX402Intents,
   fetchInvoices,
   type Billing,
@@ -223,8 +224,7 @@ export default function BillingPage() {
   const [topupNotice, setTopupNotice] = useState('')
   const [onrampClientSecret, setOnrampClientSecret] = useState('')
   const [showOnrampEmbed, setShowOnrampEmbed] = useState(false)
-
-  const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
+  const [stripePublishableKey, setStripePublishableKey] = useState('')
 
   const allowedMethods = useMemo(
     () => controls?.policy?.allowedMethods || billing.allowedMethods || [],
@@ -249,16 +249,18 @@ export default function BillingPage() {
   )
 
   const refreshWalletData = useCallback(async () => {
-    const [bill, ctl, topupRes, x402Res] = await Promise.all([
+    const [bill, ctl, topupRes, x402Res, runtimeConfig] = await Promise.all([
       fetchBilling(),
       fetchBuyerPaymentControls(),
       fetchBuyerWalletTopUps(),
       fetchX402Intents(),
+      fetchRuntimeConfig(),
     ])
     setBilling(bill)
     setControls(ctl)
     setTopUpSummary(topupRes)
     setX402IntentSummary(x402Res)
+    setStripePublishableKey(runtimeConfig.stripe?.publishableKey || '')
     if (topupRes.defaultTopUpUsd) {
       setTopupAmountUsd(Number(topupRes.defaultTopUpUsd))
     }
@@ -268,18 +270,20 @@ export default function BillingPage() {
     const loadData = async () => {
       setIsLoading(true)
       try {
-        const [bill, invs, ctl, topupRes, x402Res] = await Promise.all([
+        const [bill, invs, ctl, topupRes, x402Res, runtimeConfig] = await Promise.all([
           fetchBilling(),
           fetchInvoices(),
           fetchBuyerPaymentControls(),
           fetchBuyerWalletTopUps(),
           fetchX402Intents(),
+          fetchRuntimeConfig(),
         ])
         setBilling(bill)
         setInvoices(invs)
         setControls(ctl)
         setTopUpSummary(topupRes)
         setX402IntentSummary(x402Res)
+        setStripePublishableKey(runtimeConfig.stripe?.publishableKey || '')
         if (topupRes.defaultTopUpUsd) {
           setTopupAmountUsd(Number(topupRes.defaultTopUpUsd))
         }
@@ -499,7 +503,7 @@ export default function BillingPage() {
                         window.open(res.stripe.hostedUrl, '_blank', 'noopener,noreferrer')
                         setTopupNotice('Stripe session created. Complete checkout in the opened window.')
                       } else if (res?.stripe?.clientSecret) {
-                        setTopupNotice('Stripe session created but `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is missing for the embed.')
+                        setTopupNotice('Stripe session created but no runtime Stripe publishable key is configured for the embed.')
                       } else {
                         setTopupNotice('Top-up intent created.')
                       }
@@ -561,7 +565,7 @@ export default function BillingPage() {
               />
             ) : (
               <p className="text-sm text-muted-foreground">
-                Missing `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, so the embedded onramp cannot render.
+                Missing runtime Stripe publishable key, so the embedded onramp cannot render.
               </p>
             )}
           </Card>

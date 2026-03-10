@@ -827,6 +827,21 @@ func TestMerchantDeploySyncsWithN8NWhenConfigured(t *testing.T) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/workflows":
 			atomic.AddInt32(&createCalls, 1)
+			if got := r.Header.Get("X-N8N-API-KEY"); got != "test-api-key" {
+				t.Fatalf("expected X-N8N-API-KEY header, got %q", got)
+			}
+			var body map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode create workflow body: %v", err)
+			}
+			if _, exists := body["active"]; exists {
+				t.Fatalf("create workflow payload must not include read-only active field: %+v", body)
+			}
+			for _, field := range []string{"name", "nodes", "connections", "settings"} {
+				if _, ok := body[field]; !ok {
+					t.Fatalf("create workflow payload missing %s: %+v", field, body)
+				}
+			}
 			write := map[string]interface{}{"id": "wf_test_123"}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(write)
@@ -849,6 +864,7 @@ func TestMerchantDeploySyncsWithN8NWhenConfigured(t *testing.T) {
 		Port:                  "8080",
 		BaseURL:               "http://localhost:8080",
 		N8NBaseURL:            n8n.URL,
+		N8NAPIKey:             "test-api-key",
 		SuperAdminEmail:       "admin@platform.local",
 		SuperAdminPassword:    "admin-pass",
 		AllowInsecureDefaults: true,
@@ -1258,6 +1274,83 @@ func TestMerchantServerReadEndpointsEnforceTenantIsolation(t *testing.T) {
 		if res := call(t, h, http.MethodGet, path, adminToken, nil); res.Code != http.StatusOK {
 			t.Fatalf("expected admin success for %s, got %d body=%s", path, res.Code, res.Body.String())
 		}
+	}
+}
+
+func TestMerchantServerBuilderCanPersistConfig(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "merchant-builder@acme.local", "MerchantPass123!@", "merchant")
+	token := login(t, h, "merchant-builder@acme.local", "MerchantPass123!@")
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", token, map[string]interface{}{
+		"name":                 "Builder Server",
+		"slug":                 "builder-server",
+		"description":          "Builder persistence test",
+		"category":             "automation",
+		"dockerImage":          "docker.io/acme/builder-server:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/builder-server",
+		"requiredScopes":       []string{"documents:read"},
+		"pricingType":          "free",
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	id := createdBody["id"].(string)
+
+	update := call(t, h, http.MethodPut, "/v1/merchant/servers/"+id+"/builder", token, map[string]interface{}{
+		"framework":    "FastMCP",
+		"template":     "docker-import",
+		"instructions": "Persist the builder config",
+		"scopeMappings": []string{
+			"documents:read",
+			"agents:run",
+		},
+		"toolCatalog": []map[string]interface{}{
+			{
+				"name":        "search_docs",
+				"description": "Search documents",
+				"inputSchema": map[string]string{"query": "string"},
+				"outputSchema": map[string]string{
+					"rows": "array",
+				},
+			},
+		},
+	})
+	if update.Code != http.StatusOK {
+		t.Fatalf("update builder status %d body=%s", update.Code, update.Body.String())
+	}
+
+	get := call(t, h, http.MethodGet, "/v1/merchant/servers/"+id+"/builder", token, nil)
+	if get.Code != http.StatusOK {
+		t.Fatalf("get builder status %d body=%s", get.Code, get.Body.String())
+	}
+	var builderBody map[string]interface{}
+	_ = json.Unmarshal(get.Body.Bytes(), &builderBody)
+	if builderBody["framework"] != "FastMCP" {
+		t.Fatalf("expected framework FastMCP, got %v", builderBody["framework"])
+	}
+	if builderBody["template"] != "docker-import" {
+		t.Fatalf("expected template docker-import, got %v", builderBody["template"])
+	}
+	tools := builderBody["toolCatalog"].([]interface{})
+	if len(tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(tools))
+	}
+
+	server := call(t, h, http.MethodGet, "/v1/merchant/servers/"+id, token, nil)
+	if server.Code != http.StatusOK {
+		t.Fatalf("get server status %d body=%s", server.Code, server.Body.String())
+	}
+	var serverBody map[string]interface{}
+	_ = json.Unmarshal(server.Body.Bytes(), &serverBody)
+	serverObj := serverBody["server"].(map[string]interface{})
+	requiredScopes := serverObj["requiredScopes"].([]interface{})
+	if len(requiredScopes) != 2 {
+		t.Fatalf("expected required scopes to sync from builder, got %d", len(requiredScopes))
 	}
 }
 

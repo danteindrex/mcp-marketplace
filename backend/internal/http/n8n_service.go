@@ -25,6 +25,8 @@ type n8nDeployResult struct {
 	WorkflowID  string
 	WorkflowURL string
 	WebhookPath string
+	RuntimeURL string
+	RuntimeContainerID string
 }
 
 type n8nHTTPError struct {
@@ -163,7 +165,6 @@ func (s *n8nService) workflowPayload(server models.Server) (map[string]interface
 			},
 		},
 		"settings": map[string]interface{}{},
-		"active":   false,
 	}, webhookPath
 }
 
@@ -195,7 +196,7 @@ func sanitizeN8NPath(in string) string {
 }
 
 func (s *n8nService) createWorkflow(ctx context.Context, payload map[string]interface{}) (string, error) {
-	endpoints := []string{"/api/v1/workflows", "/rest/workflows"}
+	endpoints := []string{"/api/v1/workflows"}
 	var lastErr error
 	for _, endpoint := range endpoints {
 		resp, err := s.requestJSON(ctx, http.MethodPost, endpoint, payload)
@@ -223,8 +224,6 @@ func (s *n8nService) updateWorkflow(ctx context.Context, workflowID string, payl
 	}{
 		{method: http.MethodPatch, endpoint: "/api/v1/workflows/" + id},
 		{method: http.MethodPut, endpoint: "/api/v1/workflows/" + id},
-		{method: http.MethodPatch, endpoint: "/rest/workflows/" + id},
-		{method: http.MethodPut, endpoint: "/rest/workflows/" + id},
 	}
 	var lastErr error
 	for _, candidate := range candidates {
@@ -254,9 +253,7 @@ func (s *n8nService) activateWorkflow(ctx context.Context, workflowID string) er
 		body     map[string]interface{}
 	}{
 		{method: http.MethodPost, endpoint: "/api/v1/workflows/" + id + "/activate", body: nil},
-		{method: http.MethodPost, endpoint: "/rest/workflows/" + id + "/activate", body: nil},
 		{method: http.MethodPatch, endpoint: "/api/v1/workflows/" + id, body: map[string]interface{}{"active": true}},
-		{method: http.MethodPatch, endpoint: "/rest/workflows/" + id, body: map[string]interface{}{"active": true}},
 	}
 	var lastErr error
 	for _, candidate := range candidates {
@@ -315,7 +312,6 @@ func (s *n8nService) requestJSON(ctx context.Context, method, endpoint string, p
 	}
 	if s.apiKey != "" {
 		req.Header.Set("X-N8N-API-KEY", s.apiKey)
-		req.Header.Set("Authorization", "Bearer "+s.apiKey)
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {

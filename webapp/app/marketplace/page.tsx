@@ -32,6 +32,7 @@ export default function MarketplacePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [servers, setServers] = useState<Server[]>([])
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [authResolved, setAuthResolved] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedPricing, setSelectedPricing] = useState('')
@@ -49,7 +50,9 @@ export default function MarketplacePage() {
   }, [])
 
   useEffect(() => {
-    fetchCurrentUser().then(setCurrentUser)
+    fetchCurrentUser()
+      .then(setCurrentUser)
+      .finally(() => setAuthResolved(true))
   }, [])
 
   // Filter and search servers
@@ -133,11 +136,16 @@ export default function MarketplacePage() {
                 <span className="hidden md:inline text-xs font-semibold text-muted-foreground">
                   Signed in as {currentUser.email}
                 </span>
-              ) : (
+              ) : authResolved ? (
                 <Button asChild size="sm" variant="outline" className="whitespace-nowrap">
                   <Link href="/login">Login</Link>
                 </Button>
-              )}
+              ) : null}
+              {!currentUser && !authResolved ? (
+                <span className="hidden md:inline text-xs font-semibold text-muted-foreground">
+                  Checking session...
+                </span>
+              ) : null}
               <Button asChild size="sm" className="button-coral-solid whitespace-nowrap">
                 <Link href={currentUser ? dashboardPath : '/'}>{currentUser ? 'Dashboard' : 'Return Home'}</Link>
               </Button>

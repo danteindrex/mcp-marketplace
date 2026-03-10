@@ -257,7 +257,8 @@ func roleName(role models.Role) string {
 
 // oauthGoogleStart initiates Google OAuth flow
 func (a *App) oauthGoogleStart(w http.ResponseWriter, r *http.Request) {
-	if a.cfg.GoogleClientID == "" || a.cfg.GoogleClientSecret == "" {
+	integrations := a.resolvedIntegrations()
+	if integrations.Google.ClientID == "" || integrations.Google.ClientSecret == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Google OAuth not configured"})
 		return
 	}
@@ -265,15 +266,15 @@ func (a *App) oauthGoogleStart(w http.ResponseWriter, r *http.Request) {
 	// Generate state and nonce for CSRF and replay protection
 	state := randomToken("state_")
 	nonce := randomToken("nonce_")
-	redirectBase := a.cfg.OAuthRedirectBase
+	redirectBase := integrations.Google.RedirectBase
 	if redirectBase == "" {
 		redirectBase = a.cfg.BaseURL
 	}
 	callbackURL := redirectBase + "/auth/oauth/google/callback"
 
 	oauthCfg := &oauth2.Config{
-		ClientID:     a.cfg.GoogleClientID,
-		ClientSecret: a.cfg.GoogleClientSecret,
+		ClientID:     integrations.Google.ClientID,
+		ClientSecret: integrations.Google.ClientSecret,
 		RedirectURL:  callbackURL,
 		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile", "openid"},
 		Endpoint:     google.Endpoint,
@@ -341,15 +342,16 @@ func (a *App) oauthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	delete(a.oauth.states, state)
 	a.oauth.mu.Unlock()
 
-	redirectBase := a.cfg.OAuthRedirectBase
+	integrations := a.resolvedIntegrations()
+	redirectBase := integrations.Google.RedirectBase
 	if redirectBase == "" {
 		redirectBase = a.cfg.BaseURL
 	}
 	callbackURL := redirectBase + "/auth/oauth/google/callback"
 
 	oauthCfg := &oauth2.Config{
-		ClientID:     a.cfg.GoogleClientID,
-		ClientSecret: a.cfg.GoogleClientSecret,
+		ClientID:     integrations.Google.ClientID,
+		ClientSecret: integrations.Google.ClientSecret,
 		RedirectURL:  callbackURL,
 		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile", "openid"},
 		Endpoint:     google.Endpoint,
@@ -421,7 +423,8 @@ func (a *App) oauthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 
 // oauthGitHubStart initiates GitHub OAuth flow
 func (a *App) oauthGitHubStart(w http.ResponseWriter, r *http.Request) {
-	if a.cfg.GitHubClientID == "" || a.cfg.GitHubClientSecret == "" {
+	integrations := a.resolvedIntegrations()
+	if integrations.GitHub.ClientID == "" || integrations.GitHub.ClientSecret == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "GitHub OAuth not configured"})
 		return
 	}
@@ -429,15 +432,15 @@ func (a *App) oauthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	// Generate state and nonce for CSRF protection
 	state := randomToken("state_")
 	nonce := randomToken("nonce_")
-	redirectBase := a.cfg.OAuthRedirectBase
+	redirectBase := integrations.GitHub.RedirectBase
 	if redirectBase == "" {
 		redirectBase = a.cfg.BaseURL
 	}
 	callbackURL := redirectBase + "/auth/oauth/github/callback"
 
 	oauthCfg := &oauth2.Config{
-		ClientID:     a.cfg.GitHubClientID,
-		ClientSecret: a.cfg.GitHubClientSecret,
+		ClientID:     integrations.GitHub.ClientID,
+		ClientSecret: integrations.GitHub.ClientSecret,
 		RedirectURL:  callbackURL,
 		Scopes:       []string{"user:email", "read:user"},
 		Endpoint:     github.Endpoint,
@@ -503,15 +506,16 @@ func (a *App) oauthGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	delete(a.oauth.states, state)
 	a.oauth.mu.Unlock()
 
-	redirectBase := a.cfg.OAuthRedirectBase
+	integrations := a.resolvedIntegrations()
+	redirectBase := integrations.GitHub.RedirectBase
 	if redirectBase == "" {
 		redirectBase = a.cfg.BaseURL
 	}
 	callbackURL := redirectBase + "/auth/oauth/github/callback"
 
 	oauthCfg := &oauth2.Config{
-		ClientID:     a.cfg.GitHubClientID,
-		ClientSecret: a.cfg.GitHubClientSecret,
+		ClientID:     integrations.GitHub.ClientID,
+		ClientSecret: integrations.GitHub.ClientSecret,
 		RedirectURL:  callbackURL,
 		Scopes:       []string{"user:email", "read:user"},
 		Endpoint:     github.Endpoint,

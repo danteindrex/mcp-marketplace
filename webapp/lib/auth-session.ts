@@ -32,3 +32,10 @@ export async function clearAuthSession() {
   document.cookie = 'mcp_active_role=; Path=/; Max-Age=0; SameSite=Lax'
   localStorage.removeItem(activeRoleKey)
 }
+
+export async function logoutAndRedirect(target = '/login') {
+  await clearAuthSession()
+  if (typeof window !== 'undefined') {
+    window.location.assign(target)
+  }
+}

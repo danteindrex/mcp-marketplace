@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chrome DevTools MCP Guide"
+  short_description: "Use Chrome DevTools MCP reliably in Codex."
+  default_prompt: "Use $chrome-devtools-mcp-guide to configure, connect, and verify Chrome DevTools MCP in this Codex environment."

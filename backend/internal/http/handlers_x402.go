@@ -185,7 +185,7 @@ func (a *App) settleX402Intent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	requirement := firstRequirement(existing.Challenge)
-	verifyRes, err := a.x402.verifyAndSettle(r.Context(), requirement, req.PaymentResponse)
+	verifyRes, err := a.currentX402Service().verifyAndSettle(r.Context(), requirement, req.PaymentResponse)
 	if err != nil {
 		writeJSON(w, http.StatusPaymentRequired, map[string]string{"error": err.Error()})
 		return

@@ -10,32 +10,50 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+    env_file:
+      - ../.env
     environment:
-      PORT: "2024"
-      ALLOW_INSECURE_DEFAULTS: "true"
-      JWT_SECRET: "dev-secret-change-before-production"
-      BASE_URL: "http://localhost:2024"
-      MONGO_URI: "mongodb://mongo:27017"
-      MONGO_DB_NAME: "mcp_marketplace"
-      MONGO_REQUIRED: "true"
-      N8N_BASE_URL: "http://n8n:5678"
-      N8N_API_KEY: "${N8N_API_KEY:-}"
-      N8N_TIMEOUT_SECONDS: "12"
-      SUPER_ADMIN_EMAIL: "admin@platform.local"
-      SUPER_ADMIN_PASSWORD: "ChangeMe123!dev"
+      PORT: "${PORT:-2024}"
+      ALLOW_INSECURE_DEFAULTS: "${ALLOW_INSECURE_DEFAULTS:-true}"
+      JWT_SECRET: "${JWT_SECRET:-dev-secret-change-before-production}"
+      BASE_URL: "${BASE_URL:-http://localhost:2024}"
+      MONGO_URI: "${MONGO_URI:-mongodb://mongo:27017}"
+      MONGO_DB_NAME: "${MONGO_DB_NAME:-mcp_marketplace}"
+      MONGO_REQUIRED: "${MONGO_REQUIRED:-true}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}"
+      N8N_BASE_URL: "${N8N_BASE_URL:-http://n8n:5678}"
+      N8N_TIMEOUT_SECONDS: "${N8N_TIMEOUT_SECONDS:-12}"
+      SUPER_ADMIN_EMAIL: "${SUPER_ADMIN_EMAIL:-admin@platform.local}"
+      SUPER_ADMIN_PASSWORD: "${SUPER_ADMIN_PASSWORD:-ChangeMe123!dev}"
+      OAUTH_REDIRECT_BASE: "${OAUTH_REDIRECT_BASE:-http://localhost:2024}"
+      STRIPE_ONRAMP_RETURN_URL: "${STRIPE_ONRAMP_RETURN_URL:-http://localhost:3000/buyer/billing}"
+      STRIPE_ONRAMP_REFRESH_URL: "${STRIPE_ONRAMP_REFRESH_URL:-http://localhost:3000/buyer/billing}"
+      STRIPE_ONRAMP_MIN_USD: "${STRIPE_ONRAMP_MIN_USD:-10}"
+      STRIPE_ONRAMP_DEFAULT_USD: "${STRIPE_ONRAMP_DEFAULT_USD:-50}"
+      STRIPE_CONNECT_RETURN_URL: "${STRIPE_CONNECT_RETURN_URL:-http://localhost:3000/merchant/revenue?connect=return}"
+      STRIPE_CONNECT_REFRESH_URL: "${STRIPE_CONNECT_REFRESH_URL:-http://localhost:3000/merchant/revenue?connect=refresh}"
+      X402_MODE: "${X402_MODE:-disabled}"
     ports:
-      - "2024:2024"
+      - "${PORT:-2024}:${PORT:-2024}"
     depends_on:
       - mongo
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
   webapp:
     build:
       context: ..
       dockerfile: webapp/Dockerfile
+      args:
+        API_BASE_URL: "${API_BASE_URL:-http://backend:2024}"
+        NEXT_PUBLIC_API_BASE_URL: "${NEXT_PUBLIC_API_BASE_URL:-http://localhost:2024}"
+        NEXT_PUBLIC_N8N_URL: "${NEXT_PUBLIC_N8N_URL:-http://localhost:5678}"
+    env_file:
+      - ../.env
     environment:
-      API_BASE_URL: "http://backend:2024"
-      NEXT_PUBLIC_API_BASE_URL: "http://localhost:2024"
-      NEXT_PUBLIC_N8N_URL: "http://localhost:5678"
+      API_BASE_URL: "${API_BASE_URL:-http://backend:2024}"
+      NEXT_PUBLIC_API_BASE_URL: "${NEXT_PUBLIC_API_BASE_URL:-http://localhost:2024}"
+      NEXT_PUBLIC_N8N_URL: "${NEXT_PUBLIC_N8N_URL:-http://localhost:5678}"
     ports:
       - "3000:3000"
     depends_on:

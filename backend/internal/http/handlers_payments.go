@@ -76,6 +76,7 @@ func (a *App) buyerPaymentControls(w http.ResponseWriter, r *http.Request) {
 	intents := a.store.ListX402Intents(claims.TenantID, claims.UserID)
 	topups := a.store.ListWalletTopUps(claims.TenantID, claims.UserID, 20)
 	daily, monthly := settledSpendForWindow(intents, time.Now().UTC())
+	integrations := a.resolvedIntegrations()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"policy":            policy,
 		"methods":           a.paymentMethodsCatalog(),
@@ -83,8 +84,8 @@ func (a *App) buyerPaymentControls(w http.ResponseWriter, r *http.Request) {
 		"monthlySpendUsdc":  monthly,
 		"dailyRemaining":    capRemaining(policy.DailySpendCapUSDC, daily),
 		"monthlyRemaining":  capRemaining(policy.MonthlySpendCapUSDC, monthly),
-		"facilitatorMode":   a.cfg.X402Mode,
-		"facilitatorTarget": a.cfg.X402FacilitatorURL,
+		"facilitatorMode":   integrations.X402.Mode,
+		"facilitatorTarget": integrations.X402.FacilitatorURL,
 		"wallet": map[string]interface{}{
 			"balanceUsdc":         policy.WalletBalanceUSDC,
 			"minimumBalanceUsdc":  policy.MinimumBalanceUSDC,
@@ -258,6 +259,8 @@ func (a *App) merchantPaymentsOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) adminPaymentsOverview(w http.ResponseWriter, r *http.Request) {
+	integrations := a.resolvedIntegrations()
+	stripeConnect := a.currentStripeConnectService()
 	all := a.store.ListAllX402Intents()
 	total := 0.0
 	settled := 0
@@ -337,12 +340,12 @@ func (a *App) adminPaymentsOverview(w http.ResponseWriter, r *http.Request) {
 		},
 		"feePolicies": a.store.ListPaymentFeePolicies(),
 		"x402": map[string]interface{}{
-			"mode":           a.cfg.X402Mode,
-			"facilitatorUrl": a.cfg.X402FacilitatorURL,
-			"apiKeySet":      strings.TrimSpace(a.cfg.X402FacilitatorAPIKey) != "",
+			"mode":           integrations.X402.Mode,
+			"facilitatorUrl": integrations.X402.FacilitatorURL,
+			"apiKeySet":      strings.TrimSpace(integrations.X402.FacilitatorAPIKey) != "",
 		},
 		"stripeConnect": map[string]interface{}{
-			"configured": a.stripeConnect.configured(),
+			"configured": stripeConnect.configured(),
 		},
 	})
 }

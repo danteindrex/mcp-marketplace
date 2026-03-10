@@ -10,7 +10,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel
 import { TeamSelector, ProfileSelector, type Team, type Profile } from '@/components/kokonut'
 import { apiGet } from '@/lib/api'
 import { Button as RetroButton, Card as RetroCard, TableOfContents, Text } from '@/components/retroui'
-import { clearAuthSession } from '@/lib/auth-session'
+import { logoutAndRedirect } from '@/lib/auth-session'
 
 interface AppSidebarProps {
   role?: 'buyer' | 'merchant' | 'admin'
@@ -28,7 +28,7 @@ const merchantNavigation = [
 ]
 
 const adminNavigation = [
-  { label: 'Administration', items: [{ name: 'Tenants', href: '/admin/tenants', icon: Users }, { name: 'Security Events', href: '/admin/security', icon: Shield }, { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText }, { name: 'Client Compatibility', href: '/admin/client-compatibility', icon: Grid }, { name: 'Payments', href: '/admin/payments', icon: TrendingUp }, { name: 'Agent Builder', href: '/settings/agent-builder', icon: Workflow }] },
+  { label: 'Administration', items: [{ name: 'Tenants', href: '/admin/tenants', icon: Users }, { name: 'Security Events', href: '/admin/security', icon: Shield }, { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText }, { name: 'Client Compatibility', href: '/admin/client-compatibility', icon: Grid }, { name: 'Payments', href: '/admin/payments', icon: TrendingUp }, { name: 'Integrations', href: '/admin/integrations', icon: Settings }, { name: 'Agent Builder', href: '/settings/agent-builder', icon: Workflow }] },
 ]
 
 function dicebearAvatar(seed: string, style: 'avataaars' | 'shapes'): string {
@@ -44,8 +44,8 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { resolvedTheme } = useTheme()
-  const [profile, setProfile] = useState<Profile>({ id: 'loading', name: 'Loading', email: 'loading@local', avatar: dicebearAvatar('loading', 'avataaars') })
-  const [teams, setTeams] = useState<Team[]>([{ id: 'team', name: 'Workspace', avatar: dicebearAvatar('workspace', 'shapes'), role: 'owner' }])
+  const [profile, setProfile] = useState<Profile>({ id: 'account', name: 'Account', email: '', avatar: dicebearAvatar('account', 'avataaars') })
+  const [teams, setTeams] = useState<Team[]>([{ id: 'tenant', name: 'Tenant', avatar: dicebearAvatar('tenant', 'shapes'), role: 'owner' }])
   const [merchantServerId, setMerchantServerId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -57,8 +57,8 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
         setTeams([{ id: user.tenantId, name: user.tenantId, avatar: teamAvatar, role: 'owner' }])
       })
       .catch(() => {
-        setProfile({ id: role, name: role.toUpperCase(), email: `${role}@local`, avatar: dicebearAvatar(role, 'avataaars') })
-        setTeams([{ id: role, name: role.toUpperCase(), avatar: dicebearAvatar(role, 'shapes'), role: 'owner' }])
+        setProfile({ id: 'account', name: 'Account', email: '', avatar: dicebearAvatar('account', 'avataaars') })
+        setTeams([{ id: 'tenant', name: 'Tenant', avatar: dicebearAvatar('tenant', 'shapes'), role: 'owner' }])
       })
   }, [role])
 
@@ -92,7 +92,7 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
         : buyerNavigation
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
-  const selectedTeam = teams[0] || { id: 'workspace', name: 'Workspace', avatar: dicebearAvatar('workspace', 'shapes'), role: 'owner' as const }
+  const selectedTeam = teams[0] || { id: 'tenant', name: 'Tenant', avatar: dicebearAvatar('tenant', 'shapes'), role: 'owner' as const }
 
   return (
     <Sidebar>
@@ -151,7 +151,7 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem><TeamSelector teams={teams} selectedTeam={selectedTeam} onTeamChange={() => {}} onCreateTeam={() => {}} /></SidebarMenuItem>
-          <SidebarMenuItem><ProfileSelector profile={profile} onSettings={() => router.push('/settings')} onLogout={async () => { await clearAuthSession(); router.push('/login') }} /></SidebarMenuItem>
+          <SidebarMenuItem><ProfileSelector profile={profile} onSettings={() => router.push('/settings')} onLogout={() => { void logoutAndRedirect('/login') }} /></SidebarMenuItem>
           <SidebarMenuItem>
             {resolvedTheme === 'light' ? (
               <RetroButton asChild variant="outline" className="w-full justify-start"><Link href="/settings"><Settings className="w-4 h-4" /><Text variant="small">Settings</Text></Link></RetroButton>

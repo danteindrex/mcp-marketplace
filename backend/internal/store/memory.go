@@ -42,6 +42,7 @@ type MemoryStore struct {
 	deployBySrv   map[string]string
 	agents        map[string]models.LocalAgent
 	userSettings  map[string]models.UserSettings
+	integrations  models.PlatformIntegrationSettings
 	oauthAccounts map[string]models.OAuthAccount  // key: "provider:providerId"
 	oauthClients  map[string]models.OAuthClient   // key: clientID
 	oauthCodes    map[string]models.OAuthAuthCode // key: code
@@ -70,6 +71,7 @@ type diskState struct {
 	DeployBySrv   map[string]string                     `json:"deployTasksByServer"`
 	Agents        map[string]models.LocalAgent          `json:"agents"`
 	UserSettings  map[string]models.UserSettings        `json:"userSettings"`
+	Integrations  models.PlatformIntegrationSettings    `json:"platformIntegrationSettings"`
 	OAuthAccounts map[string]models.OAuthAccount        `json:"oauthAccounts"`
 	OAuthClients  map[string]models.OAuthClient         `json:"oauthClients"`
 	Seq           int                                   `json:"seq"`
@@ -98,6 +100,7 @@ func (s *MemoryStore) snapshotLocked() diskState {
 		DeployBySrv:   s.deployBySrv,
 		Agents:        s.agents,
 		UserSettings:  s.userSettings,
+		Integrations:  s.integrations,
 		OAuthAccounts: s.oauthAccounts,
 		OAuthClients:  s.oauthClients,
 		Seq:           s.seq,
@@ -212,6 +215,9 @@ func (s *MemoryStore) loadFromDisk() bool {
 	if state.OAuthClients == nil {
 		state.OAuthClients = map[string]models.OAuthClient{}
 	}
+	if state.Integrations.Key == "" {
+		state.Integrations.Key = "platform"
+	}
 
 	s.users = state.Users
 	s.usersByEmail = state.UsersByEmail
@@ -234,6 +240,7 @@ func (s *MemoryStore) loadFromDisk() bool {
 	s.deployBySrv = state.DeployBySrv
 	s.agents = state.Agents
 	s.userSettings = state.UserSettings
+	s.integrations = state.Integrations
 	s.oauthAccounts = state.OAuthAccounts
 	s.oauthClients = state.OAuthClients
 	s.seq = state.Seq
@@ -265,6 +272,7 @@ func NewMemoryStore(cfg config.Config) *MemoryStore {
 		deployBySrv:   map[string]string{},
 		agents:        map[string]models.LocalAgent{},
 		userSettings:  map[string]models.UserSettings{},
+		integrations:  models.PlatformIntegrationSettings{Key: "platform"},
 		oauthAccounts: map[string]models.OAuthAccount{},
 		oauthClients:  map[string]models.OAuthClient{},
 		oauthCodes:    map[string]models.OAuthAuthCode{},
@@ -1211,6 +1219,25 @@ func (s *MemoryStore) UpsertUserSettings(settings models.UserSettings) models.Us
 	defer s.mu.Unlock()
 	settings.UpdatedAt = time.Now().UTC()
 	s.userSettings[settings.UserID] = settings
+	s.persistLocked()
+	return settings
+}
+
+func (s *MemoryStore) GetPlatformIntegrationSettings() (models.PlatformIntegrationSettings, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.integrations.Key == "" {
+		return models.PlatformIntegrationSettings{}, false
+	}
+	return s.integrations, true
+}
+
+func (s *MemoryStore) UpsertPlatformIntegrationSettings(settings models.PlatformIntegrationSettings) models.PlatformIntegrationSettings {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	settings.Key = "platform"
+	settings.UpdatedAt = time.Now().UTC()
+	s.integrations = settings
 	s.persistLocked()
 	return settings
 }

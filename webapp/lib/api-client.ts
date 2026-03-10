@@ -10,6 +10,7 @@ export interface Server {
   category: string
   version: string
   dockerImage: string
+  containerPort?: number
   canonicalResourceUri: string
   requiredScopes: string[]
   pricingType: string
@@ -30,6 +31,29 @@ export interface Server {
   supportsCloud: boolean
   updatedAt: string
   createdAt: string
+  builder?: ServerBuilderConfig
+}
+
+export interface ServerBuilderTool {
+  name: string
+  description?: string
+  inputSchema?: Record<string, string>
+  outputSchema?: Record<string, string>
+}
+
+export interface ServerBuilderConfig {
+  serverId: string
+  serverName?: string
+  serverSlug?: string
+  dockerImage?: string
+  deploymentMode?: string
+  framework: string
+  template: string
+  instructions: string
+  toolCatalog: ServerBuilderTool[]
+  scopeMappings: string[]
+  lastEditedBy?: string
+  lastEditedAt?: string
 }
 
 export interface ServerLifecycle {
@@ -46,6 +70,7 @@ export interface CreateMerchantServerPayload {
   description: string
   category: string
   dockerImage: string
+  containerPort?: number
   canonicalResourceUri: string
   requiredScopes: string[]
   pricingType: string
@@ -58,6 +83,67 @@ export interface CreateMerchantServerPayload {
   dailyCapUsdc?: number
   monthlyCapUsdc?: number
   status?: string
+}
+
+export interface UpdateMerchantServerPayload {
+  name?: string
+  slug?: string
+  description?: string
+  category?: string
+  dockerImage?: string
+  containerPort?: number
+  canonicalResourceUri?: string
+  requiredScopes?: string[]
+  pricingType?: string
+  pricingAmount?: number
+  supportsLocal?: boolean
+  supportsCloud?: boolean
+  paymentMethods?: string[]
+  paymentAddress?: string
+  perCallCapUsdc?: number
+  dailyCapUsdc?: number
+  monthlyCapUsdc?: number
+  status?: string
+}
+
+export interface MerchantServerPricingResponse {
+  serverId: string
+  pricing: {
+    type: string
+    amount: number
+    x402: {
+      version: string
+      network: string
+      asset: string
+      caip2: string
+    }
+    methods: string[]
+    paymentAddress: string
+    caps: {
+      perCallCapUsdc: number
+      dailyCapUsdc: number
+      monthlyCapUsdc: number
+    }
+  }
+  supportedMethods: Array<{
+    id: string
+    displayName: string
+    enabled: boolean
+    configured: boolean
+    integration: string
+    docs?: string
+    notes?: string
+    network?: string
+    asset?: string
+  }>
+  lifecycle: ServerLifecycle & {
+    blockingReasons?: Array<{
+      code: string
+      message: string
+      stage: string
+      field: string
+    }>
+  }
 }
 
 export interface MarketplaceInstallMetadata {
@@ -378,6 +464,63 @@ export interface UserNotificationSettings {
   billingAlerts: boolean
   marketingEmail: boolean
   weeklyDigest: boolean
+}
+
+export interface SecretFieldState {
+  set: boolean
+  masked?: string
+}
+
+export interface PlatformRuntimeConfig {
+  stripe: {
+    publishableKey?: string
+  }
+  n8n: {
+    url?: string
+  }
+  oauth: {
+    googleConfigured: boolean
+    githubConfigured: boolean
+  }
+}
+
+export interface PlatformIntegrationSettingsResponse {
+  settings: {
+    google: {
+      clientId: string
+      redirectBase: string
+      clientSecret: SecretFieldState
+    }
+    github: {
+      clientId: string
+      redirectBase: string
+      clientSecret: SecretFieldState
+    }
+    stripe: {
+      publishableKey: string
+      secretKey: SecretFieldState
+      webhookSecret: SecretFieldState
+      onrampReturnUrl: string
+      onrampRefreshUrl: string
+      onrampMinUsd: number
+      onrampDefaultUsd: number
+      connectReturnUrl: string
+      connectRefreshUrl: string
+      connectWebhookSecret: SecretFieldState
+    }
+    x402: {
+      mode: string
+      facilitatorUrl: string
+      facilitatorApiKey: SecretFieldState
+    }
+    n8n: {
+      baseUrl: string
+      apiKey: SecretFieldState
+      timeoutSeconds: number
+    }
+  }
+  status: Record<string, { configured: boolean; source: 'ui' | 'env' | 'none'; notes?: string }>
+  runtime: PlatformRuntimeConfig
 }
 
 export interface MFAStatus {
@@ -714,6 +857,35 @@ export async function fetchAdminPaymentsOverview() {
   return apiGet('/v1/admin/payments/overview', 'admin')
 }
 
+export async function fetchRuntimeConfig(): Promise<PlatformRuntimeConfig> {
+  return apiGet('/v1/runtime-config')
+}
+
+export async function fetchAdminIntegrations(): Promise<PlatformIntegrationSettingsResponse> {
+  return apiGet('/v1/admin/integrations', 'admin')
+}
+
+export async function updateAdminIntegrations(payload: {
+  google: { clientId: string; clientSecret: string; redirectBase: string }
+  github: { clientId: string; clientSecret: string; redirectBase: string }
+  stripe: {
+    publishableKey: string
+    secretKey: string
+    webhookSecret: string
+    onrampReturnUrl: string
+    onrampRefreshUrl: string
+    onrampMinUsd: number
+    onrampDefaultUsd: number
+    connectReturnUrl: string
+    connectRefreshUrl: string
+    connectWebhookSecret: string
+  }
+  x402: { mode: string; facilitatorUrl: string; facilitatorApiKey: string }
+  n8n: { baseUrl: string; apiKey: string; timeoutSeconds: number }
+}): Promise<PlatformIntegrationSettingsResponse> {
+  return apiPut('/v1/admin/integrations', payload, 'admin')
+}
+
 export async function fetchAdminFeePolicies(): Promise<{ default: PaymentFeePolicy; items: PaymentFeePolicy[] }> {
   return apiGet('/v1/admin/payments/fee-policies', 'admin')
 }
@@ -782,6 +954,13 @@ export async function fetchMerchantServers(): Promise<Server[]> {
 
 export async function createMerchantServer(payload: CreateMerchantServerPayload): Promise<Server> {
   return apiPost('/v1/merchant/servers', payload, 'merchant')
+}
+
+export async function updateMerchantServer(
+  id: string,
+  payload: UpdateMerchantServerPayload,
+): Promise<Server> {
+  return apiPut(`/v1/merchant/servers/${id}`, payload, 'merchant')
 }
 
 export async function fetchMerchantServer(id: string): Promise<{ server: Server; lifecycle: ServerLifecycle }> {
@@ -864,7 +1043,7 @@ export async function fetchServerAuth(id: string) {
   return apiGet(`/v1/merchant/servers/${id}/auth`, 'merchant')
 }
 
-export async function fetchServerPricing(id: string) {
+export async function fetchServerPricing(id: string): Promise<MerchantServerPricingResponse> {
   return apiGet(`/v1/merchant/servers/${id}/pricing`, 'merchant')
 }
 
@@ -892,7 +1071,20 @@ export async function fetchServerDeployments(id: string) {
 }
 
 export async function fetchServerBuilder(id: string) {
-  return apiGet(`/v1/merchant/servers/${id}/builder`, 'merchant')
+  return apiGet<ServerBuilderConfig>(`/v1/merchant/servers/${id}/builder`, 'merchant')
+}
+
+export async function updateServerBuilder(
+  id: string,
+  payload: {
+    framework: string
+    template: string
+    instructions: string
+    scopeMappings: string[]
+    toolCatalog: ServerBuilderTool[]
+  },
+) {
+  return apiPut<ServerBuilderConfig>(`/v1/merchant/servers/${id}/builder`, payload, 'merchant')
 }
 
 export async function fetchUserProfileSettings(): Promise<UserProfileSettings> {

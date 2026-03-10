@@ -1,59 +1,134 @@
-'use client'
-
 import Link from 'next/link'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { ExternalLink, Plus, Workflow } from 'lucide-react'
 import { AppShell } from '@/components/app-shell'
-import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ExternalLink, Workflow } from 'lucide-react'
+import type { Server } from '@/lib/api-client'
 
-const n8nURL = process.env.NEXT_PUBLIC_N8N_URL || 'http://localhost:5678'
+type RuntimeConfig = { n8n?: { url?: string } }
 
-export default function AgentBuilderPage() {
+async function loadRuntimeConfig(apiBase: string) {
+  try {
+    const res = await fetch(`${apiBase}/v1/runtime-config`, { cache: 'no-store' })
+    if (!res.ok) {
+      return null
+    }
+    return (await res.json()) as RuntimeConfig
+  } catch {
+    return null
+  }
+}
+
+async function loadMerchantServers(apiBase: string, token: string, enabled: boolean) {
+  if (!enabled) {
+    return [] as Server[]
+  }
+  try {
+    const res = await fetch(`${apiBase}/v1/merchant/servers`, {
+      cache: 'no-store',
+      headers: { Cookie: `mcp_access_token=${token}` },
+    })
+    if (!res.ok) {
+      return [] as Server[]
+    }
+    const body = (await res.json()) as { items?: Server[] }
+    return body.items || []
+  } catch {
+    return [] as Server[]
+  }
+}
+
+export default async function AgentBuilderPage() {
+  const cookieStore = await cookies()
+  const token = cookieStore.get('mcp_access_token')?.value
+  const role = cookieStore.get('mcp_active_role')?.value
+  const resolvedRole = role === 'buyer' || role === 'merchant' || role === 'admin' ? role : null
+
+  if (!token || !resolvedRole) {
+    redirect('/login?next=/settings/agent-builder')
+  }
+
+  const apiBase = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
+  const runtime = await loadRuntimeConfig(apiBase)
+  const merchantServers = await loadMerchantServers(apiBase, token, resolvedRole === 'merchant' || resolvedRole === 'admin')
+  const n8nURL = runtime?.n8n?.url || 'http://localhost:5678'
+
   return (
-    <AppShell role="buyer">
+    <AppShell role={resolvedRole}>
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">Agent Builder</h1>
           <p className="text-muted-foreground">
-            Build and manage automations in n8n. The builder opens in a new tab.
+            Use the shared n8n workspace and manage the saved builder configuration for each real MCP server.
           </p>
         </div>
 
-        <Tabs defaultValue="launch" className="space-y-4">
+        <Tabs defaultValue="workspace" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="launch">Open Builder</TabsTrigger>
-            <TabsTrigger value="details">Connection Details</TabsTrigger>
+            <TabsTrigger value="workspace">Builder Workspace</TabsTrigger>
+            <TabsTrigger value="servers">Saved Server Configs</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="launch">
+          <TabsContent value="workspace">
             <Card className="p-6 space-y-4">
               <div className="flex items-start gap-3">
                 <Workflow className="w-5 h-5 mt-0.5 text-primary" />
                 <div>
                   <h2 className="text-lg font-semibold">Launch n8n</h2>
                   <p className="text-sm text-muted-foreground">
-                    This opens the n8n builder in a separate browser tab. No iframe is used.
+                    This opens the live n8n builder configured in Admin Integrations. Use it to design real automations, then save the MCP-facing catalog on each server record.
                   </p>
                 </div>
               </div>
-              <Button asChild>
-                <Link href={n8nURL} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Open n8n In New Tab
-                </Link>
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                <Button asChild>
+                  <Link href={n8nURL} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Open n8n In New Tab
+                  </Link>
+                </Button>
+                {(resolvedRole === 'merchant' || resolvedRole === 'admin') ? (
+                  <Button asChild variant="outline">
+                    <Link href="/merchant/servers/new/import-docker">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create New MCP Server
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
+              <p className="font-mono text-sm break-all">{n8nURL}</p>
             </Card>
           </TabsContent>
 
-          <TabsContent value="details">
-            <Card className="p-6 space-y-2">
-              <h2 className="text-lg font-semibold">n8n URL</h2>
-              <p className="text-sm text-muted-foreground">
-                Configure with <code>NEXT_PUBLIC_N8N_URL</code> in webapp environment.
-              </p>
-              <p className="font-mono text-sm break-all">{n8nURL}</p>
-            </Card>
+          <TabsContent value="servers">
+            <div className="grid gap-4">
+              {(resolvedRole === 'merchant' || resolvedRole === 'admin') ? merchantServers.map(server => (
+                <Card key={server.id} className="p-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="space-y-1">
+                    <p className="font-semibold">{server.name}</p>
+                    <p className="text-sm text-muted-foreground">{server.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Scopes: {server.builder?.scopeMappings?.length || server.requiredScopes?.length || 0} · Tools: {server.builder?.toolCatalog?.length || 0}
+                    </p>
+                  </div>
+                  <Button asChild variant="outline">
+                    <Link href={`/merchant/servers/${server.id}/builder`}>Open Builder Config</Link>
+                  </Button>
+                </Card>
+              )) : (
+                <Card className="p-6 text-sm text-muted-foreground">
+                  Buyer accounts can launch the shared builder workspace but cannot save server build definitions. Switch to a merchant or admin session to manage server builder configs.
+                </Card>
+              )}
+              {(resolvedRole === 'merchant' || resolvedRole === 'admin') && merchantServers.length === 0 ? (
+                <Card className="p-6 text-sm text-muted-foreground">
+                  No MCP servers exist for this account yet. Create one first, then its builder configuration will appear here.
+                </Card>
+              ) : null}
+            </div>
           </TabsContent>
         </Tabs>
       </div>

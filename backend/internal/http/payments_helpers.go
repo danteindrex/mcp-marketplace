@@ -121,6 +121,7 @@ func (a *App) validateEnabledPaymentMethods(methods []string) error {
 
 func (a *App) describePaymentMethod(method string) paymentMethodDescriptor {
 	method = strings.ToLower(strings.TrimSpace(method))
+	integrations := a.resolvedIntegrations()
 	switch method {
 	case "wallet_balance":
 		return paymentMethodDescriptor{
@@ -137,7 +138,7 @@ func (a *App) describePaymentMethod(method string) paymentMethodDescriptor {
 			Asset:           "USDC",
 		}
 	case "x402_wallet":
-		productionReady := strings.EqualFold(strings.TrimSpace(a.cfg.X402Mode), "facilitator") && strings.TrimSpace(a.cfg.X402FacilitatorURL) != ""
+		productionReady := strings.EqualFold(strings.TrimSpace(integrations.X402.Mode), "facilitator") && strings.TrimSpace(integrations.X402.FacilitatorURL) != ""
 		readiness := "development_only"
 		notes := "Mock verification is enabled; switch to facilitator mode for production settlement verification."
 		if productionReady {
@@ -148,7 +149,7 @@ func (a *App) describePaymentMethod(method string) paymentMethodDescriptor {
 			ID:              method,
 			DisplayName:     "x402 Wallet Signature",
 			Enabled:         true,
-			Configured:      strings.TrimSpace(a.cfg.X402Mode) != "",
+			Configured:      strings.TrimSpace(integrations.X402.Mode) != "",
 			ProductionReady: productionReady,
 			Readiness:       readiness,
 			Integration:     "x402 payment-response with facilitator verify/settle",

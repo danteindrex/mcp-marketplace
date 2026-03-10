@@ -1,8 +1,11 @@
 package http
 
 import (
+	"encoding/json"
 	"net/http"
 	"sort"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -211,6 +214,7 @@ func (a *App) serverDeployments(w http.ResponseWriter, r *http.Request) {
 			"replicas":    1,
 			"status":      "healthy",
 			"transport":   "sse",
+			"url":         server.CanonicalResourceURI,
 			"version":     server.Version,
 			"updatedAt":   server.UpdatedAt,
 		})
@@ -253,14 +257,162 @@ func (a *App) serverBuilder(w http.ResponseWriter, r *http.Request) {
 	if !a.ensureServerTenantAccess(w, r, server) {
 		return
 	}
+	if r.Method == http.MethodPut {
+		a.updateServerBuilder(w, r, server)
+		return
+	}
+	builder := hydrateServerBuilder(server)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"serverId": server.ID,
-		"toolCatalog": []map[string]interface{}{
-			{"name": "query", "inputSchema": map[string]string{"query": "string"}, "outputSchema": map[string]string{"rows": "array"}},
-			{"name": "analyze", "inputSchema": map[string]string{"data": "array"}, "outputSchema": map[string]string{"summary": "object"}},
+		"serverId":       server.ID,
+		"serverName":     server.Name,
+		"serverSlug":     server.Slug,
+		"dockerImage":    server.DockerImage,
+		"deploymentMode": server.DeploymentTarget,
+		"framework":      builder.Framework,
+		"template":       builder.Template,
+		"instructions":   builder.Instructions,
+		"toolCatalog":    builder.ToolCatalog,
+		"scopeMappings":  builder.ScopeMappings,
+		"lastEditedBy":   builder.LastEditedBy,
+		"lastEditedAt":   builder.LastEditedAt,
+	})
+}
+
+type updateServerBuilderRequest struct {
+	Framework     string                       `json:"framework"`
+	Template      string                       `json:"template"`
+	Instructions  string                       `json:"instructions"`
+	ScopeMappings []string                     `json:"scopeMappings"`
+	ToolCatalog   []models.AgentBuilderTool    `json:"toolCatalog"`
+}
+
+func hydrateServerBuilder(server models.Server) models.AgentBuilderConfig {
+	builder := server.Builder
+	if strings.TrimSpace(builder.Framework) == "" {
+		builder.Framework = "FastMCP"
+	}
+	if strings.TrimSpace(builder.Template) == "" {
+		builder.Template = "docker-import"
+	}
+	if strings.TrimSpace(builder.Instructions) == "" {
+		builder.Instructions = "Describe the agent tools exposed by this MCP server and map every tool to the scopes required at install time."
+	}
+	if len(builder.ScopeMappings) == 0 {
+		builder.ScopeMappings = append([]string{}, server.RequiredScopes...)
+	}
+	if len(builder.ToolCatalog) == 0 {
+		builder.ToolCatalog = []models.AgentBuilderTool{
+			{Name: "query", Description: "Primary read/query tool", InputSchema: map[string]string{"query": "string"}, OutputSchema: map[string]string{"rows": "array"}},
+		}
+	}
+	return builder
+}
+
+func normalizeBuilderTools(items []models.AgentBuilderTool) []models.AgentBuilderTool {
+	tools := make([]models.AgentBuilderTool, 0, len(items))
+	for _, item := range items {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		tool := models.AgentBuilderTool{
+			Name:         name,
+			Description:  strings.TrimSpace(item.Description),
+			InputSchema:  map[string]string{},
+			OutputSchema: map[string]string{},
+		}
+		for key, value := range item.InputSchema {
+			trimmedKey := strings.TrimSpace(key)
+			trimmedValue := strings.TrimSpace(value)
+			if trimmedKey == "" || trimmedValue == "" {
+				continue
+			}
+			tool.InputSchema[trimmedKey] = trimmedValue
+		}
+		for key, value := range item.OutputSchema {
+			trimmedKey := strings.TrimSpace(key)
+			trimmedValue := strings.TrimSpace(value)
+			if trimmedKey == "" || trimmedValue == "" {
+				continue
+			}
+			tool.OutputSchema[trimmedKey] = trimmedValue
+		}
+		tools = append(tools, tool)
+	}
+	return tools
+}
+
+func (a *App) updateServerBuilder(w http.ResponseWriter, r *http.Request, server models.Server) {
+	claims, _ := getClaims(r.Context())
+	var req updateServerBuilderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+	framework := strings.TrimSpace(req.Framework)
+	if framework == "" {
+		framework = "FastMCP"
+	}
+	template := strings.TrimSpace(req.Template)
+	if template == "" {
+		template = "docker-import"
+	}
+	tools := normalizeBuilderTools(req.ToolCatalog)
+	if len(tools) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tool catalog must include at least one tool"})
+		return
+	}
+	scopeMappings := make([]string, 0, len(req.ScopeMappings))
+	for _, scope := range req.ScopeMappings {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		if !slices.Contains(scopeMappings, scope) {
+			scopeMappings = append(scopeMappings, scope)
+		}
+	}
+	server.Builder = models.AgentBuilderConfig{
+		Framework:     framework,
+		Template:      template,
+		Instructions:  strings.TrimSpace(req.Instructions),
+		ScopeMappings: scopeMappings,
+		ToolCatalog:   tools,
+		LastEditedBy:  claims.UserID,
+		LastEditedAt:  time.Now().UTC(),
+	}
+	server.RequiredScopes = append([]string{}, scopeMappings...)
+	server.UpdatedAt = time.Now().UTC()
+	a.store.UpdateServer(server)
+	a.store.AddAuditLog(models.AuditLog{
+		TenantID:   claims.TenantID,
+		ActorID:    claims.UserID,
+		Action:     "server.builder.update",
+		TargetType: "server",
+		TargetID:   server.ID,
+		Outcome:    "success",
+		Metadata: map[string]interface{}{
+			"framework":    server.Builder.Framework,
+			"template":     server.Builder.Template,
+			"toolCount":    len(server.Builder.ToolCatalog),
+			"scopeCount":   len(server.Builder.ScopeMappings),
+			"requiredScopes": server.RequiredScopes,
 		},
-		"scopeMappings": server.RequiredScopes,
-		"framework":     "FastMCP",
+	})
+	builder := hydrateServerBuilder(server)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"serverId":       server.ID,
+		"serverName":     server.Name,
+		"serverSlug":     server.Slug,
+		"dockerImage":    server.DockerImage,
+		"deploymentMode": server.DeploymentTarget,
+		"framework":      builder.Framework,
+		"template":       builder.Template,
+		"instructions":   builder.Instructions,
+		"toolCatalog":    builder.ToolCatalog,
+		"scopeMappings":  builder.ScopeMappings,
+		"lastEditedBy":   builder.LastEditedBy,
+		"lastEditedAt":   builder.LastEditedAt,
 	})
 }
 

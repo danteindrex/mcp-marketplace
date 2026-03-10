@@ -229,7 +229,7 @@ func (s *stripeConnectService) postForm(ctx context.Context, endpoint, connected
 		return nil, err
 	}
 	defer resp.Body.Close()
-	return decodeStripeResponse(resp)
+	return decodeStripeResponse(resp, "stripe connect")
 }
 
 func (s *stripeConnectService) getJSON(ctx context.Context, endpoint, connectedAccount string) (map[string]interface{}, error) {
@@ -259,10 +259,10 @@ func (s *stripeConnectService) getJSON(ctx context.Context, endpoint, connectedA
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		if errObj, ok := parsed["error"].(map[string]interface{}); ok {
 			if msg := strings.TrimSpace(stringFromAny(errObj["message"])); msg != "" {
-				return nil, fmt.Errorf("stripe connect error: %s", msg)
+				return nil, &stripeAPIError{Provider: "stripe connect", Status: resp.StatusCode, Message: msg}
 			}
 		}
-		return nil, fmt.Errorf("stripe connect status %d", resp.StatusCode)
+		return nil, &stripeAPIError{Provider: "stripe connect", Status: resp.StatusCode, Message: strings.TrimSpace(string(raw))}
 	}
 	return parsed, nil
 }

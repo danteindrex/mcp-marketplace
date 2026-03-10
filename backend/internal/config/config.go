@@ -49,6 +49,9 @@ type Config struct {
 	GitHubClientSecret         string
 	OAuthRedirectBase          string
 	MCPSDKEnabled              bool
+	DockerRuntimeSocket        string
+	DockerRuntimeNetwork       string
+	DockerRuntimePublicHost    string
 }
 
 func Load() Config {
@@ -141,6 +144,18 @@ func Load() Config {
 		oauthRedirectBase = baseURL
 	}
 	mcpSDKEnabled := parseBool(os.Getenv("MCP_SDK_ENABLED"), false)
+	dockerRuntimeSocket := strings.TrimSpace(os.Getenv("DOCKER_RUNTIME_SOCKET"))
+	if dockerRuntimeSocket == "" {
+		dockerRuntimeSocket = "/var/run/docker.sock"
+	}
+	dockerRuntimeNetwork := strings.TrimSpace(os.Getenv("DOCKER_RUNTIME_NETWORK"))
+	if dockerRuntimeNetwork == "" {
+		dockerRuntimeNetwork = "infra_default"
+	}
+	dockerRuntimePublicHost := strings.TrimSpace(os.Getenv("DOCKER_RUNTIME_PUBLIC_HOST"))
+	if dockerRuntimePublicHost == "" {
+		dockerRuntimePublicHost = "localhost"
+	}
 
 	return Config{
 		Port:                       port,
@@ -184,6 +199,9 @@ func Load() Config {
 		GitHubClientSecret:         githubClientSecret,
 		OAuthRedirectBase:          oauthRedirectBase,
 		MCPSDKEnabled:              mcpSDKEnabled,
+		DockerRuntimeSocket:        dockerRuntimeSocket,
+		DockerRuntimeNetwork:       dockerRuntimeNetwork,
+		DockerRuntimePublicHost:    dockerRuntimePublicHost,
 	}
 }
 

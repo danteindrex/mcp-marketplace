@@ -43,7 +43,7 @@ export default function DeploymentsPage({ params }: { params: Promise<{ serverId
   const handleDeploy = async () => {
     setIsDeploying(true)
     try {
-      await deployMerchantServer(serverId, { deploymentTarget: 'us-west-1' })
+      await deployMerchantServer(serverId, { deploymentTarget: 'local-docker' })
       toast.success('Deploy queued. We will keep retrying automatically.')
       await load()
     } catch (e: any) {
@@ -105,6 +105,7 @@ export default function DeploymentsPage({ params }: { params: Promise<{ serverId
                 <div><p className="text-xs text-muted-foreground">Replicas</p><p className="font-medium">{dep.replicas}</p></div>
                 <div><p className="text-xs text-muted-foreground">Transport</p><p className="font-medium uppercase">{dep.transport}</p></div>
                 <div><p className="text-xs text-muted-foreground">Status</p><p className="font-medium">{dep.status}</p></div>
+                <div><p className="text-xs text-muted-foreground">URL</p><p className="font-medium break-all">{dep.url || 'n/a'}</p></div>
                 <Button variant="outline" size="sm" disabled>Rollback</Button>
               </div>
             </Card>

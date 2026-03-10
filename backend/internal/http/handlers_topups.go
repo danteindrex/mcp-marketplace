@@ -22,12 +22,13 @@ type createStripeTopUpSessionRequest struct {
 func (a *App) listBuyerWalletTopUps(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	items := a.store.ListWalletTopUps(claims.TenantID, claims.UserID, 50)
+	stripe := a.currentStripeOnrampService()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"items":            items,
 		"count":            len(items),
-		"minimumTopUpUsd":  a.cfg.StripeOnrampMinUSD,
-		"defaultTopUpUsd":  a.cfg.StripeOnrampDefaultUSD,
-		"stripeConfigured": a.stripeOnramp.configured(),
+		"minimumTopUpUsd":  stripe.minTopupUSD,
+		"defaultTopUpUsd":  stripe.defaultUSD,
+		"stripeConfigured": stripe.configured(),
 	})
 }
 
@@ -40,12 +41,13 @@ func (a *App) createBuyerStripeTopUpSession(w http.ResponseWriter, r *http.Reque
 	}
 
 	amount := req.AmountUSD
+	stripe := a.currentStripeOnrampService()
 	if amount <= 0 {
-		amount = a.cfg.StripeOnrampDefaultUSD
+		amount = stripe.defaultUSD
 	}
-	if amount < a.cfg.StripeOnrampMinUSD {
+	if amount < stripe.minTopupUSD {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": fmt.Sprintf("minimum top-up is %.2f USD", a.cfg.StripeOnrampMinUSD),
+			"error": fmt.Sprintf("minimum top-up is %.2f USD", stripe.minTopupUSD),
 		})
 		return
 	}
@@ -63,7 +65,7 @@ func (a *App) createBuyerStripeTopUpSession(w http.ResponseWriter, r *http.Reque
 		walletAddress = strings.TrimSpace(policy.SIWXWallet)
 	}
 
-	session, err := a.stripeOnramp.createSession(r.Context(), stripeCreateSessionInput{
+	session, err := stripe.createSession(r.Context(), stripeCreateSessionInput{
 		AmountUSD:     amount,
 		WalletAddress: walletAddress,
 		CustomerIP:    firstForwardedIP(r.Header.Get("X-Forwarded-For")),
@@ -71,7 +73,13 @@ func (a *App) createBuyerStripeTopUpSession(w http.ResponseWriter, r *http.Reque
 		UserID:        claims.UserID,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		status := http.StatusBadGateway
+		if stripeErr, ok := err.(*stripeAPIError); ok {
+			if stripeErr.Status == http.StatusBadRequest || stripeErr.Status == http.StatusNotFound {
+				status = http.StatusConflict
+			}
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -111,8 +119,8 @@ func (a *App) createBuyerStripeTopUpSession(w http.ResponseWriter, r *http.Reque
 			"sessionId":       session.ID,
 			"clientSecret":    session.ClientSecret,
 			"hostedUrl":       session.HostedURL,
-			"configured":      a.stripeOnramp.configured(),
-			"minimumTopUpUsd": a.cfg.StripeOnrampMinUSD,
+			"configured":      stripe.configured(),
+			"minimumTopUpUsd": stripe.minTopupUSD,
 		},
 	})
 }
@@ -123,7 +131,7 @@ func (a *App) handleStripeOnrampWebhook(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid webhook payload"})
 		return
 	}
-	if err := a.stripeOnramp.verifyWebhookSignature(payload, r.Header.Get("Stripe-Signature")); err != nil {
+	if err := a.currentStripeOnrampService().verifyWebhookSignature(payload, r.Header.Get("Stripe-Signature")); err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
 		return
 	}
