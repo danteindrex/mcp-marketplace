@@ -84,8 +84,6 @@ export default function ImportDockerPage() {
       dockerImage: value,
       name: current.name || nextName,
       slug: current.slug || nextSlug,
-      canonicalResourceUri:
-        current.canonicalResourceUri || (nextSlug ? `https://example.com/mcp/${nextSlug}` : ''),
       description:
         current.description || (nextName ? `${nextName} deployed from ${trimmed}` : ''),
     }))
@@ -101,8 +99,8 @@ export default function ImportDockerPage() {
     const containerPort = Number(form.containerPort)
     const pricingAmount = Number(form.pricingAmount)
 
-    if (!dockerImage || !name || !slug || !canonicalResourceUri) {
-      toast.error('Docker image, name, slug, and canonical resource URI are required.')
+    if (!dockerImage || !name || !slug) {
+      toast.error('Docker image, name, and slug are required.')
       return
     }
     if (!Number.isInteger(containerPort) || containerPort <= 0 || containerPort > 65535) {
@@ -229,12 +227,16 @@ export default function ImportDockerPage() {
                 <Label htmlFor="canonical-uri">Canonical Resource URI</Label>
                 <Input
                   id="canonical-uri"
-                  placeholder="https://example.com/mcp/my-server"
+                  placeholder="Optional before deployment"
                   value={form.canonicalResourceUri}
                   onChange={event =>
                     setForm(current => ({ ...current, canonicalResourceUri: event.target.value }))
                   }
                 />
+                <p className="text-xs text-muted-foreground">
+                  Leave this blank for local-docker drafts. Buyer installs use the marketplace hub;
+                  deployment can populate the upstream runtime URL later.
+                </p>
               </div>
             </div>
 

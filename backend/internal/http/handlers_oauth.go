@@ -17,23 +17,47 @@ type dcrRequest struct {
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
 }
 
-func (a *App) oauthProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
+func marketplaceSupportedScopes() []string {
+	return []string{"mcp:invoke", "mcp:manage", "db:read", "db:write", "documents:read", "ai:inference"}
+}
+
+func (a *App) resolveMetadataResource(r *http.Request) (string, bool) {
 	resource := strings.TrimSpace(r.URL.Query().Get("resource"))
 	if resource == "" {
-		resource = strings.TrimRight(a.cfg.BaseURL, "/") + "/mcp/hub/{tenantID}/{userID}"
-	} else {
-		canonical, _, _, ok := canonicalHubResource(a.cfg.BaseURL, resource)
-		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource"})
-			return
-		}
-		resource = canonical
+		return strings.TrimRight(a.cfg.BaseURL, "/") + "/mcp/hub/{tenantID}/{userID}", true
+	}
+	canonical, _, _, ok := canonicalHubResource(a.cfg.BaseURL, resource)
+	if !ok {
+		return "", false
+	}
+	return canonical, true
+}
+
+func (a *App) mcpMetadata(w http.ResponseWriter, r *http.Request) {
+	resource, ok := a.resolveMetadataResource(r)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"authorization_server":  a.cfg.BaseURL,
+		"authorization_servers": []string{a.cfg.BaseURL},
+		"resource":              resource,
+		"scopes_supported":      marketplaceSupportedScopes(),
+	})
+}
+
+func (a *App) oauthProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
+	resource, ok := a.resolveMetadataResource(r)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource"})
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"resource":                 resource,
 		"authorization_servers":    []string{a.cfg.BaseURL},
 		"bearer_methods_supported": []string{"header"},
-		"scopes_supported":         []string{"mcp:invoke", "mcp:manage", "db:read", "db:write", "documents:read", "ai:inference"},
+		"scopes_supported":         marketplaceSupportedScopes(),
 	})
 }
 

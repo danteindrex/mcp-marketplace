@@ -26,8 +26,6 @@ type installAction struct {
 	Label             string `json:"label"`
 	LaunchURL         string `json:"launchUrl,omitempty"`
 	OpenURL           string `json:"openUrl,omitempty"`
-	Command           string `json:"command,omitempty"`
-	FallbackCopy      string `json:"fallbackCopy,omitempty"`
 	Description       string `json:"description,omitempty"`
 	RequiresLocalExec bool   `json:"requiresLocalExec"`
 }
@@ -471,48 +469,39 @@ func buildInstallActions(serverName string, serverSlug string, resourceURL strin
 	cursorLaunchURL := "cursor://anysphere.cursor-deeplink/mcp/install?" + cursorValues.Encode()
 	codexLaunchURL := buildLocalBridgeInstallURL("codex", serverSlug, resourceURL)
 	claudeLaunchURL := buildLocalBridgeInstallURL("claude", serverSlug, resourceURL)
-	codexCommand := "codex mcp add " + serverSlug + " --url " + resourceURL
-	claudeCommand := "claude mcp add --transport http " + serverSlug + " " + resourceURL
 
 	return []installAction{
 		{
-			Client:       "vscode",
-			Label:        "Install in VS Code",
-			LaunchURL:    "vscode:mcp/install?" + encodedVSCode,
-			FallbackCopy: resourceURL,
-			Description:  "One-click deep link into VS Code MCP installer.",
+			Client:      "vscode",
+			Label:       "Install in VS Code",
+			LaunchURL:   "vscode:mcp/install?" + encodedVSCode,
+			Description: "One-click deep link into VS Code MCP installer.",
 		},
 		{
 			Client:            "codex",
 			Label:             "Install in Codex",
 			LaunchURL:         codexLaunchURL,
-			Command:           codexCommand,
-			FallbackCopy:      codexCommand,
-			Description:       "One-click install via MCP Local Bridge, with Codex CLI fallback.",
+			Description:       "One-click install via MCP Local Bridge.",
 			RequiresLocalExec: true,
 		},
 		{
 			Client:            "claude",
 			Label:             "Install in Claude",
 			LaunchURL:         claudeLaunchURL,
-			Command:           claudeCommand,
-			FallbackCopy:      claudeCommand,
-			Description:       "One-click install via MCP Local Bridge, with Claude CLI fallback.",
+			Description:       "One-click install via MCP Local Bridge.",
 			RequiresLocalExec: true,
 		},
 		{
-			Client:       "cursor",
-			Label:        "Install in Cursor",
-			LaunchURL:    cursorLaunchURL,
-			FallbackCopy: resourceURL,
-			Description:  "One-click deep link into Cursor MCP installer.",
+			Client:      "cursor",
+			Label:       "Install in Cursor",
+			LaunchURL:   cursorLaunchURL,
+			Description: "One-click deep link into Cursor MCP installer.",
 		},
 		{
-			Client:       "chatgpt",
-			Label:        "Connect in ChatGPT",
-			OpenURL:      "https://chatgpt.com/#settings/connectors",
-			FallbackCopy: resourceURL,
-			Description:  "Open connector settings and paste the remote MCP URL.",
+			Client:      "chatgpt",
+			Label:       "Connect in ChatGPT",
+			OpenURL:     "https://chatgpt.com/#settings/connectors",
+			Description: "Open connector settings to finish connecting this remote MCP server.",
 		},
 	}
 }

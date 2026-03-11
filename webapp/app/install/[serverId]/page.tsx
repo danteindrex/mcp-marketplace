@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Check, ChevronRight, Copy, ExternalLink, Check as CheckIcon, Terminal } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, ExternalLink, Check as CheckIcon, Terminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,8 +11,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import {
+  fetchBuyerHub,
   fetchBuyerPaymentControls,
-  fetchServerBySlug,
+  fetchServerDetailBySlug,
   installMarketplaceServer,
   settleX402Intent,
   checkInstallScopes,
@@ -20,6 +21,7 @@ import {
   type InstallPaymentRequired,
   type InstallAction,
   type InstallSession,
+  type MarketplaceInstallMetadata,
   type ScopeCheckResult,
   type Server,
 } from '@/lib/api-client'
@@ -100,14 +102,16 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [authConfirmed, setAuthConfirmed] = useState(false)
   const [manualAuthOverride, setManualAuthOverride] = useState(false)
   const [acceptedScopes, setAcceptedScopes] = useState(false)
-  const [copiedCode, setCopiedCode] = useState(false)
   const [showBridgeHelp, setShowBridgeHelp] = useState(false)
+  const [autoLaunchAttempted, setAutoLaunchAttempted] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [installSession, setInstallSession] = useState<InstallSession | null>(null)
   const [paymentRequired, setPaymentRequired] = useState<InstallPaymentRequired | null>(null)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('')
   const [externalPaymentInput, setExternalPaymentInput] = useState('')
   const [server, setServer] = useState<Server | null>(null)
+  const [installMetadata, setInstallMetadata] = useState<MarketplaceInstallMetadata | null>(null)
+  const [hubResource, setHubResource] = useState<string>('')
   const [paymentControls, setPaymentControls] = useState<BuyerPaymentControls | null>(null)
   const [paymentControlsLoading, setPaymentControlsLoading] = useState(true)
   const [paymentControlsError, setPaymentControlsError] = useState('')
@@ -123,7 +127,17 @@ export default function InstallWizardPage({ params }: PageProps) {
   }, [paymentRequired?.paymentChallenge])
 
   useEffect(() => {
-    fetchServerBySlug(serverId).then(setServer)
+    fetchServerDetailBySlug(serverId).then(detail => {
+      setServer(detail?.server || null)
+      setInstallMetadata(detail?.install || null)
+    })
+    fetchBuyerHub()
+      .then(hub => {
+        setHubResource(hub?.hub?.hubUrl || '')
+      })
+      .catch(() => {
+        setHubResource('')
+      })
   }, [serverId])
 
   useEffect(() => {
@@ -152,13 +166,19 @@ export default function InstallWizardPage({ params }: PageProps) {
       setMetadataState({ status: 'idle' })
       return
     }
-    if (!server.canonicalResourceUri) {
-      setMetadataState({ status: 'error', error: 'Server is missing a canonical resource URI.' })
+    const metadataBaseUrl = installMetadata?.discoveryBaseUrl
+    if (!metadataBaseUrl) {
+      setMetadataState({ status: 'error', error: 'Marketplace install metadata is unavailable.' })
+      return
+    }
+    if (!hubResource) {
+      setMetadataState({ status: 'error', error: 'Buyer hub metadata is unavailable.' })
       return
     }
     try {
       setMetadataState({ status: 'loading' })
-      const params = new URLSearchParams({ resource: server.canonicalResourceUri })
+      const params = new URLSearchParams({ metadataBaseUrl })
+      params.set('resource', hubResource)
       const res = await fetch(`/api/install/readiness?${params.toString()}`, { cache: 'no-store' })
       const data = await res.json()
       if (!res.ok) {
@@ -172,7 +192,7 @@ export default function InstallWizardPage({ params }: PageProps) {
         error: error instanceof Error ? error.message : 'Failed to verify install metadata',
       })
     }
-  }, [server])
+  }, [hubResource, installMetadata, server])
 
   useEffect(() => {
     refreshInstallReadiness()
@@ -215,7 +235,6 @@ export default function InstallWizardPage({ params }: PageProps) {
   const bridgeInstallCommand = 'powershell -ExecutionPolicy Bypass -File backend\\scripts\\install-local-bridge.ps1'
   const installActionLabel = (() => {
     if (selectedAction?.requiresLocalExec && selectedAction?.launchUrl) return 'Run One-Click Install'
-    if (selectedAction?.requiresLocalExec) return 'Run Install Command'
     return 'Open Installer'
   })()
 
@@ -228,6 +247,15 @@ export default function InstallWizardPage({ params }: PageProps) {
       setSelectedPaymentMethod(defaultMethod)
     }
   }, [paymentControls, readyInstallMethods, selectedPaymentMethod])
+
+  useEffect(() => {
+    if (currentStep !== 'complete' || !selectedAction || autoLaunchAttempted) {
+      return
+    }
+
+    setAutoLaunchAttempted(true)
+    runInstallAction(selectedAction)
+  }, [autoLaunchAttempted, currentStep, selectedAction])
 
   if (!server) {
     return (
@@ -257,6 +285,7 @@ export default function InstallWizardPage({ params }: PageProps) {
       }
       setPaymentRequired(null)
       setInstallSession(out.session)
+      setAutoLaunchAttempted(false)
       setCurrentStep('complete')
       return true
     } catch (error: any) {
@@ -307,13 +336,6 @@ export default function InstallWizardPage({ params }: PageProps) {
     }
   }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedCode(true)
-    toast.success('Copied to clipboard')
-    setTimeout(() => setCopiedCode(false), 2000)
-  }
-
   const parseExternalPaymentResponse = () => {
     const raw = externalPaymentInput.trim()
     if (!raw) return null
@@ -345,14 +367,7 @@ export default function InstallWizardPage({ params }: PageProps) {
       window.open(action.openUrl, '_blank', 'noopener,noreferrer')
       return
     }
-    if (action.command) {
-      copyToClipboard(action.command)
-      toast.info('Run the copied command in your local terminal')
-      return
-    }
-    if (action.fallbackCopy) {
-      copyToClipboard(action.fallbackCopy)
-    }
+    toast.error('No one-click install action is available for this client.')
   }
 
   return (
@@ -403,7 +418,9 @@ export default function InstallWizardPage({ params }: PageProps) {
                       <div>
                         <p className="font-semibold">CIMD Metadata</p>
                         <p className="text-xs text-muted-foreground break-all">
-                          {metadataState.status === 'ready' ? metadataState.data.links.cimdUrl : server.canonicalResourceUri || 'unknown resource'}
+                          {metadataState.status === 'ready'
+                            ? metadataState.data.links.cimdUrl
+                            : installMetadata?.cimdUrl || 'unknown resource'}
                         </p>
                       </div>
                       <Badge variant={metadataState.status === 'ready' && metadataState.data.cimd.status === 'ok' ? 'default' : metadataState.status === 'loading' ? 'outline' : 'destructive'}>
@@ -417,6 +434,11 @@ export default function InstallWizardPage({ params }: PageProps) {
                     {metadataState.status === 'ready' && metadataState.data.cimd.json?.scopes_supported && (
                       <p className="text-xs text-muted-foreground">
                         Scopes exposed: {metadataState.data.cimd.json.scopes_supported.join(', ')}
+                      </p>
+                    )}
+                    {server.canonicalResourceUri && (
+                      <p className="text-xs text-muted-foreground">
+                        Upstream runtime target: {server.canonicalResourceUri}
                       </p>
                     )}
                     {metadataState.status === 'error' && (
@@ -690,21 +712,7 @@ export default function InstallWizardPage({ params }: PageProps) {
                           )}
                           {installActionLabel}
                         </Button>
-                        {selectedAction.fallbackCopy && (
-                          <Button
-                            variant="outline"
-                            onClick={() => copyToClipboard(selectedAction.fallbackCopy || '')}
-                          >
-                            <Copy className="w-4 h-4 mr-2" />
-                            {copiedCode ? 'Copied!' : 'Copy Fallback'}
-                          </Button>
-                        )}
                       </div>
-                      {selectedAction.command && (
-                        <div className="bg-background rounded p-4 font-mono text-xs overflow-x-auto">
-                          <pre className="text-foreground/80">{selectedAction.command}</pre>
-                        </div>
-                      )}
                     </Card>
                   )}
 
@@ -718,10 +726,6 @@ export default function InstallWizardPage({ params }: PageProps) {
                         <pre className="text-foreground/80">{bridgeInstallCommand}</pre>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={() => copyToClipboard(bridgeInstallCommand)}>
-                          <Copy className="w-4 h-4 mr-2" />
-                          Copy Bridge Install Command
-                        </Button>
                         <Button onClick={() => runInstallAction(selectedAction)}>
                           Retry One-Click Install
                         </Button>

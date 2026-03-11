@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Server } from '@/lib/api-client'
+import { getServerApiBase } from '@/lib/api-base'
 
 type RuntimeConfig = { n8n?: { url?: string } }
 
@@ -51,7 +52,7 @@ export default async function AgentBuilderPage() {
     redirect('/login?next=/settings/agent-builder')
   }
 
-  const apiBase = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
+  const apiBase = getServerApiBase()
   const runtime = await loadRuntimeConfig(apiBase)
   const merchantServers = await loadMerchantServers(apiBase, token, resolvedRole === 'merchant' || resolvedRole === 'admin')
   const n8nURL = runtime?.n8n?.url || 'http://localhost:5678'

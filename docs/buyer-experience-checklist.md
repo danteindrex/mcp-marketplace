@@ -2,6 +2,15 @@
 
 Use this list to drive the missing work called out in `requirements.md` and the architecture blueprint. Track each item until we can prove the buyer flow is production-ready.
 
+## 0. Current implementation checklist (2026-03-11)
+- [x] Add marketplace-owned `/.well-known/mcp.json` discovery metadata.
+- [x] Point install auth readiness at marketplace discovery plus the buyer hub resource instead of arbitrary upstream runtime URLs.
+- [x] Stop seeding merchant servers with placeholder canonical resource URIs during Docker import.
+- [x] Remove hardcoded frontend backend URLs so Docker Compose env controls the install/auth/payment API base.
+- [x] Add publish-time validation that separates marketplace install metadata from upstream runtime targeting.
+- [ ] Persist issued client registrations so repeat installs do not require re-registration.
+- [ ] Add end-to-end tests for local bridge deep links and client acceptance flows.
+
 ## 1. One-click installs (CIMD + DCR)
 - [x] Wire the frontend install wizard to the real Go `/install` endpoints instead of mock data.
 - [x] Implement CIMD fetches that retrieve Authorization Server metadata + JWKS per server.

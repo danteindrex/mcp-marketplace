@@ -1,4 +1,7 @@
 import { apiGet, apiPost, apiPut, getActiveRole, type AppRole } from './api'
+import { getPublicApiBase } from './api-base'
+
+const PUBLIC_API_BASE = getPublicApiBase()
 
 export interface Server {
   id: string
@@ -152,6 +155,12 @@ export interface MarketplaceInstallMetadata {
   clients: string[]
   installEndpoint?: string
   supportsCommands?: boolean
+  discoveryBaseUrl?: string
+  cimdUrl?: string
+  oauthMetadataUrl?: string
+  jwksUrl?: string
+  resourceTemplate?: string
+  upstreamResourceUrl?: string
 }
 
 export interface InstallAction {
@@ -159,8 +168,6 @@ export interface InstallAction {
   label: string
   launchUrl?: string
   openUrl?: string
-  command?: string
-  fallbackCopy?: string
   description?: string
   requiresLocalExec?: boolean
 }
@@ -484,6 +491,23 @@ export interface PlatformRuntimeConfig {
   }
 }
 
+export interface BuyerHubResponse {
+  hub: {
+    id: string
+    tenantId: string
+    userId: string
+    hubUrl: string
+    status: string
+    catalogVersion: number
+  }
+  routes: any[]
+  strategy: {
+    singleInstall: boolean
+    autoCatalogSync: boolean
+    localBridgeSupported: boolean
+  }
+}
+
 export interface PlatformIntegrationSettingsResponse {
   settings: {
     google: {
@@ -623,7 +647,7 @@ export async function installMarketplaceServer(
     toolName?: string
   },
 ): Promise<InstallResult> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/v1/marketplace/servers/${slug}/install`, {
+  const res = await fetch(`${PUBLIC_API_BASE}/v1/marketplace/servers/${slug}/install`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -661,8 +685,8 @@ export async function checkInstallScopes(
   return apiPost<ScopeCheckResult>(`/v1/marketplace/servers/${slug}/scope-check`, payload, 'buyer')
 }
 
-export async function fetchBuyerHub() {
-  return apiGet<{ hub: any; routes: any[]; strategy: any }>('/v1/buyer/hub', 'buyer')
+export async function fetchBuyerHub(): Promise<BuyerHubResponse> {
+  return apiGet<BuyerHubResponse>('/v1/buyer/hub', 'buyer')
 }
 
 export async function fetchLocalAgents() {
@@ -751,7 +775,7 @@ export async function createX402Intent(payload: {
   paymentMethod?: string
   idempotencyKey?: string
 }) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/v1/billing/x402/intents`, {
+  const res = await fetch(`${PUBLIC_API_BASE}/v1/billing/x402/intents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -768,7 +792,7 @@ export async function settleX402Intent(
   payload?: { paymentResponse?: Record<string, unknown> },
 ) {
   const body = payload || {}
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'}/v1/billing/x402/intents/${intentId}/settle`, {
+  const res = await fetch(`${PUBLIC_API_BASE}/v1/billing/x402/intents/${intentId}/settle`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

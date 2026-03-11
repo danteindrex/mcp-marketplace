@@ -242,6 +242,30 @@ func TestPublicEndpoints(t *testing.T) {
 	if res := call(t, h, http.MethodGet, "/.well-known/oauth-protected-resource", "", nil); res.Code != http.StatusOK {
 		t.Fatalf("protected resource metadata status %d", res.Code)
 	}
+	if res := call(t, h, http.MethodGet, "/.well-known/mcp.json", "", nil); res.Code != http.StatusOK {
+		t.Fatalf("mcp metadata status %d", res.Code)
+	} else {
+		var body map[string]interface{}
+		_ = json.Unmarshal(res.Body.Bytes(), &body)
+		if body["authorization_server"] != "http://localhost:8080" {
+			t.Fatalf("expected mcp metadata authorization_server to match base url, got %v", body["authorization_server"])
+		}
+		if body["resource"] != "http://localhost:8080/mcp/hub/{tenantID}/{userID}" {
+			t.Fatalf("expected default mcp metadata resource template, got %v", body["resource"])
+		}
+	}
+	if res := call(t, h, http.MethodGet, "/.well-known/mcp.json?resource=http://localhost:8080/mcp/hub/tenant-a/user-a/", "", nil); res.Code != http.StatusOK {
+		t.Fatalf("mcp metadata canonical status %d body=%s", res.Code, res.Body.String())
+	} else {
+		var body map[string]interface{}
+		_ = json.Unmarshal(res.Body.Bytes(), &body)
+		if body["resource"] != "http://localhost:8080/mcp/hub/tenant-a/user-a" {
+			t.Fatalf("expected canonical mcp metadata resource, got %v", body["resource"])
+		}
+	}
+	if res := call(t, h, http.MethodGet, "/.well-known/mcp.json?resource=https://evil.example/mcp/hub/tenant-a/user-a", "", nil); res.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid mcp metadata resource to return 400, got %d", res.Code)
+	}
 	if res := call(t, h, http.MethodGet, "/.well-known/oauth-protected-resource?resource=http://localhost:8080/mcp/hub/tenant-a/user-a/", "", nil); res.Code != http.StatusOK {
 		t.Fatalf("protected resource metadata canonical status %d body=%s", res.Code, res.Body.String())
 	} else {
@@ -456,6 +480,19 @@ func TestMarketplaceInstallAndMCPHubWithSDKMode(t *testing.T) {
 	if publish.Code != http.StatusOK {
 		t.Fatalf("publish installable server status %d body=%s", publish.Code, publish.Body.String())
 	}
+	detail := call(t, h, http.MethodGet, "/v1/marketplace/servers/"+serverSlug, "", nil)
+	if detail.Code != http.StatusOK {
+		t.Fatalf("marketplace detail status %d body=%s", detail.Code, detail.Body.String())
+	}
+	var detailBody map[string]interface{}
+	_ = json.Unmarshal(detail.Body.Bytes(), &detailBody)
+	installMeta, _ := detailBody["install"].(map[string]interface{})
+	if installMeta["discoveryBaseUrl"] != "http://localhost:8080" {
+		t.Fatalf("expected marketplace install discovery base url, got %v", installMeta["discoveryBaseUrl"])
+	}
+	if installMeta["cimdUrl"] != "http://localhost:8080/.well-known/mcp.json" {
+		t.Fatalf("unexpected cimd url %v", installMeta["cimdUrl"])
+	}
 
 	install := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+serverSlug+"/install", buyerToken, map[string]interface{}{
 		"client": "vscode",
@@ -631,6 +668,16 @@ func TestMerchantAccessControl(t *testing.T) {
 	}
 	if res := call(t, h, http.MethodGet, "/v1/merchant/servers/"+id+"/auth", merchantToken, nil); res.Code != http.StatusOK {
 		t.Fatalf("auth status %d", res.Code)
+	} else {
+		var body map[string]interface{}
+		_ = json.Unmarshal(res.Body.Bytes(), &body)
+		oauth, _ := body["oauth"].(map[string]interface{})
+		if oauth["marketplaceMetadataUrl"] != "http://localhost:8080/.well-known/mcp.json" {
+			t.Fatalf("expected marketplace metadata url, got %v", oauth["marketplaceMetadataUrl"])
+		}
+		if oauth["marketplaceResourceTemplate"] != "http://localhost:8080/mcp/hub/{tenantID}/{userID}" {
+			t.Fatalf("expected marketplace resource template, got %v", oauth["marketplaceResourceTemplate"])
+		}
 	}
 	if res := call(t, h, http.MethodGet, "/v1/merchant/servers/"+id+"/observability", merchantToken, nil); res.Code != http.StatusOK {
 		t.Fatalf("observability status %d", res.Code)
@@ -1274,6 +1321,129 @@ func TestMerchantServerReadEndpointsEnforceTenantIsolation(t *testing.T) {
 		if res := call(t, h, http.MethodGet, path, adminToken, nil); res.Code != http.StatusOK {
 			t.Fatalf("expected admin success for %s, got %d body=%s", path, res.Code, res.Body.String())
 		}
+	}
+}
+
+func TestPublishRejectsCloudServersWithoutUsableUpstreamRuntime(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "runtime-merchant@acme.local", "MerchantPass123!@", "merchant")
+	merchantToken := login(t, h, "runtime-merchant@acme.local", "MerchantPass123!@")
+
+	createMissingRuntime := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":           "Missing Runtime Server",
+		"slug":           "missing-runtime-server",
+		"description":    "Cloud publish should require upstream runtime",
+		"category":       "automation",
+		"dockerImage":    "tenant/runtime:1.0.0",
+		"requiredScopes": []string{"db:read"},
+		"pricingType":    "free",
+		"pricingAmount":  1.0,
+		"supportsCloud":  true,
+		"supportsLocal":  true,
+	})
+	if createMissingRuntime.Code != http.StatusCreated {
+		t.Fatalf("create missing runtime server status %d body=%s", createMissingRuntime.Code, createMissingRuntime.Body.String())
+	}
+	var createMissingBody map[string]interface{}
+	_ = json.Unmarshal(createMissingRuntime.Body.Bytes(), &createMissingBody)
+	missingID := createMissingBody["id"].(string)
+
+	deployMissing := call(t, h, http.MethodPost, "/v1/merchant/servers/"+missingID+"/deploy", merchantToken, map[string]interface{}{
+		"deploymentTarget": "us-west-1",
+		"n8nWorkflowId":    "wf_runtime_missing",
+		"n8nWorkflowURL":   "https://n8n.example.com/workflows/wf_runtime_missing",
+	})
+	if deployMissing.Code != http.StatusOK {
+		t.Fatalf("deploy missing runtime status %d body=%s", deployMissing.Code, deployMissing.Body.String())
+	}
+
+	publishMissing := call(t, h, http.MethodPost, "/v1/merchant/servers/"+missingID+"/publish", merchantToken, nil)
+	if publishMissing.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected missing runtime publish to fail with 422, got %d body=%s", publishMissing.Code, publishMissing.Body.String())
+	}
+	if codes := blockingReasonCodes(t, publishMissing); !strings.Contains(strings.Join(codes, ","), "upstream_runtime_required") {
+		t.Fatalf("expected upstream runtime required blocker, got %v", codes)
+	}
+
+	createLocalhostRuntime := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Localhost Runtime Server",
+		"slug":                 "localhost-runtime-server",
+		"description":          "Cloud publish should reject localhost upstream",
+		"category":             "automation",
+		"dockerImage":          "tenant/runtime-localhost:1.0.0",
+		"canonicalResourceUri": "http://localhost:62998",
+		"requiredScopes":       []string{"db:read"},
+		"pricingType":          "free",
+		"pricingAmount":        1.0,
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+	})
+	if createLocalhostRuntime.Code != http.StatusCreated {
+		t.Fatalf("create localhost runtime server status %d body=%s", createLocalhostRuntime.Code, createLocalhostRuntime.Body.String())
+	}
+	var createLocalhostBody map[string]interface{}
+	_ = json.Unmarshal(createLocalhostRuntime.Body.Bytes(), &createLocalhostBody)
+	localhostID := createLocalhostBody["id"].(string)
+
+	deployLocalhost := call(t, h, http.MethodPost, "/v1/merchant/servers/"+localhostID+"/deploy", merchantToken, map[string]interface{}{
+		"deploymentTarget": "us-west-1",
+		"n8nWorkflowId":    "wf_runtime_localhost",
+		"n8nWorkflowURL":   "https://n8n.example.com/workflows/wf_runtime_localhost",
+	})
+	if deployLocalhost.Code != http.StatusOK {
+		t.Fatalf("deploy localhost runtime status %d body=%s", deployLocalhost.Code, deployLocalhost.Body.String())
+	}
+
+	publishLocalhost := call(t, h, http.MethodPost, "/v1/merchant/servers/"+localhostID+"/publish", merchantToken, nil)
+	if publishLocalhost.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected localhost runtime publish to fail with 422, got %d body=%s", publishLocalhost.Code, publishLocalhost.Body.String())
+	}
+	if codes := blockingReasonCodes(t, publishLocalhost); !strings.Contains(strings.Join(codes, ","), "upstream_runtime_local_only") {
+		t.Fatalf("expected localhost runtime blocker, got %v", codes)
+	}
+}
+
+func TestPublishAllowsLocalOnlyServersWithLocalUpstreamRuntime(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "local-only-merchant@acme.local", "MerchantPass123!@", "merchant")
+	merchantToken := login(t, h, "local-only-merchant@acme.local", "MerchantPass123!@")
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Local Only Runtime Server",
+		"slug":                 "local-only-runtime-server",
+		"description":          "Local-only publish can keep localhost runtime",
+		"category":             "automation",
+		"dockerImage":          "tenant/local-only:1.0.0",
+		"canonicalResourceUri": "http://localhost:62998",
+		"requiredScopes":       []string{"db:read"},
+		"pricingType":          "free",
+		"pricingAmount":        1.0,
+		"supportsCloud":        false,
+		"supportsLocal":        true,
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create local-only server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+	serverSlug := createdBody["slug"].(string)
+
+	deploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/deploy", merchantToken, map[string]interface{}{
+		"deploymentTarget": "us-west-1",
+		"n8nWorkflowId":    "wf_local_only",
+		"n8nWorkflowURL":   "https://n8n.example.com/workflows/wf_local_only",
+	})
+	if deploy.Code != http.StatusOK {
+		t.Fatalf("deploy local-only server status %d body=%s", deploy.Code, deploy.Body.String())
+	}
+
+	publish := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/publish", merchantToken, nil)
+	if publish.Code != http.StatusOK {
+		t.Fatalf("expected local-only publish to succeed, got %d body=%s", publish.Code, publish.Body.String())
+	}
+	if res := call(t, h, http.MethodGet, "/v1/marketplace/servers/"+serverSlug, "", nil); res.Code != http.StatusOK {
+		t.Fatalf("marketplace detail should be available for local-only published server, got %d body=%s", res.Code, res.Body.String())
 	}
 }
 

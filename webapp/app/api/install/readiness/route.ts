@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getPublicApiBase, getServerApiBase } from '@/lib/api-base'
+
+const API_BASE = getServerApiBase()
+const PUBLIC_API_BASE = getPublicApiBase()
 
 type FetchStatus = 'ok' | 'error'
 
@@ -57,37 +61,54 @@ function buildUrl(base: string, path: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  const resource = req.nextUrl.searchParams.get('resource')
-  if (!resource) {
-    return NextResponse.json({ error: 'resource query parameter required' }, { status: 400 })
-  }
-  let parsed: URL
+  const requestedBase = req.nextUrl.searchParams.get('metadataBaseUrl')
+  const requestedResource = req.nextUrl.searchParams.get('resource')
+  const displayCandidate = requestedBase || requestedResource || PUBLIC_API_BASE
+  const fetchCandidate = requestedBase ? API_BASE : requestedResource || API_BASE
+  let displayParsed: URL
+  let fetchParsed: URL
   try {
-    parsed = new URL(resource)
+    displayParsed = new URL(displayCandidate)
+    fetchParsed = new URL(fetchCandidate)
   } catch {
-    return NextResponse.json({ error: 'resource must be an absolute URL' }, { status: 400 })
+    return NextResponse.json({ error: 'metadataBaseUrl must be an absolute URL' }, { status: 400 })
   }
 
-  const baseUrl = sanitizeBaseUrl(parsed.toString())
-  const cimdUrl = buildUrl(baseUrl, '/.well-known/mcp.json')
-  const cimdResult = await safeFetchJson(cimdUrl)
+  const baseUrl = sanitizeBaseUrl(displayParsed.toString())
+  const fetchBaseUrl = sanitizeBaseUrl(fetchParsed.toString())
+  let cimdUrl = buildUrl(baseUrl, '/.well-known/mcp.json')
+  let cimdFetchUrl = buildUrl(fetchBaseUrl, '/.well-known/mcp.json')
+  if (requestedResource) {
+    try {
+      const resource = new URL(requestedResource).toString()
+      const params = new URLSearchParams({ resource })
+      cimdUrl = `${cimdUrl}?${params.toString()}`
+      cimdFetchUrl = `${cimdFetchUrl}?${params.toString()}`
+    } catch {
+      return NextResponse.json({ error: 'resource must be an absolute URL' }, { status: 400 })
+    }
+  }
+  const cimdResult = await safeFetchJson(cimdFetchUrl)
 
   const authorizationServer = (cimdResult.json as any)?.authorization_server as string | undefined
   const oauthMetadataUrl = authorizationServer || buildUrl(baseUrl, '/.well-known/oauth-authorization-server')
-  const oauthResult = await safeFetchJson(oauthMetadataUrl)
+  const oauthFetchUrl = requestedBase ? buildUrl(fetchBaseUrl, '/.well-known/oauth-authorization-server') : oauthMetadataUrl
+  const oauthResult = await safeFetchJson(oauthFetchUrl)
 
   const jwksUrl = (oauthResult.json as any)?.jwks_uri as string | undefined
-  const jwksResult = jwksUrl ? await safeFetchJson(jwksUrl) : null
+  const jwksFetchUrl = requestedBase && jwksUrl ? buildUrl(fetchBaseUrl, '/.well-known/jwks.json') : jwksUrl
+  const jwksResult = jwksFetchUrl ? await safeFetchJson(jwksFetchUrl) : null
 
   return NextResponse.json({
     baseUrl,
+    resource: requestedResource || null,
     cimd: cimdResult,
     oauth: oauthResult,
     jwks: jwksResult,
     links: {
       cimdUrl,
       oauthMetadataUrl,
-      jwksUrl: jwksUrl || null,
+      jwksUrl: jwksUrl || (requestedBase ? buildUrl(baseUrl, '/.well-known/jwks.json') : null),
     },
     timestamp: new Date().toISOString(),
   })

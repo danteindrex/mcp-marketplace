@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/url"
 	"net/http"
 	"slices"
 	"strings"
@@ -49,6 +50,63 @@ type serverBlockingReason struct {
 type serverPublishability struct {
 	CanPublish      bool                   `json:"canPublish"`
 	BlockingReasons []serverBlockingReason `json:"blockingReasons"`
+}
+
+func canonicalResourceBlockingReasons(server models.Server) []serverBlockingReason {
+	reasons := make([]serverBlockingReason, 0, 3)
+	if !server.SupportsCloud && !server.SupportsLocal {
+		reasons = append(reasons, serverBlockingReason{
+			Code:    "install_surface_required",
+			Message: "Enable at least one buyer install surface before publishing.",
+			Stage:   "distribution",
+			Field:   "supportsCloud",
+		})
+	}
+
+	canonical := strings.TrimSpace(server.CanonicalResourceURI)
+	if canonical == "" {
+		if server.SupportsCloud {
+			reasons = append(reasons, serverBlockingReason{
+				Code:    "upstream_runtime_required",
+				Message: "Set the upstream runtime URL before publishing cloud installs.",
+				Stage:   "runtime",
+				Field:   "canonicalResourceUri",
+			})
+		}
+		return reasons
+	}
+
+	parsed, err := url.Parse(canonical)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		reasons = append(reasons, serverBlockingReason{
+			Code:    "upstream_runtime_invalid",
+			Message: "Canonical resource URI must be an absolute URL.",
+			Stage:   "runtime",
+			Field:   "canonicalResourceUri",
+		})
+		return reasons
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	if host == "example.com" {
+		reasons = append(reasons, serverBlockingReason{
+			Code:    "upstream_runtime_placeholder",
+			Message: "Replace placeholder upstream URLs before publishing.",
+			Stage:   "runtime",
+			Field:   "canonicalResourceUri",
+		})
+	}
+
+	if server.SupportsCloud && (host == "localhost" || host == "127.0.0.1") {
+		reasons = append(reasons, serverBlockingReason{
+			Code:    "upstream_runtime_local_only",
+			Message: "Cloud-published servers cannot point at localhost upstream runtimes.",
+			Stage:   "runtime",
+			Field:   "canonicalResourceUri",
+		})
+	}
+
+	return reasons
 }
 
 func (a *App) getMerchantServer(w http.ResponseWriter, r *http.Request) {
@@ -434,6 +492,7 @@ func (a *App) serverPublishability(server models.Server) serverPublishability {
 			reasons = append(reasons, serverBlockingReason{Code: "payment_methods_disabled", Message: err.Error(), Stage: "payments", Field: "paymentMethods"})
 		}
 	}
+	reasons = append(reasons, canonicalResourceBlockingReasons(server)...)
 	return serverPublishability{CanPublish: len(reasons) == 0, BlockingReasons: reasons}
 }
 
@@ -462,7 +521,7 @@ func publishabilityStatusCode(publishability serverPublishability) int {
 		}
 	}
 	if slices.ContainsFunc(publishability.BlockingReasons, func(reason serverBlockingReason) bool {
-		return reason.Stage == "pricing" || reason.Stage == "payments"
+		return reason.Stage == "pricing" || reason.Stage == "payments" || reason.Stage == "runtime" || reason.Stage == "distribution"
 	}) {
 		return http.StatusUnprocessableEntity
 	}
@@ -556,10 +615,13 @@ func (a *App) serverAuthConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"serverId": server.ID,
 		"oauth": map[string]interface{}{
-			"pkceRequired":              true,
-			"resourceIndicatorRequired": true,
-			"canonicalResourceUri":      server.CanonicalResourceURI,
-			"registrationModes":         []string{"pre_registered", "cimd", "dcr"},
+			"pkceRequired":               true,
+			"resourceIndicatorRequired":  true,
+			"canonicalResourceUri":       server.CanonicalResourceURI,
+			"upstreamResourceUrl":        server.CanonicalResourceURI,
+			"marketplaceMetadataUrl":     strings.TrimRight(a.cfg.BaseURL, "/") + "/.well-known/mcp.json",
+			"marketplaceResourceTemplate": strings.TrimRight(a.cfg.BaseURL, "/") + "/mcp/hub/{tenantID}/{userID}",
+			"registrationModes":          []string{"pre_registered", "cimd", "dcr"},
 		},
 	})
 }

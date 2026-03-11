@@ -1,6 +1,8 @@
+import { getPublicApiBase } from './api-base'
+
 export type AppRole = 'buyer' | 'merchant' | 'admin'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080'
+const API_BASE = getPublicApiBase()
 const roleKey = 'mcp_active_role'
 
 function readCookie(name: string): string | null {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
+import { getServerApiBase } from '@/lib/api-base'
 
-const API_BASE = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:2024'
+const API_BASE = getServerApiBase()
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8
 
 type BackendAuthPayload = {

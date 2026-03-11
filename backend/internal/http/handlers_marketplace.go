@@ -2,10 +2,28 @@ package http
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
 )
+
+func (a *App) marketplaceInstallMetadata(server models.Server) map[string]interface{} {
+	baseURL := strings.TrimRight(a.cfg.BaseURL, "/")
+	return map[string]interface{}{
+		"oneClick":           true,
+		"hubStrategy":        "single-personal-hub",
+		"clients":            []string{"vscode", "codex", "claude", "cursor", "chatgpt"},
+		"installEndpoint":    "/v1/marketplace/servers/" + server.Slug + "/install",
+		"supportsCommands":   true,
+		"discoveryBaseUrl":   baseURL,
+		"cimdUrl":            baseURL + "/.well-known/mcp.json",
+		"oauthMetadataUrl":   baseURL + "/.well-known/oauth-authorization-server",
+		"jwksUrl":            baseURL + "/.well-known/jwks.json",
+		"resourceTemplate":   baseURL + "/mcp/hub/{tenantID}/{userID}",
+		"upstreamResourceUrl": server.CanonicalResourceURI,
+	}
+}
 
 func (a *App) listMarketplaceServers(w http.ResponseWriter, r *http.Request) {
 	all := a.store.ListMarketplaceServers()
@@ -32,12 +50,6 @@ func (a *App) getMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"server": server,
-		"install": map[string]interface{}{
-			"oneClick":         true,
-			"hubStrategy":      "single-personal-hub",
-			"clients":          []string{"vscode", "codex", "claude", "cursor", "chatgpt"},
-			"installEndpoint":  "/v1/marketplace/servers/" + server.Slug + "/install",
-			"supportsCommands": true,
-		},
+		"install": a.marketplaceInstallMetadata(server),
 	})
 }

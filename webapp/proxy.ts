@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { getServerApiBase } from '@/lib/api-base'
 
 const protectedPrefixes = ['/buyer', '/merchant', '/admin', '/settings', '/install']
-const apiBase = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:2024'
+const apiBase = getServerApiBase()
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/' || pathname === '/login') return true

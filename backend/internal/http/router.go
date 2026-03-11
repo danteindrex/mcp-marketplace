@@ -66,6 +66,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 	r.Get("/auth/oauth/google/callback", app.oauthGoogleCallback)
 	r.Get("/auth/oauth/github/start", app.oauthGitHubStart)
 	r.Get("/auth/oauth/github/callback", app.oauthGitHubCallback)
+	r.Get("/.well-known/mcp.json", app.mcpMetadata)
 	r.Get("/.well-known/oauth-protected-resource", app.oauthProtectedResourceMetadata)
 	r.Get("/.well-known/oauth-authorization-server", app.oauthAuthorizationServerMetadata)
 	r.Get("/.well-known/jwks.json", app.jwks)
