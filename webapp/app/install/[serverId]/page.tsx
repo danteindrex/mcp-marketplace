@@ -106,7 +106,7 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [installSession, setInstallSession] = useState<InstallSession | null>(null)
   const [paymentRequired, setPaymentRequired] = useState<InstallPaymentRequired | null>(null)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('')
-  const [externalPaymentID, setExternalPaymentID] = useState('')
+  const [externalPaymentInput, setExternalPaymentInput] = useState('')
   const [server, setServer] = useState<Server | null>(null)
   const [paymentControls, setPaymentControls] = useState<BuyerPaymentControls | null>(null)
   const [paymentControlsLoading, setPaymentControlsLoading] = useState(true)
@@ -312,6 +312,19 @@ export default function InstallWizardPage({ params }: PageProps) {
     setCopiedCode(true)
     toast.success('Copied to clipboard')
     setTimeout(() => setCopiedCode(false), 2000)
+  }
+
+  const parseExternalPaymentResponse = () => {
+    const raw = externalPaymentInput.trim()
+    if (!raw) return null
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return {
+        paymentIdentifier: raw,
+        method: 'x402_wallet',
+      }
+    }
   }
 
   const runInstallAction = (action: InstallAction) => {
@@ -589,17 +602,20 @@ export default function InstallWizardPage({ params }: PageProps) {
                         Intent: {paymentRequired.intent?.id} | Amount: {Number(paymentRequired.intent?.amountUsdc || 0).toFixed(2)} USDC
                       </p>
                       {selectedPaymentMethod === 'x402_wallet' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="external-payment-id">External Payment Identifier</Label>
-                          <input
-                            id="external-payment-id"
-                            value={externalPaymentID}
-                            onChange={e => setExternalPaymentID(e.target.value)}
-                            className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
-                            placeholder="tx hash or provider payment id"
-                          />
-                        </div>
-                      )}
+                          <div className="space-y-2">
+                            <Label htmlFor="external-payment-id">External Payment Payload</Label>
+                            <textarea
+                              id="external-payment-id"
+                              value={externalPaymentInput}
+                              onChange={e => setExternalPaymentInput(e.target.value)}
+                              className="w-full min-h-28 px-3 py-2 rounded-md border border-input bg-background text-sm font-mono"
+                              placeholder='Paste the x402 payment JSON payload, or a payment identifier / tx hash'
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              x402 clients normally retry the request with a `PAYMENT-SIGNATURE` payload. Paste that JSON here for facilitator-backed settlement testing.
+                            </p>
+                          </div>
+                        )}
                       {paymentRequired.wwwAuthenticate && (
                         <div className="bg-background rounded-md p-3 font-mono text-xs overflow-x-auto">
                           <p className="text-[11px] uppercase text-muted-foreground mb-1">WWW-Authenticate</p>
@@ -617,23 +633,24 @@ export default function InstallWizardPage({ params }: PageProps) {
                         </div>
                       )}
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          disabled={installing || (selectedPaymentMethod === 'x402_wallet' && !externalPaymentID)}
-                          onClick={async () => {
-                            if (!paymentRequired?.intent?.id) return
-                            try {
-                              setInstalling(true)
-                              if (selectedPaymentMethod === 'wallet_balance') {
-                                await settleX402Intent(paymentRequired.intent.id)
-                              } else {
-                                await settleX402Intent(paymentRequired.intent.id, {
-                                  paymentResponse: {
-                                    paymentIdentifier: externalPaymentID,
-                                    method: 'x402_wallet',
-                                  },
-                                })
-                              }
-                              await runInstallAttempt(false)
+                          <Button
+                            disabled={installing || (selectedPaymentMethod === 'x402_wallet' && !externalPaymentInput.trim())}
+                            onClick={async () => {
+                              if (!paymentRequired?.intent?.id) return
+                              try {
+                                setInstalling(true)
+                                if (selectedPaymentMethod === 'wallet_balance') {
+                                  await settleX402Intent(paymentRequired.intent.id)
+                                } else {
+                                  const parsed = parseExternalPaymentResponse()
+                                  if (!parsed) {
+                                    throw new Error('Provide an x402 payment payload or payment identifier before settling.')
+                                  }
+                                  await settleX402Intent(paymentRequired.intent.id, {
+                                    paymentResponse: parsed,
+                                  })
+                                }
+                                await runInstallAttempt(false)
                             } catch (error: any) {
                               toast.error(error?.message || 'Payment settlement failed')
                             } finally {

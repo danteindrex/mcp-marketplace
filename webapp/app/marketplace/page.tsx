@@ -97,7 +97,7 @@ export default function MarketplacePage() {
     }
 
     return results
-  }, [searchQuery, selectedCategory, selectedPricing, sortBy])
+  }, [servers, searchQuery, selectedCategory, selectedPricing, sortBy])
 
   const hasActiveFilters = Boolean(searchQuery || selectedCategory || selectedPricing)
   const resultSummary = isLoading

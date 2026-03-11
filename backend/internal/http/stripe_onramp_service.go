@@ -113,8 +113,8 @@ func (s *stripeOnrampService) createSession(ctx context.Context, in stripeCreate
 	form := url.Values{}
 	form.Set("source_currency", "usd")
 	form.Set("source_amount", fmt.Sprintf("%.2f", amount))
-	form.Set("destination_currencies[0]", "usdc")
-	form.Set("destination_networks[0]", "base")
+	form.Add("destination_currencies[]", "usdc")
+	form.Add("destination_networks[]", "base")
 	if strings.TrimSpace(in.WalletAddress) != "" {
 		// Base is EVM-compatible; Stripe's wallet_addresses key uses ethereum for EVM addresses.
 		form.Set("wallet_addresses[ethereum]", strings.TrimSpace(in.WalletAddress))
@@ -133,8 +133,11 @@ func (s *stripeOnrampService) createSession(ctx context.Context, in stripeCreate
 	out := stripeOnrampSession{
 		ID:           stringFromAny(resp["id"]),
 		ClientSecret: stringFromAny(resp["client_secret"]),
-		HostedURL:    stringFromAny(resp["hosted_url"]),
+		HostedURL:    stringFromAny(resp["redirect_url"]),
 		Raw:          resp,
+	}
+	if out.HostedURL == "" {
+		out.HostedURL = stringFromAny(resp["hosted_url"])
 	}
 	if out.ID == "" {
 		return stripeOnrampSession{}, fmt.Errorf("stripe onramp session missing id")

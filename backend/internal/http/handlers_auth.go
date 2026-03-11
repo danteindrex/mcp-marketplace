@@ -16,6 +16,8 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+const appSessionMaxAgeSeconds = 60 * 60 * 8
+
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -270,7 +272,7 @@ func (a *App) oauthGoogleStart(w http.ResponseWriter, r *http.Request) {
 	if redirectBase == "" {
 		redirectBase = a.cfg.BaseURL
 	}
-	callbackURL := redirectBase + "/auth/oauth/google/callback"
+	callbackURL := strings.TrimRight(redirectBase, "/") + "/auth/oauth/google/callback"
 
 	oauthCfg := &oauth2.Config{
 		ClientID:     integrations.Google.ClientID,
@@ -343,11 +345,14 @@ func (a *App) oauthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	a.oauth.mu.Unlock()
 
 	integrations := a.resolvedIntegrations()
-	redirectBase := integrations.Google.RedirectBase
-	if redirectBase == "" {
-		redirectBase = a.cfg.BaseURL
+	callbackURL := strings.TrimSpace(stateData.CallbackURL)
+	if callbackURL == "" {
+		redirectBase := integrations.Google.RedirectBase
+		if redirectBase == "" {
+			redirectBase = a.cfg.BaseURL
+		}
+		callbackURL = strings.TrimRight(redirectBase, "/") + "/auth/oauth/google/callback"
 	}
-	callbackURL := redirectBase + "/auth/oauth/google/callback"
 
 	oauthCfg := &oauth2.Config{
 		ClientID:     integrations.Google.ClientID,
@@ -418,7 +423,7 @@ func (a *App) oauthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Return success response matching loginResponse format
-	writeJSON(w, http.StatusOK, loginResponse(user, jwtToken))
+	respondOAuthSuccess(w, r, user, jwtToken)
 }
 
 // oauthGitHubStart initiates GitHub OAuth flow
@@ -436,7 +441,7 @@ func (a *App) oauthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	if redirectBase == "" {
 		redirectBase = a.cfg.BaseURL
 	}
-	callbackURL := redirectBase + "/auth/oauth/github/callback"
+	callbackURL := strings.TrimRight(redirectBase, "/") + "/auth/oauth/github/callback"
 
 	oauthCfg := &oauth2.Config{
 		ClientID:     integrations.GitHub.ClientID,
@@ -507,11 +512,14 @@ func (a *App) oauthGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	a.oauth.mu.Unlock()
 
 	integrations := a.resolvedIntegrations()
-	redirectBase := integrations.GitHub.RedirectBase
-	if redirectBase == "" {
-		redirectBase = a.cfg.BaseURL
+	callbackURL := strings.TrimSpace(stateData.CallbackURL)
+	if callbackURL == "" {
+		redirectBase := integrations.GitHub.RedirectBase
+		if redirectBase == "" {
+			redirectBase = a.cfg.BaseURL
+		}
+		callbackURL = strings.TrimRight(redirectBase, "/") + "/auth/oauth/github/callback"
 	}
-	callbackURL := redirectBase + "/auth/oauth/github/callback"
 
 	oauthCfg := &oauth2.Config{
 		ClientID:     integrations.GitHub.ClientID,
@@ -618,7 +626,62 @@ func (a *App) oauthGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Return success response matching loginResponse format
-	writeJSON(w, http.StatusOK, loginResponse(user, jwtToken))
+	respondOAuthSuccess(w, r, user, jwtToken)
+}
+
+func respondOAuthSuccess(w http.ResponseWriter, r *http.Request, user models.User, token string) {
+	secure := false
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(aBaseURL(r))), "https://") {
+		secure = true
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "mcp_access_token",
+		Value:    token,
+		Path:     "/",
+		MaxAge:   appSessionMaxAgeSeconds,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "mcp_active_role",
+		Value:    roleForUser(user),
+		Path:     "/",
+		MaxAge:   appSessionMaxAgeSeconds,
+		HttpOnly: false,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	})
+	target := strings.TrimRight(frontendBaseURLFromRequest(r), "/") + "/login?oauth=success"
+	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+}
+
+func frontendBaseURLFromRequest(r *http.Request) string {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin != "" {
+		return origin
+	}
+	if len(aDefaultFrontendOrigins) > 0 {
+		return aDefaultFrontendOrigins[0]
+	}
+	return "http://localhost:3000"
+}
+
+var aDefaultFrontendOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
+
+func aBaseURL(r *http.Request) string {
+	if r == nil || r.URL == nil {
+		return ""
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	host := r.Host
+	if host == "" {
+		return ""
+	}
+	return scheme + "://" + host
 }
 
 // findOrCreateOAuthUser finds or creates a user based on OAuth provider and subject ID
