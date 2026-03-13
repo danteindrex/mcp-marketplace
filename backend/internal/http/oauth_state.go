@@ -40,6 +40,20 @@ type oauthStateData struct {
 	Nonce       string
 	CreatedAt   time.Time
 	CallbackURL string
+	Mode        string
+	Role        models.Role
+	Name        string
+	TenantName  string
+}
+
+type pendingOAuthSignup struct {
+	Token      string
+	Provider   models.OAuthProvider
+	ProviderID string
+	Email      string
+	Name       string
+	AvatarURL  string
+	CreatedAt  time.Time
 }
 
 type oauthState struct {
@@ -47,6 +61,7 @@ type oauthState struct {
 	clients map[string]oauthClient
 	codes   map[string]authCode
 	states  map[string]oauthStateData
+	pending map[string]pendingOAuthSignup
 }
 
 func newOAuthState() *oauthState {
@@ -62,8 +77,9 @@ func newOAuthState() *oauthState {
 				CreatedAt:               now,
 			},
 		},
-		codes:  map[string]authCode{},
-		states: map[string]oauthStateData{},
+		codes:   map[string]authCode{},
+		states:  map[string]oauthStateData{},
+		pending: map[string]pendingOAuthSignup{},
 	}
 }
 

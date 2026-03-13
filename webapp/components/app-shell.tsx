@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { AppSidebar } from './sidebar'
 import { SidebarProvider } from '@/components/ui/sidebar'
-import { Breadcrumb } from '@/components/retroui'
+import { Breadcrumb, Text } from '@/components/retroui'
 import { logoutAndRedirect } from '@/lib/auth-session'
 import { fetchCurrentUser } from '@/lib/api-client'
 
@@ -60,10 +60,10 @@ export function AppShell({ children, role = 'buyer', userEmail = '' }: AppShellP
           >
             <div className="flex items-center gap-2">
               <Command className="w-5 h-5 text-primary" />
-              <span className="text-sm font-medium">MCP Marketplace</span>
-              <span className="text-xs bg-muted px-2 py-1 rounded ml-2 text-muted-foreground">
+              <Text as="span" variant="small" className="font-medium">MCP Marketplace</Text>
+              <Text as="span" variant="caption" className="bg-muted px-2 py-1 rounded ml-2 text-muted-foreground">
                 {dashboardLabel} Dashboard
-              </span>
+              </Text>
             </div>
 
             <div className="flex items-center gap-4">
@@ -93,8 +93,8 @@ export function AppShell({ children, role = 'buyer', userEmail = '' }: AppShellP
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel className="flex flex-col">
-                    <span className="text-sm font-medium">{resolvedEmail || 'Account'}</span>
-                    <span className="text-xs text-muted-foreground">{resolvedRole}</span>
+                    <Text as="span" variant="small" className="font-medium">{resolvedEmail || 'Account'}</Text>
+                    <Text as="span" variant="caption" className="text-muted-foreground">{resolvedRole}</Text>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem>

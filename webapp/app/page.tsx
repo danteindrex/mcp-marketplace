@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ArrowRight, Check, Zap, Shield, TrendingUp, Users, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { JsonLd } from '@/components/json-ld'
 import {
   Card as BoldCard,
   CardContent as BoldCardContent,
@@ -24,6 +25,8 @@ import { Button as RetroButton, Card as RetroCard, Badge as RetroBadge } from '@
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { FAQSection, FooterSection } from '@/components/blocks/marketing'
 import { fetchCurrentUser, type CurrentUser } from '@/lib/api-client'
+import { getSiteUrl } from '@/lib/site'
+import { SALES_EMAIL, SECURITY_EMAIL, SUPPORT_EMAIL } from '@/lib/contact'
 
 const features = [
   { icon: Zap, title: 'Easy Installation', description: 'One-click setup with automatic scope negotiation and permission management' },
@@ -80,6 +83,34 @@ const pricingPlans = [
   },
 ]
 
+const homeFaqItems = [
+  {
+    question: 'What is Model Context Protocol (MCP)?',
+    answer:
+      'Model Context Protocol is a standard for connecting AI clients to external tools and data sources through predictable auth, transport, and capability contracts.',
+  },
+  {
+    question: 'How does MCP Marketplace make installing a server feel seamless?',
+    answer:
+      'Buyers select a client, verify metadata, approve scopes, settle payment only if needed, and launch a client-specific one-click action instead of stitching the flow together manually.',
+  },
+  {
+    question: 'Why is the install flow split into steps?',
+    answer:
+      'Separating client selection, metadata checks, permissions, payment, and launch removes dead ends and makes every blocker explainable before the user reaches the final install action.',
+  },
+  {
+    question: 'Can I use the same server across clients?',
+    answer:
+      'Yes. Marketplace installs are designed around a buyer hub and client-specific launch actions so the same account can be reused across supported clients like Codex, VS Code, Cursor, Claude, and ChatGPT.',
+  },
+  {
+    question: 'What happens when a paid install is blocked?',
+    answer:
+      'The flow shows payment as a separate step so the buyer knows whether to fund a wallet, settle an x402 challenge, or retry after the entitlement is issued.',
+  },
+]
+
 export default function HomePage() {
   const [featuredServers, setFeaturedServers] = useState<Server[]>([])
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -120,6 +151,63 @@ export default function HomePage() {
     { name: 'AI', count: featuredServers.filter(s => s.category === 'ai').length },
     { name: 'Integration', count: featuredServers.filter(s => s.category === 'integration').length },
   ]
+  const siteUrl = getSiteUrl()
+  const structuredData = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: 'MCP Marketplace',
+      url: siteUrl,
+      description:
+        'Marketplace for discovering, buying, installing, and managing Model Context Protocol servers.',
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: homeFaqItems.map(item => ({
+        '@type': 'Question',
+        name: item.question,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: item.answer,
+        },
+      })),
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'HowTo',
+      name: 'Install an MCP server with MCP Marketplace',
+      description:
+        'Choose a client, verify metadata, approve scopes, settle payment if needed, and launch a client-specific install action.',
+      step: [
+        {
+          '@type': 'HowToStep',
+          name: 'Choose a client',
+          text: 'Select Codex, Claude, Cursor, VS Code, or ChatGPT so the marketplace can generate the right install action.',
+        },
+        {
+          '@type': 'HowToStep',
+          name: 'Verify metadata',
+          text: 'Confirm CIMD, OAuth metadata, and hub readiness before continuing.',
+        },
+        {
+          '@type': 'HowToStep',
+          name: 'Review scopes',
+          text: 'Approve the scopes needed for the server to operate safely.',
+        },
+        {
+          '@type': 'HowToStep',
+          name: 'Settle payment when required',
+          text: 'Handle wallet or x402 settlement separately so payment never looks like an auth failure.',
+        },
+        {
+          '@type': 'HowToStep',
+          name: 'Launch the install action',
+          text: 'Open the generated one-click action or local bridge flow for the selected client.',
+        },
+      ],
+    },
+  ]
 
   return (
       <div
@@ -130,6 +218,7 @@ export default function HomePage() {
           backgroundSize: '40px 40px',
         }}
       >
+        <JsonLd data={structuredData} />
         <nav className="border-b border-border sticky top-0 z-50 bg-background/95 backdrop-blur">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <DarkModeOnly>
@@ -333,23 +422,77 @@ export default function HomePage() {
           </DarkModeOnly>
         </section>
 
+        <section className="px-4 sm:px-6 lg:px-8 py-16 max-w-5xl mx-auto w-full border-t border-border">
+          <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
+            <Card className="border-2 border-foreground p-8 shadow-[4px_4px_0px_hsl(var(--shadow-color))]">
+              <p className="text-sm font-black uppercase tracking-wide text-muted-foreground">Seamless Install</p>
+              <h2 className="mt-3 text-3xl font-black uppercase">How we make MCP installation feel simple</h2>
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-muted-foreground">
+                MCP Marketplace makes installation feel seamless by turning protocol complexity into
+                a guided flow: choose a client, verify install metadata, approve scopes, settle
+                payment only when required, and launch the exact action that client expects.
+              </p>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-lg border-2 border-foreground p-4">
+                  <h3 className="font-black uppercase">What buyers see</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    A short sequence with one decision per step and clear recovery if auth, payment,
+                    or client readiness blocks the install.
+                  </p>
+                </div>
+                <div className="rounded-lg border-2 border-foreground p-4">
+                  <h3 className="font-black uppercase">What the platform handles</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    CIMD checks, OAuth metadata, scope validation, entitlement handling, buyer hub
+                    connection setup, and the final one-click launch action.
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="border-2 border-foreground p-8 shadow-[4px_4px_0px_hsl(var(--shadow-color))]">
+              <p className="text-sm font-black uppercase tracking-wide text-muted-foreground">Install Path</p>
+              <ol className="mt-4 space-y-4 text-sm text-muted-foreground">
+                <li><span className="font-black text-foreground">1.</span> Pick Codex, Claude, Cursor, VS Code, or ChatGPT.</li>
+                <li><span className="font-black text-foreground">2.</span> Check metadata before asking the buyer to trust anything.</li>
+                <li><span className="font-black text-foreground">3.</span> Review the scopes the server needs.</li>
+                <li><span className="font-black text-foreground">4.</span> Handle payment separately when the server is not free.</li>
+                <li><span className="font-black text-foreground">5.</span> Launch the generated install action or local bridge flow.</li>
+              </ol>
+              <Button size="sm" asChild className={`mt-6 ${orangeBrutalButtonClass}`}>
+                <Link href="/guides/mcp-server-installation">Read the install guide</Link>
+              </Button>
+            </Card>
+          </div>
+        </section>
+
+        <section className="px-4 sm:px-6 lg:px-8 py-16 max-w-7xl mx-auto w-full border-t border-border">
+          <div className="mb-8">
+            <h2 className="text-3xl font-black uppercase">Canonical Guides</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Use these guides to understand MCP installation, client setup, pricing, and auth without leaving the marketplace context.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {[
+              { href: '/guides', label: 'Guide Library' },
+              { href: '/guides/mcp-server-installation', label: 'Install an MCP Server' },
+              { href: '/guides/install-mcp-in-codex', label: 'Install MCP in Codex' },
+              { href: '/guides/x402-pricing-explained', label: 'x402 Pricing Explained' },
+            ].map(item => (
+              <Link key={item.href} href={item.href}>
+                <Card className="p-6 border-2 border-foreground shadow-[4px_4px_0px_hsl(var(--shadow-color))] hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))] transition-all">
+                  <p className="font-black uppercase">{item.label}</p>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+
         <FAQSection.Accordion
           title="Frequently Asked Questions"
           subtitle="FAQ"
-          items={[
-            {
-              question: 'What is Model Context Protocol (MCP)?',
-              answer: 'MCP is a standardized protocol that enables secure communication between AI models and tools.',
-            },
-            {
-              question: 'How do I install a server?',
-              answer: 'Pick a server, click install, approve scopes, and connect once to your personal hub.',
-            },
-            {
-              question: 'Can I use the same account across clients?',
-              answer: 'Yes. Once connected, you can use marketplace access across supported clients like Codex, VS Code, Cursor, and Claude.',
-            },
-          ]}
+          items={homeFaqItems}
         />
 
         <section className="px-4 sm:px-6 lg:px-8 py-16 max-w-7xl mx-auto w-full border-t border-border">
@@ -378,8 +521,8 @@ export default function HomePage() {
                 Tell us your tenant size, throughput goals, and compliance requirements. We can provision hosted or hybrid MCP infrastructure with role-based access and billing controls.
               </p>
               <div className="mt-6 space-y-2 text-sm font-semibold">
-                <p>Sales: sales@mcp-marketplace.local</p>
-                <p>Security: security@mcp-marketplace.local</p>
+                <p>Sales: {SALES_EMAIL}</p>
+                <p>Security: {SECURITY_EMAIL}</p>
                 <p>Support SLA: 24/7 enterprise response</p>
               </div>
               <BurstShape size={72} className="absolute -bottom-5 -right-5 text-tertiary" />
@@ -428,8 +571,8 @@ export default function HomePage() {
             {
               title: 'Contact',
               links: [
-                { label: 'support@mcp-marketplace.local', href: 'mailto:support@mcp-marketplace.local' },
-                { label: 'security@mcp-marketplace.local', href: 'mailto:security@mcp-marketplace.local' },
+                { label: SUPPORT_EMAIL, href: `mailto:${SUPPORT_EMAIL}` },
+                { label: SECURITY_EMAIL, href: `mailto:${SECURITY_EMAIL}` },
                 { label: 'San Francisco, CA', href: '/contact' },
               ],
             },

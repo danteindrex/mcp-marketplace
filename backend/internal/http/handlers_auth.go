@@ -32,6 +32,20 @@ type signupRequest struct {
 	TenantName string `json:"tenantName"`
 }
 
+type oauthSignupIntent struct {
+	Mode       string
+	Role       models.Role
+	Name       string
+	TenantName string
+}
+
+type completeOAuthSignupRequest struct {
+	SignupToken string `json:"signupToken"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	TenantName  string `json:"tenantName"`
+}
+
 func isStrongPassword(v string) bool {
 	if len(v) < 12 {
 		return false
@@ -151,6 +165,8 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "email already registered"})
 		return
 	}
+	tenant.OwnerUserID = user.ID
+	_ = a.store.UpdateTenant(tenant)
 	a.store.AddAuditLog(models.AuditLog{
 		TenantID:   user.TenantID,
 		ActorID:    user.ID,
@@ -167,6 +183,85 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, loginResponse(user, token))
+}
+
+func (a *App) completeOAuthSignup(w http.ResponseWriter, r *http.Request) {
+	var req completeOAuthSignupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+
+	req.SignupToken = strings.TrimSpace(req.SignupToken)
+	req.Name = strings.TrimSpace(req.Name)
+	req.TenantName = strings.TrimSpace(req.TenantName)
+	if req.SignupToken == "" || req.Name == "" || req.TenantName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "signupToken, name, and tenantName are required"})
+		return
+	}
+
+	role := normalizeRole(req.Role)
+	if role == models.RoleAdmin {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin signup is disabled; bootstrap super admin only"})
+		return
+	}
+
+	pending, ok := a.consumePendingOAuthSignup(req.SignupToken)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid or expired signup token"})
+		return
+	}
+
+	if _, exists := a.store.GetOAuthAccount(pending.Provider, pending.ProviderID); exists {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "oauth account already linked"})
+		return
+	}
+	if existingUser, exists := a.store.GetUserByEmail(strings.ToLower(pending.Email)); exists {
+		a.store.CreateOAuthAccount(models.OAuthAccount{
+			UserID:     existingUser.ID,
+			Provider:   pending.Provider,
+			ProviderID: pending.ProviderID,
+			Email:      strings.ToLower(pending.Email),
+		})
+		token, err := a.jwt.GenerateAppToken(existingUser)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, loginResponse(existingUser, token))
+		return
+	}
+
+	user, err := a.createOAuthUser(
+		pending.Provider,
+		pending.ProviderID,
+		pending.Email,
+		req.Name,
+		pending.AvatarURL,
+		role,
+		req.TenantName,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	a.store.AddAuditLog(models.AuditLog{
+		TenantID:   user.TenantID,
+		ActorID:    user.ID,
+		Action:     "auth.signup.oauth.complete",
+		TargetType: "user",
+		TargetID:   user.ID,
+		Outcome:    "success",
+		Metadata:   map[string]interface{}{"email": user.Email, "provider": string(pending.Provider), "role": roleName(user.Role)},
+	})
+
+	token, err := a.jwt.GenerateAppToken(user)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, loginResponse(user, token))
 }
 
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
@@ -265,6 +360,12 @@ func (a *App) oauthGoogleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	intent, err := parseOAuthSignupIntent(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
 	// Generate state and nonce for CSRF and replay protection
 	state := randomToken("state_")
 	nonce := randomToken("nonce_")
@@ -289,6 +390,10 @@ func (a *App) oauthGoogleStart(w http.ResponseWriter, r *http.Request) {
 		Nonce:       nonce,
 		CreatedAt:   time.Now().UTC(),
 		CallbackURL: callbackURL,
+		Mode:        intent.Mode,
+		Role:        intent.Role,
+		Name:        intent.Name,
+		TenantName:  intent.TenantName,
 	}
 	a.oauth.mu.Unlock()
 
@@ -394,9 +499,30 @@ func (a *App) oauthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find or create user by OAuth account (provider + subject)
-	user, isNewUser, err := a.findOrCreateOAuthUser(models.OAuthProviderGoogle, userInfo.ID, userInfo.Email, userInfo.Name, userInfo.Picture)
+	user, isNewUser, pendingSignup, err := a.findOrCreateOAuthUser(
+		models.OAuthProviderGoogle,
+		userInfo.ID,
+		userInfo.Email,
+		userInfo.Name,
+		userInfo.Picture,
+		stateData.Role,
+		stateData.Name,
+		stateData.TenantName,
+	)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if pendingSignup != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"signupRequired": true,
+			"signupToken":    pendingSignup.Token,
+			"profile": map[string]interface{}{
+				"email":     pendingSignup.Email,
+				"name":      pendingSignup.Name,
+				"avatarUrl": pendingSignup.AvatarURL,
+			},
+		})
 		return
 	}
 
@@ -434,6 +560,12 @@ func (a *App) oauthGitHubStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	intent, err := parseOAuthSignupIntent(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
 	// Generate state and nonce for CSRF protection
 	state := randomToken("state_")
 	nonce := randomToken("nonce_")
@@ -458,6 +590,10 @@ func (a *App) oauthGitHubStart(w http.ResponseWriter, r *http.Request) {
 		Nonce:       nonce,
 		CreatedAt:   time.Now().UTC(),
 		CallbackURL: callbackURL,
+		Mode:        intent.Mode,
+		Role:        intent.Role,
+		Name:        intent.Name,
+		TenantName:  intent.TenantName,
 	}
 	a.oauth.mu.Unlock()
 
@@ -597,9 +733,30 @@ func (a *App) oauthGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	providerID := fmt.Sprintf("%d", userInfo.ID)
 
 	// Find or create user by OAuth account (provider + subject)
-	user, isNewUser, err := a.findOrCreateOAuthUser(models.OAuthProviderGitHub, providerID, userEmail, userName, "")
+	user, isNewUser, pendingSignup, err := a.findOrCreateOAuthUser(
+		models.OAuthProviderGitHub,
+		providerID,
+		userEmail,
+		userName,
+		"",
+		stateData.Role,
+		stateData.Name,
+		stateData.TenantName,
+	)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if pendingSignup != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"signupRequired": true,
+			"signupToken":    pendingSignup.Token,
+			"profile": map[string]interface{}{
+				"email":     pendingSignup.Email,
+				"name":      pendingSignup.Name,
+				"avatarUrl": pendingSignup.AvatarURL,
+			},
+		})
 		return
 	}
 
@@ -686,7 +843,109 @@ func aBaseURL(r *http.Request) string {
 
 // findOrCreateOAuthUser finds or creates a user based on OAuth provider and subject ID
 // This implements proper account linking: find by provider+subject, then by email
-func (a *App) findOrCreateOAuthUser(provider models.OAuthProvider, providerID, email, name, avatarURL string) (models.User, bool, error) {
+func parseOAuthSignupIntent(r *http.Request) (oauthSignupIntent, error) {
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mode")))
+	if mode == "" {
+		mode = "login"
+	}
+
+	intent := oauthSignupIntent{
+		Mode:       mode,
+		Role:       models.RoleBuyer,
+		Name:       strings.TrimSpace(r.URL.Query().Get("name")),
+		TenantName: strings.TrimSpace(r.URL.Query().Get("tenantName")),
+	}
+
+	if mode == "signup" {
+		intent.Role = normalizeRole(r.URL.Query().Get("role"))
+		if intent.Role == models.RoleAdmin {
+			return oauthSignupIntent{}, fmt.Errorf("admin signup is disabled; bootstrap super admin only")
+		}
+	}
+
+	return intent, nil
+}
+
+func (a *App) consumePendingOAuthSignup(token string) (pendingOAuthSignup, bool) {
+	a.oauth.mu.Lock()
+	defer a.oauth.mu.Unlock()
+	pending, ok := a.oauth.pending[token]
+	if !ok {
+		return pendingOAuthSignup{}, false
+	}
+	delete(a.oauth.pending, token)
+	if time.Since(pending.CreatedAt) > 10*time.Minute {
+		return pendingOAuthSignup{}, false
+	}
+	return pending, true
+}
+
+func (a *App) savePendingOAuthSignup(provider models.OAuthProvider, providerID, email, name, avatarURL string) pendingOAuthSignup {
+	a.oauth.mu.Lock()
+	defer a.oauth.mu.Unlock()
+	now := time.Now().UTC()
+	for key, item := range a.oauth.pending {
+		if time.Since(item.CreatedAt) > 10*time.Minute {
+			delete(a.oauth.pending, key)
+		}
+	}
+	token := randomToken("oauth_signup_")
+	item := pendingOAuthSignup{
+		Token:      token,
+		Provider:   provider,
+		ProviderID: providerID,
+		Email:      strings.ToLower(strings.TrimSpace(email)),
+		Name:       strings.TrimSpace(name),
+		AvatarURL:  strings.TrimSpace(avatarURL),
+		CreatedAt:  now,
+	}
+	a.oauth.pending[token] = item
+	return item
+}
+
+func (a *App) createOAuthUser(
+	provider models.OAuthProvider,
+	providerID, email, displayName, avatarURL string,
+	role models.Role,
+	tenantName string,
+) (models.User, error) {
+	tenant := a.store.CreateTenant(models.Tenant{
+		Name:     tenantName,
+		Slug:     slugifyTenant(tenantName),
+		PlanTier: "professional",
+		Status:   "active",
+	})
+
+	user, created := a.store.CreateUser(models.User{
+		TenantID:  tenant.ID,
+		Email:     strings.ToLower(email),
+		Name:      displayName,
+		AvatarURL: avatarURL,
+		Role:      role,
+		CreatedAt: time.Now().UTC(),
+	})
+	if !created {
+		return models.User{}, fmt.Errorf("failed to create user")
+	}
+
+	tenant.OwnerUserID = user.ID
+	_ = a.store.UpdateTenant(tenant)
+	a.store.CreateOAuthAccount(models.OAuthAccount{
+		UserID:     user.ID,
+		Provider:   provider,
+		ProviderID: providerID,
+		Email:      strings.ToLower(email),
+	})
+	return user, nil
+}
+
+func (a *App) findOrCreateOAuthUser(
+	provider models.OAuthProvider,
+	providerID, email, name, avatarURL string,
+	requestedRole models.Role,
+	requestedName string,
+	requestedTenantName string,
+) (models.User, bool, *pendingOAuthSignup, error) {
 	// Step 1: Check if OAuth account exists with this provider + providerID
 	existingOAuth, exists := a.store.GetOAuthAccount(provider, providerID)
 	if exists {
@@ -694,14 +953,14 @@ func (a *App) findOrCreateOAuthUser(provider models.OAuthProvider, providerID, e
 		user, userFound := a.store.GetUserByID(existingOAuth.UserID)
 		if !userFound {
 			// OAuth account exists but user doesn't - shouldn't happen, but handle it
-			return models.User{}, false, fmt.Errorf("oauth account orphaned")
+			return models.User{}, false, nil, fmt.Errorf("oauth account orphaned")
 		}
 		// Update avatar if provided and different
 		if avatarURL != "" && user.AvatarURL != avatarURL {
 			user.AvatarURL = avatarURL
 			a.store.UpdateUser(user)
 		}
-		return user, false, nil
+		return user, false, nil, nil
 	}
 
 	// Step 2: Check if user exists with the same email
@@ -719,41 +978,26 @@ func (a *App) findOrCreateOAuthUser(provider models.OAuthProvider, providerID, e
 			existingUser.AvatarURL = avatarURL
 			a.store.UpdateUser(existingUser)
 		}
-		return existingUser, false, nil
+		return existingUser, false, nil, nil
 	}
 
-	// Step 3: Create new tenant and user
-	tenant := a.store.CreateTenant(models.Tenant{
-		Name:     name,
-		Slug:     slugifyTenant(name),
-		PlanTier: "professional",
-		Status:   "active",
-	})
-
-	// Set owner after user is created
-	user, created := a.store.CreateUser(models.User{
-		TenantID:  tenant.ID,
-		Email:     strings.ToLower(email),
-		Name:      name,
-		AvatarURL: avatarURL,
-		Role:      models.RoleBuyer,
-		CreatedAt: time.Now().UTC(),
-	})
-	if !created {
-		return models.User{}, false, fmt.Errorf("failed to create user")
+	displayName := strings.TrimSpace(requestedName)
+	if displayName == "" {
+		displayName = strings.TrimSpace(name)
 	}
-
-	// Update tenant with owner
-	tenant.OwnerUserID = user.ID
-	// Note: UpdateTenant method would be needed here, but we'll skip for now
-
-	// Create OAuth account link
-	a.store.CreateOAuthAccount(models.OAuthAccount{
-		UserID:     user.ID,
-		Provider:   provider,
-		ProviderID: providerID,
-		Email:      strings.ToLower(email),
-	})
-
-	return user, true, nil
+	if displayName == "" {
+		displayName = strings.TrimSpace(strings.Split(strings.ToLower(email), "@")[0])
+	}
+	tenantName := strings.TrimSpace(requestedTenantName)
+	if tenantName == "" {
+		tenantName = displayName
+	}
+	role := requestedRole
+	if role == "" {
+		role = models.RoleBuyer
+	}
+	_ = tenantName
+	_ = role
+	pending := a.savePendingOAuthSignup(provider, providerID, email, displayName, avatarURL)
+	return models.User{}, false, &pending, nil
 }

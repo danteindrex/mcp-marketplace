@@ -153,6 +153,9 @@ func (a *App) installMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 		CatalogVersion: hub.CatalogVersion,
 	})
 
+	server.InstallCount++
+	a.store.UpdateServer(server)
+
 	actions := buildInstallActions(server.Name, server.Slug, hub.HubURL)
 	selected := actions[0]
 	for _, action := range actions {

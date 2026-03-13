@@ -9,6 +9,7 @@ import (
 type Store interface {
 	GetUserByEmail(email string) (models.User, bool)
 	GetUserByID(id string) (models.User, bool)
+	ListUsers() []models.User
 	CreateUser(user models.User) (models.User, bool)
 	UpdateUser(user models.User) bool
 
@@ -20,6 +21,7 @@ type Store interface {
 	DeleteOAuthAccount(provider models.OAuthProvider, providerID string) bool
 
 	CreateTenant(tenant models.Tenant) models.Tenant
+	UpdateTenant(tenant models.Tenant) bool
 	ListMarketplaceServers() []models.Server
 	GetServerBySlug(slug string) (models.Server, bool)
 	GetServerByID(id string) (models.Server, bool)

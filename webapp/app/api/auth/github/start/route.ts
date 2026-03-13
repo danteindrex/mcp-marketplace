@@ -3,9 +3,11 @@ import { getServerApiBase } from '@/lib/api-base'
 
 const API_BASE = getServerApiBase()
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const upstream = await fetch(`${API_BASE}/auth/oauth/github/start`, {
+    const url = new URL(request.url)
+    const qs = url.searchParams.toString()
+    const upstream = await fetch(`${API_BASE}/auth/oauth/github/start${qs ? `?${qs}` : ''}`, {
       method: 'GET',
       credentials: 'include',
       cache: 'no-store',

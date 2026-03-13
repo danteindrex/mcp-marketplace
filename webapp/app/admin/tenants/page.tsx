@@ -6,6 +6,7 @@ import { AppShell } from '@/components/app-shell'
 import { TableToolbar } from '@/components/table-toolbar'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { PieChart } from '@/components/retroui/charts/PieChart'
+import { Text } from '@/components/retroui'
 import { fetchTenants, type TenantRecord } from '@/lib/api-client'
 
 export default function AdminTenantsPage() {
@@ -50,36 +51,36 @@ export default function AdminTenantsPage() {
     <AppShell role="admin">
       <div className="p-6 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Tenant Management</h1>
-          <p className="text-muted-foreground">Operational view of real tenant data and status.</p>
+          <Text variant="h3" className="mb-2">Tenant Management</Text>
+          <Text variant="body" className="text-muted-foreground">Operational view of real tenant data and status.</Text>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Total Tenants</p>
-            <p className="text-3xl font-bold">{tenants.length}</p>
+            <Text variant="small" className="text-muted-foreground mb-2">Total Tenants</Text>
+            <Text variant="h3">{tenants.length}</Text>
           </Card>
           <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Active Tenants</p>
-            <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+            <Text variant="small" className="text-muted-foreground mb-2">Active Tenants</Text>
+            <Text variant="h3" className="text-green-600 dark:text-green-400">
               {tenants.filter(tenant => tenant.status === 'active').length}
-            </p>
+            </Text>
           </Card>
           <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Suspended Tenants</p>
-            <p className="text-3xl font-bold text-red-600 dark:text-red-400">
+            <Text variant="small" className="text-muted-foreground mb-2">Suspended Tenants</Text>
+            <Text variant="h3" className="text-red-600 dark:text-red-400">
               {tenants.filter(tenant => tenant.status === 'suspended').length}
-            </p>
+            </Text>
           </Card>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Plan Distribution</h2>
+            <Text variant="h6" className="mb-4">Plan Distribution</Text>
             <BarChart data={planDistribution} index="name" categories={['value']} />
           </Card>
           <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Status Distribution</h2>
+            <Text variant="h6" className="mb-4">Status Distribution</Text>
             <PieChart data={statusDistribution} dataKey="value" nameKey="name" />
           </Card>
         </div>
@@ -102,30 +103,30 @@ export default function AdminTenantsPage() {
 
         <div className="space-y-3">
           {filtered.length === 0 ? (
-            <Card className="p-8 text-center text-muted-foreground">No tenants found.</Card>
+            <Card className="p-8 text-center"><Text variant="body" className="text-muted-foreground">No tenants found.</Text></Card>
           ) : (
             filtered.map(tenant => (
               <Card key={tenant.id} className="p-5">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
                   <div>
-                    <p className="text-xs text-muted-foreground">Name</p>
-                    <p className="font-semibold">{tenant.name}</p>
+                    <Text variant="caption" className="text-muted-foreground">Name</Text>
+                    <Text variant="small">{tenant.name}</Text>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Slug</p>
-                    <p className="font-semibold">{tenant.slug}</p>
+                    <Text variant="caption" className="text-muted-foreground">Slug</Text>
+                    <Text variant="small">{tenant.slug}</Text>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Plan</p>
-                    <p className="font-semibold">{tenant.planTier}</p>
+                    <Text variant="caption" className="text-muted-foreground">Plan</Text>
+                    <Text variant="small">{tenant.planTier}</Text>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Status</p>
-                    <p className="font-semibold">{tenant.status}</p>
+                    <Text variant="caption" className="text-muted-foreground">Status</Text>
+                    <Text variant="small">{tenant.status}</Text>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Created</p>
-                    <p className="font-semibold">{new Date(tenant.createdAt).toLocaleDateString()}</p>
+                    <Text variant="caption" className="text-muted-foreground">Created</Text>
+                    <Text variant="small">{new Date(tenant.createdAt).toLocaleDateString()}</Text>
                   </div>
                 </div>
               </Card>

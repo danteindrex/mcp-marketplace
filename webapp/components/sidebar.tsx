@@ -28,7 +28,7 @@ const merchantNavigation = [
 ]
 
 const adminNavigation = [
-  { label: 'Administration', items: [{ name: 'Tenants', href: '/admin/tenants', icon: Users }, { name: 'Security Events', href: '/admin/security', icon: Shield }, { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText }, { name: 'Client Compatibility', href: '/admin/client-compatibility', icon: Grid }, { name: 'Payments', href: '/admin/payments', icon: TrendingUp }, { name: 'Integrations', href: '/admin/integrations', icon: Settings }, { name: 'Agent Builder', href: '/settings/agent-builder', icon: Workflow }] },
+  { label: 'Administration', items: [{ name: 'Tenants', href: '/admin/tenants', icon: Users }, { name: 'Users', href: '/admin/users', icon: Users }, { name: 'Marketplace', href: '/admin/marketplace', icon: Package }, { name: 'Security Events', href: '/admin/security', icon: Shield }, { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText }, { name: 'Client Compatibility', href: '/admin/client-compatibility', icon: Grid }, { name: 'Payments', href: '/admin/payments', icon: TrendingUp }, { name: 'Integrations', href: '/admin/integrations', icon: Settings }, { name: 'Agent Builder', href: '/settings/agent-builder', icon: Workflow }] },
 ]
 
 function dicebearAvatar(seed: string, style: 'avataaars' | 'shapes'): string {
@@ -125,13 +125,13 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
                         >
                           <Link href={item.href} className="flex items-center gap-2 w-full">
                             <Icon className={cn('w-4 h-4', isActive(item.href) ? 'text-[var(--tertiary-foreground)]' : 'text-black')} />
-                            <span className={cn('text-sm font-bold', isActive(item.href) ? 'text-[var(--tertiary-foreground)]' : 'text-black')}>{item.name}</span>
+                            <Text as="span" variant="small" className={cn(isActive(item.href) ? 'text-[var(--tertiary-foreground)]' : 'text-black')}>{item.name}</Text>
                           </Link>
                         </RetroButton>
                       </div>
                     ) : (
                       <SidebarMenuButton asChild isActive={isActive(item.href)} className={cn('transition-colors', isActive(item.href) && 'bg-sidebar-accent text-sidebar-accent-foreground')}>
-                        <Link href={item.href}><Icon className="w-4 h-4" /><span>{item.name}</span></Link>
+                        <Link href={item.href}><Icon className="w-4 h-4" /><Text as="span" variant="small">{item.name}</Text></Link>
                       </SidebarMenuButton>
                     )}
                   </SidebarMenuItem>
@@ -150,13 +150,13 @@ export function AppSidebar({ role = 'buyer' }: AppSidebarProps) {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem><TeamSelector teams={teams} selectedTeam={selectedTeam} onTeamChange={() => {}} onCreateTeam={() => {}} /></SidebarMenuItem>
+          <SidebarMenuItem><TeamSelector teams={teams} selectedTeam={selectedTeam} onTeamChange={() => {}} /></SidebarMenuItem>
           <SidebarMenuItem><ProfileSelector profile={profile} onSettings={() => router.push('/settings')} onLogout={() => { void logoutAndRedirect('/login') }} /></SidebarMenuItem>
           <SidebarMenuItem>
             {resolvedTheme === 'light' ? (
               <RetroButton asChild variant="outline" className="w-full justify-start"><Link href="/settings"><Settings className="w-4 h-4" /><Text variant="small">Settings</Text></Link></RetroButton>
             ) : (
-              <SidebarMenuButton asChild><Link href="/settings"><Settings className="w-4 h-4" /><span>Settings</span></Link></SidebarMenuButton>
+              <SidebarMenuButton asChild><Link href="/settings"><Settings className="w-4 h-4" /><Text as="span" variant="small">Settings</Text></Link></SidebarMenuButton>
             )}
           </SidebarMenuItem>
         </SidebarMenu>

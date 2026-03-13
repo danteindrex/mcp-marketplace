@@ -1,6 +1,7 @@
 'use client'
 
 import { ServerError } from '@/components/blocks/application/error-pages'
+import { SUPPORT_EMAIL } from '@/lib/contact'
 
 export default function Error({
   error,
@@ -14,7 +15,7 @@ export default function Error({
       onRetry={reset}
       homeHref="/"
       errorId={error.digest ?? 'ERR-UNKNOWN'}
-      supportEmail="support@mcp-marketplace.local"
+      supportEmail={SUPPORT_EMAIL}
     />
   )
 }

@@ -14,6 +14,7 @@ import { ExplosionShape, ZigzagBanner, Star5Shape, ShieldShape } from '@/compone
 import { SEO } from '@/components/SEO'
 import { Check, X, Sparkles, ArrowRight, Zap, Crown, Building2, HelpCircle, Mail, MessageSquare, Moon, Sun } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
+import { SALES_EMAIL } from '@/lib/contact'
 
 // ============================================
 // PRICING TEMPLATE - NEUBRUTALISM STYLE
@@ -104,7 +105,7 @@ function PricingTier({ name, price, yearlyPrice, description, features, popular,
           asChild
         >
           {enterprise ? (
-            <a href="mailto:sales@mcp-marketplace.local">
+            <a href={`mailto:${SALES_EMAIL}`}>
               {ctaLabel}
               <ArrowRight className="h-4 w-4" />
             </a>
@@ -407,6 +408,37 @@ export function PricingTemplate() {
         </div>
       </section>
 
+      <section className="py-12 border-b-3 border-foreground bg-background">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-8">
+            <Badge variant="outline" className="mb-4">Pricing Guides</Badge>
+            <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight mb-4">
+              Learn How MCP Pricing Works
+            </h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Pricing for MCP servers is easier to trust when billing, auth, and install readiness stay clearly separated.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Link href="/guides/x402-pricing-explained">
+              <Card className="border-3 border-foreground p-6 transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
+                <h3 className="font-black uppercase">x402 Pricing Explained</h3>
+              </Card>
+            </Link>
+            <Link href="/guides/hosted-vs-local-mcp-servers">
+              <Card className="border-3 border-foreground p-6 transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
+                <h3 className="font-black uppercase">Hosted vs Local MCP</h3>
+              </Card>
+            </Link>
+            <Link href="/guides/mcp-oauth-explained">
+              <Card className="border-3 border-foreground p-6 transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
+                <h3 className="font-black uppercase">OAuth Explained</h3>
+              </Card>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* FAQ Section */}
       <section className="py-16 border-b-3 border-foreground">
         <div className="container mx-auto px-4">
@@ -470,7 +502,7 @@ export function PricingTemplate() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button variant="secondary" size="lg" className="gap-2" asChild>
-              <a href="mailto:sales@mcp-marketplace.local">
+              <a href={`mailto:${SALES_EMAIL}`}>
                 <Mail className="h-5 w-5" />
                 Contact Sales
               </a>

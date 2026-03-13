@@ -562,6 +562,32 @@ export interface TenantRecord {
   createdAt: string
 }
 
+export interface AdminUserRecord {
+  id: string
+  tenantId: string
+  tenantName?: string
+  tenantSlug?: string
+  email: string
+  name: string
+  role: AppRole
+  mfaEnabled?: boolean
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface AdminMarketplaceInsight {
+  id: string
+  name: string
+  slug: string
+  tenantId: string
+  status: string
+  deploymentStatus: string
+  pricingType: string
+  installCount: number
+  x402IntentCount: number
+  settledVolumeUsdc: number
+}
+
 export interface CurrentUser {
   id: string
   tenantId: string
@@ -870,6 +896,20 @@ export async function fetchAuditLogs(): Promise<Array<{ id: string; timestamp: D
 export async function fetchTenants(): Promise<TenantRecord[]> {
   const data = await apiGet<{ items: TenantRecord[] }>('/v1/admin/tenants', 'admin')
   return data.items
+}
+
+export async function fetchAdminUsers(): Promise<AdminUserRecord[]> {
+  const data = await apiGet<{ items: AdminUserRecord[] }>('/v1/admin/users', 'admin')
+  return data.items
+}
+
+export async function fetchAdminMarketplaceInsights(): Promise<{
+  items: AdminMarketplaceInsight[]
+  count: number
+  totalInstalls: number
+  popular: AdminMarketplaceInsight[]
+}> {
+  return apiGet('/v1/admin/marketplace-insights', 'admin')
 }
 
 export async function fetchClientCompatibility(): Promise<Array<{ client: string; supportsDCR: boolean; supportsCIMD: boolean; supportsInteractive: boolean; notes: string }>> {

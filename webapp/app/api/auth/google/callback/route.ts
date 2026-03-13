@@ -16,6 +16,16 @@ type BackendAuthPayload = {
   redirect_url?: string
 }
 
+type BackendPendingOAuthSignup = {
+  signupRequired?: boolean
+  signupToken?: string
+  profile?: {
+    email?: string
+    name?: string
+    avatarUrl?: string
+  }
+}
+
 function withSessionCookies(response: NextResponse, payload: BackendAuthPayload): NextResponse {
   const secure = process.env.NODE_ENV === 'production'
   response.cookies.set('mcp_access_token', payload.accessToken, {
@@ -61,6 +71,16 @@ export async function GET(request: Request) {
     }
 
     const authPayload = await upstream.json()
+    const pending = authPayload as BackendPendingOAuthSignup
+    if (pending.signupRequired && pending.signupToken) {
+      const target = new URL('/login', request.url)
+      target.searchParams.set('oauth', 'complete')
+      target.searchParams.set('signupToken', pending.signupToken)
+      if (pending.profile?.email) target.searchParams.set('email', pending.profile.email)
+      if (pending.profile?.name) target.searchParams.set('name', pending.profile.name)
+      return NextResponse.redirect(target)
+    }
+
     const payload = authPayload as BackendAuthPayload
 
     if (!payload.accessToken || !payload.user?.role) {

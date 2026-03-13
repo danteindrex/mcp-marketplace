@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
@@ -10,6 +11,113 @@ import (
 
 func (a *App) listTenants(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": a.store.ListTenants()})
+}
+
+func (a *App) listUsers(w http.ResponseWriter, r *http.Request) {
+	tenants := a.store.ListTenants()
+	tenantByID := make(map[string]models.Tenant, len(tenants))
+	for _, tenant := range tenants {
+		tenantByID[tenant.ID] = tenant
+	}
+
+	items := make([]map[string]interface{}, 0)
+	for _, user := range a.store.ListUsers() {
+		tenant := tenantByID[user.TenantID]
+		items = append(items, map[string]interface{}{
+			"id":         user.ID,
+			"tenantId":   user.TenantID,
+			"tenantName": tenant.Name,
+			"tenantSlug": tenant.Slug,
+			"email":      user.Email,
+			"name":       user.Name,
+			"role":       user.Role,
+			"mfaEnabled": user.MFAEnabled,
+			"createdAt":  user.CreatedAt,
+			"updatedAt":  user.UpdatedAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"items": items,
+		"count": len(items),
+	})
+}
+
+func (a *App) adminMarketplaceInsights(w http.ResponseWriter, r *http.Request) {
+	tenants := a.store.ListTenants()
+	serverByID := map[string]models.Server{}
+	for _, tenant := range tenants {
+		for _, server := range a.store.ListMerchantServers(tenant.ID) {
+			serverByID[server.ID] = server
+		}
+	}
+
+	allIntents := a.store.ListAllX402Intents()
+	intentCountByServer := map[string]int{}
+	settledUsdcByServer := map[string]float64{}
+	for _, intent := range allIntents {
+		if strings.TrimSpace(intent.ServerID) == "" {
+			continue
+		}
+		intentCountByServer[intent.ServerID]++
+		if intent.Status == "settled" {
+			settledUsdcByServer[intent.ServerID] += intent.AmountUSDC
+		}
+	}
+
+	type serverInsight struct {
+		ID              string  `json:"id"`
+		Name            string  `json:"name"`
+		Slug            string  `json:"slug"`
+		TenantID        string  `json:"tenantId"`
+		Status          string  `json:"status"`
+		Deployment      string  `json:"deploymentStatus"`
+		PricingType     string  `json:"pricingType"`
+		InstallCount    int     `json:"installCount"`
+		X402IntentCount int     `json:"x402IntentCount"`
+		SettledVolume   float64 `json:"settledVolumeUsdc"`
+	}
+
+	items := make([]serverInsight, 0, len(serverByID))
+	for _, server := range serverByID {
+		items = append(items, serverInsight{
+			ID:              server.ID,
+			Name:            server.Name,
+			Slug:            server.Slug,
+			TenantID:        server.TenantID,
+			Status:          server.Status,
+			Deployment:      server.DeploymentStatus,
+			PricingType:     server.PricingType,
+			InstallCount:    server.InstallCount,
+			X402IntentCount: intentCountByServer[server.ID],
+			SettledVolume:   settledUsdcByServer[server.ID],
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].InstallCount == items[j].InstallCount {
+			return items[i].SettledVolume > items[j].SettledVolume
+		}
+		return items[i].InstallCount > items[j].InstallCount
+	})
+
+	totalInstalls := 0
+	for _, item := range items {
+		totalInstalls += item.InstallCount
+	}
+
+	limit := 5
+	popular := items
+	if len(popular) > limit {
+		popular = popular[:limit]
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"items":         items,
+		"count":         len(items),
+		"totalInstalls": totalInstalls,
+		"popular":       popular,
+	})
 }
 
 func (a *App) listSecurityEvents(w http.ResponseWriter, r *http.Request) {

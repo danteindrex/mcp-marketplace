@@ -4,9 +4,11 @@ import { getServerApiBase } from '@/lib/api-base'
 const API_BASE = getServerApiBase()
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const upstream = await fetch(`${API_BASE}/auth/oauth/google/start`, {
+    const url = new URL(request.url)
+    const qs = url.searchParams.toString()
+    const upstream = await fetch(`${API_BASE}/auth/oauth/google/start${qs ? `?${qs}` : ''}`, {
       method: 'GET',
       credentials: 'include',
       cache: 'no-store',

@@ -62,6 +62,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 	r.Get("/v1/runtime-config", app.getRuntimeConfig)
 	r.Post("/auth/signup", app.signup)
 	r.Post("/auth/login", app.login)
+	r.Post("/auth/oauth/complete-signup", app.completeOAuthSignup)
 	r.Get("/auth/oauth/google/start", app.oauthGoogleStart)
 	r.Get("/auth/oauth/google/callback", app.oauthGoogleCallback)
 	r.Get("/auth/oauth/github/start", app.oauthGitHubStart)
@@ -145,6 +146,8 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 			prv.Group(func(a chi.Router) {
 				a.Use(app.requireRole("admin"))
 				a.Get("/admin/tenants", app.listTenants)
+				a.Get("/admin/users", app.listUsers)
+				a.Get("/admin/marketplace-insights", app.adminMarketplaceInsights)
 				a.Get("/admin/security-events", app.listSecurityEvents)
 				a.Get("/admin/audit-logs", app.listAuditLogs)
 				a.Get("/admin/client-compatibility", app.clientCompatibility)

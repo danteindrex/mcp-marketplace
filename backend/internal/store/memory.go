@@ -377,6 +377,19 @@ func (s *MemoryStore) GetUserByID(id string) (models.User, bool) {
 	return u, ok
 }
 
+func (s *MemoryStore) ListUsers() []models.User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.User, 0, len(s.users))
+	for _, user := range s.users {
+		out = append(out, user)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out
+}
+
 func (s *MemoryStore) CreateUser(user models.User) (models.User, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -517,6 +530,17 @@ func (s *MemoryStore) CreateTenant(tenant models.Tenant) models.Tenant {
 	s.tenants[tenant.ID] = tenant
 	s.persistLocked()
 	return tenant
+}
+
+func (s *MemoryStore) UpdateTenant(tenant models.Tenant) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.tenants[tenant.ID]; !ok {
+		return false
+	}
+	s.tenants[tenant.ID] = tenant
+	s.persistLocked()
+	return true
 }
 
 func (s *MemoryStore) ListMarketplaceServers() []models.Server {

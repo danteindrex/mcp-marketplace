@@ -423,6 +423,20 @@ func (s *MongoStore) GetUserByID(id string) (models.User, bool) {
 	return u, true
 }
 
+func (s *MongoStore) ListUsers() []models.User {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	cur, err := s.users.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}))
+	if err != nil {
+		return []models.User{}
+	}
+	items, err := decodeAll[models.User](cur)
+	if err != nil {
+		return []models.User{}
+	}
+	return items
+}
+
 func (s *MongoStore) CreateUser(user models.User) (models.User, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
 	defer cancel()
@@ -551,6 +565,16 @@ func (s *MongoStore) CreateTenant(tenant models.Tenant) models.Tenant {
 	tenant.CreatedAt = time.Now().UTC()
 	_, _ = s.tenants.InsertOne(ctx, tenant)
 	return tenant
+}
+
+func (s *MongoStore) UpdateTenant(tenant models.Tenant) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	res, err := s.tenants.ReplaceOne(ctx, bson.M{"id": tenant.ID}, tenant)
+	if err != nil {
+		return false
+	}
+	return res.MatchedCount > 0
 }
 
 func (s *MongoStore) ListMarketplaceServers() []models.Server {

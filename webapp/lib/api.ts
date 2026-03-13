@@ -80,13 +80,46 @@ export async function signupWithCredentials(payload: {
   return res.json()
 }
 
-type OAuthStartResponse = {
-  authorization_url?: string
-  error?: string
+export async function completeOAuthSignup(payload: {
+  signupToken: string
+  name: string
+  role: 'buyer' | 'merchant'
+  tenantName: string
+}): Promise<AuthResponse> {
+  const res = await fetch('/api/session/oauth/complete-signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({} as { error?: string }))
+    throw new Error(body.error || 'OAuth signup completion failed')
+  }
+  return res.json()
 }
 
-export async function startOAuthFlow(provider: 'google' | 'github'): Promise<string> {
-  const res = await fetch(`/api/auth/${provider}/start`, {
+type OAuthStartResponse = {
+ authorization_url?: string
+ error?: string
+}
+
+export async function startOAuthFlow(
+  provider: 'google' | 'github',
+  options?: {
+    mode?: 'login' | 'signup'
+    role?: 'buyer' | 'merchant'
+    name?: string
+    tenantName?: string
+  },
+): Promise<string> {
+  const params = new URLSearchParams()
+  if (options?.mode) params.set('mode', options.mode)
+  if (options?.role) params.set('role', options.role)
+  if (options?.name) params.set('name', options.name)
+  if (options?.tenantName) params.set('tenantName', options.tenantName)
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  const res = await fetch(`/api/auth/${provider}/start${suffix}`, {
     method: 'GET',
     credentials: 'include',
   })

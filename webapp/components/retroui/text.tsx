@@ -3,7 +3,10 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 
-interface TextProps extends React.HTMLAttributes<HTMLDivElement> {
+type TextElement = React.ElementType
+
+interface TextProps extends React.HTMLAttributes<HTMLElement> {
+  as?: TextElement
   variant?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'body' | 'small' | 'caption'
   bold?: boolean
 }
@@ -20,21 +23,35 @@ const variantStyles = {
   caption: 'text-xs font-semibold'
 }
 
+const defaultTagByVariant: Record<NonNullable<TextProps['variant']>, TextElement> = {
+  h1: 'h1',
+  h2: 'h2',
+  h3: 'h3',
+  h4: 'h4',
+  h5: 'h5',
+  h6: 'h6',
+  body: 'p',
+  small: 'p',
+  caption: 'span',
+}
+
 const Text = React.forwardRef<
-  HTMLDivElement,
+  HTMLElement,
   TextProps
->(({ className, variant = 'body', bold = false, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      'text-black dark:text-white',
+>(({ as, className, variant = 'body', bold = false, ...props }, ref) => {
+  const Component = as || defaultTagByVariant[variant]
+
+  return React.createElement(Component as React.ElementType, {
+    ...props,
+    ref,
+    className: cn(
+      'font-sans text-black dark:text-white',
       variantStyles[variant],
       bold && 'font-black',
       className
-    )}
-    {...props}
-  />
-))
+    ),
+  })
+})
 Text.displayName = 'Text'
 
 export { Text }
