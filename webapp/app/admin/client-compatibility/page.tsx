@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { AppShell } from '@/components/app-shell'
 import { Card } from '@/components/ui/card'
+import { Text } from '@/components/retroui/Text'
 import { fetchClientCompatibility } from '@/lib/api-client'
 
 export default function ClientCompatibilityPage() {
@@ -16,8 +17,8 @@ export default function ClientCompatibilityPage() {
     <AppShell role="admin">
       <div className="p-6 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Client Compatibility</h1>
-          <p className="text-muted-foreground">Cross-client MCP auth/install capability matrix.</p>
+          <Text variant="h3" className="mb-2">Client Compatibility</Text>
+          <Text variant="body" className="text-muted-foreground">Cross-client MCP auth/install capability matrix.</Text>
         </div>
 
         <Card className="overflow-hidden">

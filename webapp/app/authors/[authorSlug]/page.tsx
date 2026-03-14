@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { JsonLd } from '@/components/json-ld'
+import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { fetchPublicServers } from '@/lib/public-marketplace'
@@ -77,53 +78,53 @@ export default async function AuthorProfilePage({ params }: PageProps) {
       <div className="mx-auto flex max-w-5xl flex-col gap-8">
         <div className="space-y-4">
           <Badge variant="outline">Author Profile</Badge>
-          <h1 className="text-4xl font-black uppercase sm:text-5xl">{profile.author}</h1>
-          <p className="max-w-3xl text-lg text-muted-foreground">
+          <Text variant="h1" className="uppercase sm:text-5xl">{profile.author}</Text>
+          <Text variant="h6" className="max-w-3xl text-muted-foreground">
             {profile.author} is represented here through published MCP Marketplace listings. This
             profile aggregates their public server catalog, categories, and listing history.
-          </p>
+          </Text>
         </div>
 
         <Card className="border-2 border-foreground p-6">
-          <h2 className="text-2xl font-black uppercase">Answer Capsule</h2>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          <Text variant="h4" className="uppercase">Answer Capsule</Text>
+          <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             {profile.author} currently has {profile.authorServers.length} public MCP server
             {profile.authorServers.length === 1 ? '' : 's'} listed on MCP Marketplace across{' '}
             {profile.categories.length} categor{profile.categories.length === 1 ? 'y' : 'ies'}.
-          </p>
+          </Text>
         </Card>
 
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="border-2 border-foreground p-6">
-            <p className="text-xs font-black uppercase text-muted-foreground">Listings</p>
-            <p className="mt-2 text-3xl font-black">{profile.authorServers.length}</p>
+            <Text variant="caption" className="uppercase text-muted-foreground">Listings</Text>
+            <Text variant="h3" className="mt-2">{profile.authorServers.length}</Text>
           </Card>
           <Card className="border-2 border-foreground p-6">
-            <p className="text-xs font-black uppercase text-muted-foreground">Categories</p>
-            <p className="mt-2 text-3xl font-black">{profile.categories.length}</p>
+            <Text variant="caption" className="uppercase text-muted-foreground">Categories</Text>
+            <Text variant="h3" className="mt-2">{profile.categories.length}</Text>
           </Card>
           <Card className="border-2 border-foreground p-6">
-            <p className="text-xs font-black uppercase text-muted-foreground">Latest Update</p>
-            <p className="mt-2 text-lg font-black">
+            <Text variant="caption" className="uppercase text-muted-foreground">Latest Update</Text>
+            <Text variant="h6" className="mt-2">
               {new Date(
                 profile.authorServers
                   .map(server => server.updatedAt)
                   .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
               ).toLocaleDateString()}
-            </p>
+            </Text>
           </Card>
         </div>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-black uppercase">Published Servers</h2>
+          <Text variant="h4" className="uppercase">Published Servers</Text>
           <div className="grid gap-4 md:grid-cols-2">
             {profile.authorServers.map(server => (
               <Link key={server.id} href={`/marketplace/${server.slug}`}>
                 <Card className="border-2 border-foreground p-6 transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-lg font-black uppercase">{server.name}</h3>
-                      <p className="mt-2 text-sm text-muted-foreground">{server.description}</p>
+                      <Text variant="h6" className="uppercase">{server.name}</Text>
+                      <Text variant="small" className="mt-2 text-muted-foreground">{server.description}</Text>
                     </div>
                     {server.verified ? <Badge>Verified</Badge> : null}
                   </div>

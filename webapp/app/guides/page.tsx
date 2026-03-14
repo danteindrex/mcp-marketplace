@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { Text } from '@/components/retroui'
+import { Text } from '@/components/retroui/Text'
 
 export const metadata: Metadata = {
   title: 'MCP Guides',

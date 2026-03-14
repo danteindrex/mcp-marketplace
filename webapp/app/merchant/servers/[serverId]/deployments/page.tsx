@@ -5,6 +5,7 @@ import { use } from 'react'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { AppShell } from '@/components/app-shell'
+import { Text } from '@/components/retroui/Text'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { deployMerchantServer, fetchServerDeployments, type ServerLifecycle } from '@/lib/api-client'
@@ -57,28 +58,28 @@ export default function DeploymentsPage({ params }: { params: Promise<{ serverId
     <AppShell role="merchant">
       <div className="p-6 max-w-5xl mx-auto space-y-6">
         <Link href="/merchant/servers" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors w-fit"><ArrowLeft className="w-4 h-4" />Back to Servers</Link>
-        <div><h1 className="text-3xl font-bold mb-2">Deployments</h1><p className="text-muted-foreground">Manage region, replicas, and rollout status.</p></div>
+        <div><Text variant="h3" className="mb-2">Deployments</Text><Text variant="body" className="text-muted-foreground">Manage region, replicas, and rollout status.</Text></div>
 
         <Card className="p-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <p className="text-xs text-muted-foreground">Deployment</p>
-              <p className="font-medium capitalize">{lifecycle?.deploymentStatus || 'not_deployed'}</p>
+              <Text variant="caption" className="text-muted-foreground">Deployment</Text>
+              <Text variant="body" className="capitalize">{lifecycle?.deploymentStatus || 'not_deployed'}</Text>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Marketplace</p>
-              <p className="font-medium capitalize">{lifecycle?.marketplaceStatus || 'draft'}</p>
+              <Text variant="caption" className="text-muted-foreground">Marketplace</Text>
+              <Text variant="body" className="capitalize">{lifecycle?.marketplaceStatus || 'draft'}</Text>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Publish Readiness</p>
-              <p className="font-medium">{lifecycle?.canPublish ? 'Ready' : 'Price required'}</p>
+              <Text variant="caption" className="text-muted-foreground">Publish Readiness</Text>
+              <Text variant="body">{lifecycle?.canPublish ? 'Ready' : 'Price required'}</Text>
             </div>
           </div>
           {queue?.status && (
             <div className="text-sm rounded border border-border p-3">
-              <p className="font-medium capitalize">Queue: {String(queue.status).replace('_', ' ')}</p>
-              <p className="text-muted-foreground">Attempts: {queue.attemptCount || 0}/{queue.maxAttempts || 0}</p>
-              {queue.lastError && <p className="text-destructive text-xs mt-1">{queue.lastError}</p>}
+              <Text variant="body" className="capitalize">Queue: {String(queue.status).replace('_', ' ')}</Text>
+              <Text variant="small" className="text-muted-foreground">Attempts: {queue.attemptCount || 0}/{queue.maxAttempts || 0}</Text>
+              {queue.lastError && <Text variant="caption" className="mt-1 text-destructive">{queue.lastError}</Text>}
             </div>
           )}
           <div className="flex gap-3">
@@ -94,18 +95,18 @@ export default function DeploymentsPage({ params }: { params: Promise<{ serverId
         <div className="space-y-3">
           {items.length === 0 && (
             <Card className="p-6">
-              <p className="text-sm text-muted-foreground">No active deployments yet.</p>
+              <Text variant="small" className="text-muted-foreground">No active deployments yet.</Text>
             </Card>
           )}
           {items.map(dep => (
             <Card key={dep.id} className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
-                <div><p className="text-xs text-muted-foreground">Environment</p><p className="font-medium capitalize">{dep.environment}</p></div>
-                <div><p className="text-xs text-muted-foreground">Region</p><p className="font-medium">{dep.region}</p></div>
-                <div><p className="text-xs text-muted-foreground">Replicas</p><p className="font-medium">{dep.replicas}</p></div>
-                <div><p className="text-xs text-muted-foreground">Transport</p><p className="font-medium uppercase">{dep.transport}</p></div>
-                <div><p className="text-xs text-muted-foreground">Status</p><p className="font-medium">{dep.status}</p></div>
-                <div><p className="text-xs text-muted-foreground">URL</p><p className="font-medium break-all">{dep.url || 'n/a'}</p></div>
+                <div><Text variant="caption" className="text-muted-foreground">Environment</Text><Text variant="body" className="capitalize">{dep.environment}</Text></div>
+                <div><Text variant="caption" className="text-muted-foreground">Region</Text><Text variant="body">{dep.region}</Text></div>
+                <div><Text variant="caption" className="text-muted-foreground">Replicas</Text><Text variant="body">{dep.replicas}</Text></div>
+                <div><Text variant="caption" className="text-muted-foreground">Transport</Text><Text variant="body" className="uppercase">{dep.transport}</Text></div>
+                <div><Text variant="caption" className="text-muted-foreground">Status</Text><Text variant="body">{dep.status}</Text></div>
+                <div><Text variant="caption" className="text-muted-foreground">URL</Text><Text variant="body" className="break-all">{dep.url || 'n/a'}</Text></div>
                 <Button variant="outline" size="sm" disabled>Rollback</Button>
               </div>
             </Card>

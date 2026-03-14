@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { type ReactNode } from 'react'
 import { Facebook, Github, Globe, Instagram, Linkedin, Twitter, Youtube } from 'lucide-react'
+import { Text } from '@/components/retroui/Text'
 
 type FooterLink = {
   label: string
@@ -47,7 +48,7 @@ function MultiColumn({
         <div className="grid gap-8 md:grid-cols-4">
           <div>
             <div className="mb-4">{logo}</div>
-            {description ? <p className="text-sm text-background/75">{description}</p> : null}
+            {description ? <Text variant="small" className="text-background/75">{description}</Text> : null}
             {socialLinks.length > 0 ? (
               <div className="mt-4 flex flex-wrap gap-2">
                 {socialLinks.map((item) => (
@@ -67,7 +68,7 @@ function MultiColumn({
           </div>
           {columns.map((column) => (
             <div key={column.title}>
-              <h4 className="mb-3 text-sm font-black uppercase">{column.title}</h4>
+              <Text variant="small" className="mb-3 uppercase">{column.title}</Text>
               <ul className="space-y-2 text-sm text-background/80">
                 {column.links.map((link) => (
                   <li key={`${column.title}-${link.href}`}>
@@ -88,7 +89,7 @@ function MultiColumn({
         </div>
         {copyright ? (
           <div className="mt-10 border-t border-background/25 pt-6 text-center text-sm text-background/70">
-            {copyright}
+            <Text variant="small" className="text-background/70">{copyright}</Text>
           </div>
         ) : null}
       </div>

@@ -11,6 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Sticker } from '@/components/ui/sticker'
 import { Marquee } from '@/components/ui/marquee'
 import { ExplosionShape, ZigzagBanner, Star5Shape, ShieldShape } from '@/components/ui/shapes'
+import { Text } from '@/components/retroui/Text'
 import { SEO } from '@/components/SEO'
 import { Check, X, Sparkles, ArrowRight, Zap, Crown, Building2, HelpCircle, Mail, MessageSquare, Moon, Sun } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
@@ -65,15 +66,15 @@ function PricingTier({ name, price, yearlyPrice, description, features, popular,
           <CardTitle className="uppercase">{name}</CardTitle>
         </div>
         <div className="flex items-baseline gap-1">
-          <span className="text-5xl font-black">${monthlyEquivalent}</span>
-          <span className={`${popular ? 'text-primary-foreground/70' : enterprise ? 'text-background/70' : 'text-muted-foreground'}`}>
+          <Text as="span" variant="h1" className="text-5xl">${monthlyEquivalent}</Text>
+          <Text as="span" variant="body" className={`${popular ? 'text-primary-foreground/70' : enterprise ? 'text-background/70' : 'text-muted-foreground'}`}>
             /month
-          </span>
+          </Text>
         </div>
         {isYearly && (
-          <p className={`text-sm ${popular ? 'text-primary-foreground/70' : enterprise ? 'text-background/70' : 'text-muted-foreground'}`}>
+          <Text variant="small" className={`${popular ? 'text-primary-foreground/70' : enterprise ? 'text-background/70' : 'text-muted-foreground'}`}>
             Billed ${displayPrice}/year
-          </p>
+          </Text>
         )}
         <CardDescription className={popular ? 'text-primary-foreground/80' : enterprise ? 'text-background/80' : ''}>
           {description}
@@ -118,9 +119,9 @@ function PricingTier({ name, price, yearlyPrice, description, features, popular,
         </Button>
 
         {popular && (
-          <p className="text-center text-sm text-muted-foreground mt-3">
+          <Text variant="small" className="mt-3 text-center text-muted-foreground">
             No credit card required
-          </p>
+          </Text>
         )}
       </CardContent>
     </Card>
@@ -272,7 +273,7 @@ export function PricingTemplate() {
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary border-3 border-foreground" />
-            <span className="font-black text-xl uppercase">YourBrand</span>
+            <Text as="span" variant="h5" className="uppercase">YourBrand</Text>
           </div>
           <div className="hidden md:flex items-center gap-6">
             <Link href="/#features" className="font-bold hover:text-primary transition-colors">Features</Link>
@@ -296,13 +297,13 @@ export function PricingTemplate() {
           <Badge variant="accent" className="mb-6 shadow-[3px_3px_0px_hsl(var(--shadow-color))]">
             Simple & Transparent
           </Badge>
-          <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tight mb-4">
+          <Text variant="h1" className="mb-4 uppercase tracking-tight md:text-6xl">
             Choose Your Plan
-          </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+          </Text>
+          <Text variant="h6" className="mb-8 max-w-2xl mx-auto text-muted-foreground">
             Start free, upgrade when you need. No hidden fees, no surprises.
             Cancel anytime.
-          </p>
+          </Text>
 
           {/* Billing Toggle */}
           <div className="flex items-center justify-center gap-4 mb-4">
@@ -345,12 +346,12 @@ export function PricingTemplate() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <Badge variant="outline" className="mb-4">Compare Plans</Badge>
-            <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight mb-4">
+            <Text variant="h3" className="mb-4 uppercase tracking-tight md:text-4xl">
               Feature Comparison
-            </h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
+            </Text>
+            <Text variant="body" className="max-w-xl mx-auto text-muted-foreground">
               See what's included in each plan to find the perfect fit for your needs.
-            </p>
+            </Text>
           </div>
 
           <div className="max-w-4xl mx-auto overflow-x-auto">
@@ -412,27 +413,27 @@ export function PricingTemplate() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-8">
             <Badge variant="outline" className="mb-4">Pricing Guides</Badge>
-            <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight mb-4">
+            <Text variant="h3" className="mb-4 uppercase tracking-tight md:text-4xl">
               Learn How MCP Pricing Works
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
+            </Text>
+            <Text variant="body" className="max-w-2xl mx-auto text-muted-foreground">
               Pricing for MCP servers is easier to trust when billing, auth, and install readiness stay clearly separated.
-            </p>
+            </Text>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             <Link href="/guides/x402-pricing-explained">
               <Card className="border-3 border-foreground p-6 transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
-                <h3 className="font-black uppercase">x402 Pricing Explained</h3>
+                <Text variant="h6" className="uppercase">x402 Pricing Explained</Text>
               </Card>
             </Link>
             <Link href="/guides/hosted-vs-local-mcp-servers">
               <Card className="border-3 border-foreground p-6 transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
-                <h3 className="font-black uppercase">Hosted vs Local MCP</h3>
+                <Text variant="h6" className="uppercase">Hosted vs Local MCP</Text>
               </Card>
             </Link>
             <Link href="/guides/mcp-oauth-explained">
               <Card className="border-3 border-foreground p-6 transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
-                <h3 className="font-black uppercase">OAuth Explained</h3>
+                <Text variant="h6" className="uppercase">OAuth Explained</Text>
               </Card>
             </Link>
           </div>
@@ -447,12 +448,12 @@ export function PricingTemplate() {
               <HelpCircle className="h-3 w-3 mr-1" />
               FAQ
             </Badge>
-            <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight mb-4">
+            <Text variant="h3" className="mb-4 uppercase tracking-tight md:text-4xl">
               Common Questions
-            </h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
+            </Text>
+            <Text variant="body" className="max-w-xl mx-auto text-muted-foreground">
               Everything you need to know about our pricing and plans.
-            </p>
+            </Text>
           </div>
 
           <div className="max-w-3xl mx-auto grid md:grid-cols-2 gap-4">
@@ -475,9 +476,9 @@ export function PricingTemplate() {
       {/* Social Proof */}
       <section className="py-12 border-b-3 border-foreground bg-muted">
         <div className="container mx-auto px-4 text-center mb-8">
-          <p className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+          <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
             Trusted by 10,000+ companies worldwide
-          </p>
+          </Text>
         </div>
         <Marquee className="py-4" pauseOnHover>
           {trustedLogos.map((logo) => (
@@ -494,12 +495,12 @@ export function PricingTemplate() {
       {/* CTA */}
       <section className="py-16 bg-foreground text-background">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight mb-4">
+          <Text variant="h3" className="mb-4 uppercase tracking-tight md:text-4xl">
             Still Have Questions?
-          </h2>
-          <p className="text-background/70 mb-8 max-w-xl mx-auto">
+          </Text>
+          <Text variant="body" className="mb-8 max-w-xl mx-auto text-background/70">
             Our team is here to help you find the perfect plan for your needs.
-          </p>
+          </Text>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button variant="secondary" size="lg" className="gap-2" asChild>
               <a href={`mailto:${SALES_EMAIL}`}>
@@ -520,7 +521,7 @@ export function PricingTemplate() {
       {/* Footer */}
       <footer className="py-8 border-t-3 border-foreground bg-background">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
-          <p>&copy; 2025 YourBrand. All rights reserved.</p>
+          <Text variant="small">&copy; 2025 YourBrand. All rights reserved.</Text>
         </div>
       </footer>
     </div>

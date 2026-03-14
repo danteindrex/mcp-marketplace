@@ -4,7 +4,7 @@ import { LucideIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/retroui'
+import { Progress, Text } from '@/components/retroui'
 
 export interface EmptyStateProps {
   icon?: LucideIcon
@@ -28,9 +28,9 @@ export function EmptyState({ icon: Icon, title, description, action, illustratio
         </div>
       ) : null}
 
-      <h3 className="text-xl font-semibold text-foreground mb-2">{title}</h3>
+      <Text variant="h5" className="mb-2">{title}</Text>
 
-      {description && <p className="text-muted-foreground mb-6 max-w-sm">{description}</p>}
+      {description && <Text variant="body" className="mb-6 max-w-sm text-muted-foreground">{description}</Text>}
 
       {action && (
         <Button onClick={action.onClick} size="sm">
@@ -62,7 +62,7 @@ export function LoadingState({ message = 'Loading...' }: LoadingStateProps) {
       ) : (
         <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
       )}
-      <p className="text-muted-foreground">{message}</p>
+      <Text variant="body" className="text-muted-foreground">{message}</Text>
     </div>
   )
 }
@@ -90,8 +90,8 @@ export function ErrorState({
         </div>
       </div>
 
-      <h3 className="text-xl font-semibold text-foreground mb-2">{title}</h3>
-      <p className="text-muted-foreground mb-6 max-w-sm">{message}</p>
+      <Text variant="h5" className="mb-2">{title}</Text>
+      <Text variant="body" className="mb-6 max-w-sm text-muted-foreground">{message}</Text>
 
       {action && (
         <Button onClick={action.onClick} size="sm" variant="outline">

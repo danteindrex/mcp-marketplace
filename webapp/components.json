@@ -20,6 +20,7 @@
   },
   "registries": {
     "@kokonutui": "https://kokonutui.com/r/{name}.json",
-    "@boldkit": "https://boldkit.dev/r/{name}.json"
+    "@boldkit": "https://boldkit.dev/r/{name}.json",
+    "@retroui": "https://retroui.dev/r/{name}.json"
   }
 }

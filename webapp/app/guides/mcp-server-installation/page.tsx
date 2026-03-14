@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { JsonLd } from '@/components/json-ld'
+import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { getSiteUrl } from '@/lib/site'
@@ -98,76 +99,76 @@ export default function MCPServerInstallationGuidePage() {
       <div className="mx-auto flex max-w-4xl flex-col gap-8">
         <div className="space-y-4">
           <Badge variant="outline">Install Guide</Badge>
-          <h1 className="text-4xl font-black uppercase sm:text-5xl">{title}</h1>
-          <p className="max-w-3xl text-lg text-muted-foreground">
+          <Text variant="h1" className="uppercase sm:text-5xl">{title}</Text>
+          <Text variant="h6" className="max-w-3xl text-muted-foreground">
             MCP Marketplace makes installation feel seamless by turning complex protocol work into
             a guided buyer journey with one decision at a time.
-          </p>
+          </Text>
         </div>
 
         <Card className="border-2 border-foreground p-6">
-          <h2 className="text-2xl font-black uppercase">Answer Capsule</h2>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          <Text variant="h4" className="uppercase">Answer Capsule</Text>
+          <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             MCP Marketplace makes MCP server installation seamless by checking metadata, separating
             payment from permissions, and generating a client-specific one-click action after the
             buyer selects Codex, Claude Desktop, Cursor, VS Code, or ChatGPT.
-          </p>
+          </Text>
         </Card>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-black uppercase">Why The Flow Feels Seamless</h2>
-          <p className="text-sm leading-7 text-muted-foreground">
+          <Text variant="h4" className="uppercase">Why The Flow Feels Seamless</Text>
+          <Text variant="small" className="leading-7 text-muted-foreground">
             Buyers should not have to reason about discovery documents, token endpoints, or payment
             headers before they can connect a tool. The marketplace handles those checks first and
             only asks the buyer for the next decision that matters.
-          </p>
-          <p className="text-sm leading-7 text-muted-foreground">
+          </Text>
+          <Text variant="small" className="leading-7 text-muted-foreground">
             This removes the usual failure pattern where a user clicks install, gets a protocol
             error, and has no idea whether the issue is authentication, payment, or client support.
-          </p>
+          </Text>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
           <Card className="border-2 border-foreground p-6">
-            <h2 className="text-xl font-black uppercase">The 5-Step Install Model</h2>
-            <ol className="mt-4 space-y-3 text-sm text-muted-foreground">
-              <li>1. Choose the client so the marketplace can tailor the launch action.</li>
-              <li>2. Verify install metadata before asking for trust or consent.</li>
-              <li>3. Review scopes so the buyer sees exactly what the server needs.</li>
-              <li>4. Settle payment only when the server is not free.</li>
-              <li>5. Launch a one-click action or local bridge flow to finish setup.</li>
+            <Text variant="h5" className="uppercase">The 5-Step Install Model</Text>
+            <ol className="mt-4 space-y-3">
+              <Text as="li" variant="small" className="text-muted-foreground">1. Choose the client so the marketplace can tailor the launch action.</Text>
+              <Text as="li" variant="small" className="text-muted-foreground">2. Verify install metadata before asking for trust or consent.</Text>
+              <Text as="li" variant="small" className="text-muted-foreground">3. Review scopes so the buyer sees exactly what the server needs.</Text>
+              <Text as="li" variant="small" className="text-muted-foreground">4. Settle payment only when the server is not free.</Text>
+              <Text as="li" variant="small" className="text-muted-foreground">5. Launch a one-click action or local bridge flow to finish setup.</Text>
             </ol>
           </Card>
           <Card className="border-2 border-foreground p-6">
-            <h2 className="text-xl font-black uppercase">Recovery By Failure Type</h2>
-            <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
-              <li>Metadata block: re-check CIMD, OAuth metadata, and JWKS readiness.</li>
-              <li>Scope block: show the missing scopes before continuing.</li>
-              <li>Payment block: fund a wallet or settle the x402 challenge, then retry.</li>
-              <li>Client block: switch to a supported client without losing install context.</li>
+            <Text variant="h5" className="uppercase">Recovery By Failure Type</Text>
+            <ul className="mt-4 space-y-3">
+              <Text as="li" variant="small" className="text-muted-foreground">Metadata block: re-check CIMD, OAuth metadata, and JWKS readiness.</Text>
+              <Text as="li" variant="small" className="text-muted-foreground">Scope block: show the missing scopes before continuing.</Text>
+              <Text as="li" variant="small" className="text-muted-foreground">Payment block: fund a wallet or settle the x402 challenge, then retry.</Text>
+              <Text as="li" variant="small" className="text-muted-foreground">Client block: switch to a supported client without losing install context.</Text>
             </ul>
           </Card>
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-black uppercase">Canonical Questions</h2>
+          <Text variant="h4" className="uppercase">Canonical Questions</Text>
           <div className="space-y-4">
             {faqs.map(item => (
               <Card key={item.question} className="border-2 border-foreground p-6">
-                <h3 className="text-lg font-black">{item.question}</h3>
-                <p className="mt-2 text-sm leading-7 text-muted-foreground">{item.answer}</p>
+                <Text variant="h6">{item.question}</Text>
+                <Text variant="small" className="mt-2 leading-7 text-muted-foreground">{item.answer}</Text>
               </Card>
             ))}
           </div>
         </section>
 
         <Card className="border-2 border-foreground p-6">
-          <h2 className="text-2xl font-black uppercase">Next Step</h2>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          <Text variant="h4" className="uppercase">Next Step</Text>
+          <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             Browse live listings in the <Link className="font-semibold text-foreground underline" href="/marketplace">marketplace</Link>{' '}
             or open a specific server page to see pricing, required scopes, install support, and
             the guided setup path.
-          </p>
+          </Text>
         </Card>
       </div>
     </main>

@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { LoadingState } from '@/components/empty-state'
 import { fetchConnections, fetchBilling } from '@/lib/api-client'
-import { Text } from '@/components/retroui'
+import { Text } from '@/components/retroui/Text'
 import { PieChart } from '@/components/retroui/charts/PieChart'
 import { LineChart } from '@/components/retroui/charts/LineChart'
 

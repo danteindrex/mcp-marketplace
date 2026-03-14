@@ -21,7 +21,7 @@ import { BurstShape, LightningShape, Star5Shape } from '@/components/ui/shapes'
 import { fetchFeaturedServers, type Server } from '@/lib/api-client'
 import { TypeWriter, ScrollText, SpotlightCard } from '@/components/kokonut'
 import { LightModeOnly, DarkModeOnly } from '@/components/theme-aware'
-import { Button as RetroButton, Card as RetroCard, Badge as RetroBadge } from '@/components/retroui'
+import { Button as RetroButton, Card as RetroCard, Badge as RetroBadge, Text } from '@/components/retroui'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { FAQSection, FooterSection } from '@/components/blocks/marketing'
 import { fetchCurrentUser, type CurrentUser } from '@/lib/api-client'
@@ -222,10 +222,10 @@ export default function HomePage() {
         <nav className="border-b border-border sticky top-0 z-50 bg-background/95 backdrop-blur">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <DarkModeOnly>
-              <div className="flex items-center gap-2"><Sparkles className="w-6 h-6 text-primary" /><span className="text-xl font-bold">MCP Marketplace</span></div>
+              <div className="flex items-center gap-2"><Sparkles className="w-6 h-6 text-primary" /><Text as="span" variant="h5">MCP Marketplace</Text></div>
             </DarkModeOnly>
             <LightModeOnly>
-              <RetroCard className={`px-3 py-2 flex items-center gap-2 ${browseFillClass}`}><Sparkles className="w-5 h-5" /><span className="text-lg font-black">MCP Marketplace</span></RetroCard>
+              <RetroCard className={`px-3 py-2 flex items-center gap-2 ${browseFillClass}`}><Sparkles className="w-5 h-5" /><Text as="span" variant="h6">MCP Marketplace</Text></RetroCard>
             </LightModeOnly>
 
             <DarkModeOnly>
@@ -276,10 +276,10 @@ export default function HomePage() {
             <Star5Shape size={56} className="text-secondary" />
           </div>
           <div className="text-center space-y-8">
-            <h1 className="text-5xl sm:text-6xl font-bold tracking-tight text-balance">
+            <Text as="h1" variant="h1" className="text-balance sm:text-6xl">
               <TypeWriter text="Discover & Deploy MCP Servers" speed={50} deleteSpeed={34} holdDuration={2200} loop loopDelay={450} className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent block" />
-            </h1>
-            <div className="text-xl text-muted-foreground max-w-2xl mx-auto text-balance h-24 overflow-hidden">
+            </Text>
+            <div className="max-w-2xl mx-auto text-balance h-24 overflow-hidden">
               <ScrollText speed="normal" className="h-full"><div className="py-6">The comprehensive marketplace for Model Context Protocol servers. Find, install, and manage servers securely with enterprise-grade features.</div></ScrollText>
             </div>
 
@@ -299,9 +299,9 @@ export default function HomePage() {
 
           <section id="pricing" className="mt-16 border-2 border-foreground bg-card p-6 sm:p-8 shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
             <div className="mb-8 text-center">
-              <p className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Pricing</p>
-              <h2 className="mt-2 text-3xl font-black uppercase">Simple Pricing</h2>
-              <p className="mt-2 text-muted-foreground">No hidden fees. No surprises. Choose the plan that works for you.</p>
+              <Text variant="small" className="uppercase tracking-wide text-muted-foreground">Pricing</Text>
+              <Text variant="h3" className="mt-2 uppercase">Simple Pricing</Text>
+              <Text variant="body" className="mt-2 text-muted-foreground">No hidden fees. No surprises. Choose the plan that works for you.</Text>
             </div>
             <div className="grid gap-6 md:grid-cols-3">
               {pricingPlans.map(plan => (
@@ -317,10 +317,10 @@ export default function HomePage() {
                   <BoldCardHeader className={plan.popular ? 'bg-[hsl(0_84%_71%)]' : 'bg-muted'}>
                     <BoldCardTitle>{plan.title}</BoldCardTitle>
                     <BoldCardDescription>{plan.description}</BoldCardDescription>
-                    <p className="mt-2 text-3xl font-black">
+                    <Text as="p" variant="h3" className="mt-2">
                       {plan.price}
-                      <span className="ml-1 text-base font-semibold">{plan.period}</span>
-                    </p>
+                      <Text as="span" variant="body" className="ml-1">{plan.period}</Text>
+                    </Text>
                   </BoldCardHeader>
                   <BoldCardContent className="space-y-3">
                     {plan.features.map(feature => (
@@ -343,9 +343,9 @@ export default function HomePage() {
 
         <section className="px-4 sm:px-6 lg:px-8 py-16 max-w-7xl mx-auto w-full border-t border-border">
           <div className="space-y-8">
-            <ScrollText speed="normal"><div className="flex items-center justify-between"><div><h2 className="text-3xl font-bold">Featured Servers</h2><p className="text-muted-foreground mt-2">Popular and verified MCP servers</p></div></div></ScrollText>
+            <ScrollText speed="normal"><div className="flex items-center justify-between"><div><Text variant="h3">Featured Servers</Text><Text variant="body" className="mt-2 text-muted-foreground">Popular and verified MCP servers</Text></div></div></ScrollText>
             <Card className="p-6">
-              <ScrollText speed="normal"><h3 className="text-lg font-semibold mb-4">Marketplace Activity</h3></ScrollText>
+              <ScrollText speed="normal"><Text variant="h6" className="mb-4">Marketplace Activity</Text></ScrollText>
               <BarChart
                 data={landingChart}
                 index="name"
@@ -357,8 +357,8 @@ export default function HomePage() {
                 {featuredServers.slice(0, 3).map(server => (
                   <Link key={server.id} href={`/marketplace/${server.slug}`}>
                     <SpotlightCard className="p-6 h-full bg-card border border-border rounded-lg" spotlightColor="rgba(59, 130, 246, 0.3)">
-                      <div className="flex items-start justify-between mb-4"><div><h3 className="font-semibold">{server.name}</h3><p className="text-sm text-muted-foreground">by {server.author}</p></div></div>
-                      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{server.description}</p>
+                      <div className="flex items-start justify-between mb-4"><div><Text variant="h6">{server.name}</Text><Text variant="small" className="text-muted-foreground">by {server.author}</Text></div></div>
+                      <Text variant="small" className="mb-4 line-clamp-2 text-muted-foreground">{server.description}</Text>
                     </SpotlightCard>
                   </Link>
                 ))}
@@ -371,8 +371,8 @@ export default function HomePage() {
                     <RetroCard className="p-6 h-full">
                       <ScrollText speed="normal">
                         <div>
-                          <div className="flex items-start justify-between mb-4"><div><h3 className="font-black text-lg">{server.name}</h3><p className="text-sm font-semibold text-gray-700">by {server.author}</p></div>{server.verified && <RetroBadge variant="default">VERIFIED</RetroBadge>}</div>
-                          <p className="text-sm font-semibold text-gray-800 mb-4 line-clamp-2">{server.description}</p>
+                          <div className="flex items-start justify-between mb-4"><div><Text variant="h6">{server.name}</Text><Text variant="small" className="text-gray-700">by {server.author}</Text></div>{server.verified && <RetroBadge variant="default">VERIFIED</RetroBadge>}</div>
+                          <Text variant="small" className="mb-4 line-clamp-2 text-gray-800">{server.description}</Text>
                         </div>
                       </ScrollText>
                     </RetroCard>
@@ -384,7 +384,7 @@ export default function HomePage() {
         </section>
 
         <section id="features" className="px-4 sm:px-6 lg:px-8 py-16 max-w-7xl mx-auto w-full border-t border-border">
-          <ScrollText speed="normal"><div className="text-center mb-8"><h2 className="text-3xl font-bold">Why Choose MCP Marketplace?</h2></div></ScrollText>
+          <ScrollText speed="normal"><div className="text-center mb-8"><Text variant="h3">Why Choose MCP Marketplace?</Text></div></ScrollText>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, index) => {
               const Icon = feature.icon
@@ -404,7 +404,7 @@ export default function HomePage() {
                     </div>
                   </BoldCardContent>
                   <BoldCardFooter>
-                    <p className="text-xs font-bold uppercase tracking-wide">MCP Capability</p>
+                    <Text variant="caption" className="uppercase tracking-wide">MCP Capability</Text>
                   </BoldCardFooter>
                 </BoldCard>
               )
@@ -413,12 +413,12 @@ export default function HomePage() {
         </section>
 
         <section id="categories" className="px-4 sm:px-6 lg:px-8 py-16 max-w-7xl mx-auto w-full border-t border-border">
-          <ScrollText speed="normal"><div className="mb-8"><h2 className="text-3xl font-bold">Browse by Category</h2></div></ScrollText>
+          <ScrollText speed="normal"><div className="mb-8"><Text variant="h3">Browse by Category</Text></div></ScrollText>
           <LightModeOnly>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{categories.map(category => <Link key={category.name} href={`/marketplace?category=${category.name.toLowerCase()}`}><RetroCard className="p-6"><ScrollText speed="normal"><div className="flex items-center justify-between"><div><h3 className="font-black">{category.name}</h3><p className="text-sm font-semibold">{category.count} servers</p></div><ArrowRight className="w-4 h-4" /></div></ScrollText></RetroCard></Link>)}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{categories.map(category => <Link key={category.name} href={`/marketplace?category=${category.name.toLowerCase()}`}><RetroCard className="p-6"><ScrollText speed="normal"><div className="flex items-center justify-between"><div><Text variant="h6">{category.name}</Text><Text variant="small">{category.count} servers</Text></div><ArrowRight className="w-4 h-4" /></div></ScrollText></RetroCard></Link>)}</div>
           </LightModeOnly>
           <DarkModeOnly>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{categories.map(category => <Link key={category.name} href={`/marketplace?category=${category.name.toLowerCase()}`}><Card className="p-6 cursor-pointer hover:border-primary transition-colors"><div className="flex items-center justify-between"><div><h3 className="font-semibold">{category.name}</h3><p className="text-sm opacity-75">{category.count} servers</p></div><ArrowRight className="w-4 h-4 opacity-50" /></div></Card></Link>)}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{categories.map(category => <Link key={category.name} href={`/marketplace?category=${category.name.toLowerCase()}`}><Card className="p-6 cursor-pointer hover:border-primary transition-colors"><div className="flex items-center justify-between"><div><Text variant="h6">{category.name}</Text><Text variant="small" className="opacity-75">{category.count} servers</Text></div><ArrowRight className="w-4 h-4 opacity-50" /></div></Card></Link>)}</div>
           </DarkModeOnly>
         </section>
 

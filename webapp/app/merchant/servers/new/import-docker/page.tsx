@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Text } from '@/components/retroui/Text'
 import { createMerchantServer } from '@/lib/api-client'
 import { toast } from 'sonner'
 
@@ -151,11 +152,11 @@ export default function ImportDockerPage() {
         </Link>
 
         <div>
-          <h1 className="text-3xl font-bold mb-2">Create Server from Docker Image</h1>
-          <p className="text-muted-foreground">
+          <Text variant="h3" className="mb-2">Create Server from Docker Image</Text>
+          <Text variant="body" className="text-muted-foreground">
             Enter the real metadata the backend needs and create the draft directly. No mock scan
             or generated review data is used here.
-          </p>
+          </Text>
         </div>
 
         <Card className="p-8">

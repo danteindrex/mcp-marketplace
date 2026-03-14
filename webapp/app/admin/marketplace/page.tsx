@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { AppShell } from '@/components/app-shell'
 import { Card } from '@/components/ui/card'
-import { Text } from '@/components/retroui'
+import { Text } from '@/components/retroui/Text'
 import { fetchAdminMarketplaceInsights, type AdminMarketplaceInsight } from '@/lib/api-client'
 
 export default function AdminMarketplacePage() {

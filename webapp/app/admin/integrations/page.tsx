@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Text } from '@/components/retroui/Text'
 import {
   fetchAdminIntegrations,
   type PlatformIntegrationSettingsResponse,
@@ -121,10 +122,10 @@ export default function AdminIntegrationsPage() {
       <div className="p-6 space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Platform Integrations</h1>
-            <p className="text-muted-foreground">
+            <Text variant="h3" className="mb-2">Platform Integrations</Text>
+            <Text variant="body" className="text-muted-foreground">
               Manage OAuth, Stripe, x402, and n8n without rebuilding containers. Secrets are write-only; leave a secret field blank to keep the current value.
-            </p>
+            </Text>
           </div>
           <Button disabled={isSaving || isLoading} onClick={load} variant="outline">
             Refresh

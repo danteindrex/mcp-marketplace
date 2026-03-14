@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
+import { Text } from '@/components/retroui/Text'
 import {
   fetchBuyerHub,
   fetchBuyerPaymentControls,
@@ -260,7 +261,7 @@ export default function InstallWizardPage({ params }: PageProps) {
   if (!server) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <h1 className="text-2xl font-bold mb-4">Server not found</h1>
+        <Text variant="h4" className="mb-4">Server not found</Text>
         <Button asChild><Link href="/marketplace">Back to Marketplace</Link></Button>
       </div>
     )
@@ -375,7 +376,7 @@ export default function InstallWizardPage({ params }: PageProps) {
       <div className="border-b border-border bg-background/50 backdrop-blur sticky top-0 z-40">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-between">
           <Link href={`/marketplace/${server.slug}`} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"><ArrowLeft className="w-4 h-4" />Back</Link>
-          <h1 className="text-xl font-bold">{server.name}</h1><div />
+          <Text variant="h6">{server.name}</Text><div />
         </div>
       </div>
 
@@ -389,7 +390,7 @@ export default function InstallWizardPage({ params }: PageProps) {
                 return (
                   <button key={step.id} className={`w-full text-left px-4 py-3 rounded-lg transition-colors flex items-center gap-3 ${isCurrent ? 'bg-primary text-primary-foreground' : isCompleted ? 'bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium ${isCurrent || isCompleted ? 'bg-current' : 'border border-current'}`}>{isCompleted ? <Check className="w-4 h-4" /> : index + 1}</div>
-                    <div><p className="text-xs font-medium">{step.label}</p></div>
+                    <div><Text variant="caption">{step.label}</Text></div>
                   </button>
                 )
               })}
@@ -398,7 +399,7 @@ export default function InstallWizardPage({ params }: PageProps) {
 
           <div className="lg:col-span-3">
             <Card className="p-8">
-              <h2 className="text-2xl font-bold mb-6">{currentStepData.title}</h2>
+              <Text variant="h4" className="mb-6">{currentStepData.title}</Text>
 
               {currentStep === 'client' && (
                 <RadioGroup value={selectedClient} onValueChange={setSelectedClient}>
@@ -416,12 +417,12 @@ export default function InstallWizardPage({ params }: PageProps) {
                   <Card className="p-4 space-y-4 border border-border">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-semibold">CIMD Metadata</p>
-                        <p className="text-xs text-muted-foreground break-all">
+                        <Text variant="small">CIMD Metadata</Text>
+                        <Text variant="caption" className="break-all text-muted-foreground">
                           {metadataState.status === 'ready'
                             ? metadataState.data.links.cimdUrl
                             : installMetadata?.cimdUrl || 'unknown resource'}
-                        </p>
+                        </Text>
                       </div>
                       <Badge variant={metadataState.status === 'ready' && metadataState.data.cimd.status === 'ok' ? 'default' : metadataState.status === 'loading' ? 'outline' : 'destructive'}>
                         {metadataState.status === 'ready' && metadataState.data.cimd.status === 'ok'
@@ -432,26 +433,26 @@ export default function InstallWizardPage({ params }: PageProps) {
                       </Badge>
                     </div>
                     {metadataState.status === 'ready' && metadataState.data.cimd.json?.scopes_supported && (
-                      <p className="text-xs text-muted-foreground">
+                      <Text variant="caption" className="text-muted-foreground">
                         Scopes exposed: {metadataState.data.cimd.json.scopes_supported.join(', ')}
-                      </p>
+                      </Text>
                     )}
                     {server.canonicalResourceUri && (
-                      <p className="text-xs text-muted-foreground">
+                      <Text variant="caption" className="text-muted-foreground">
                         Upstream runtime target: {server.canonicalResourceUri}
-                      </p>
+                      </Text>
                     )}
                     {metadataState.status === 'error' && (
-                      <p className="text-sm text-destructive">
+                      <Text variant="small" className="text-destructive">
                         {metadataState.error}
-                      </p>
+                      </Text>
                     )}
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="p-3 rounded-md bg-muted/60">
-                        <p className="text-xs uppercase text-muted-foreground">OAuth Metadata</p>
-                        <p className="text-sm font-medium break-all">
+                        <Text variant="caption" className="uppercase text-muted-foreground">OAuth Metadata</Text>
+                        <Text variant="small" className="break-all">
                           {metadataState.status === 'ready' ? metadataState.data.links.oauthMetadataUrl : 'Pending'}
-                        </p>
+                        </Text>
                         <Badge className="mt-2" variant={metadataState.status === 'ready' && metadataState.data.oauth.status === 'ok' ? 'default' : metadataState.status === 'loading' ? 'outline' : 'destructive'}>
                           {metadataState.status === 'ready' && metadataState.data.oauth.status === 'ok'
                             ? 'Reachable'
@@ -461,10 +462,10 @@ export default function InstallWizardPage({ params }: PageProps) {
                         </Badge>
                       </div>
                       <div className="p-3 rounded-md bg-muted/60">
-                        <p className="text-xs uppercase text-muted-foreground">JWKS</p>
-                        <p className="text-sm font-medium break-all">
+                        <Text variant="caption" className="uppercase text-muted-foreground">JWKS</Text>
+                        <Text variant="small" className="break-all">
                           {metadataState.status === 'ready' && metadataState.data.links.jwksUrl ? metadataState.data.links.jwksUrl : 'Awaiting metadata'}
-                        </p>
+                        </Text>
                         <Badge className="mt-2" variant={metadataState.status === 'ready' && metadataState.data.jwks && metadataState.data.jwks.status === 'ok' ? 'default' : metadataState.status === 'loading' ? 'outline' : 'destructive'}>
                           {metadataState.status === 'ready' && metadataState.data.jwks?.status === 'ok'
                             ? `${Array.isArray(metadataState.data.jwks?.json?.keys) ? metadataState.data.jwks?.json?.keys.length : 0} keys`
@@ -479,9 +480,9 @@ export default function InstallWizardPage({ params }: PageProps) {
                         {metadataState.status === 'loading' ? 'Checking...' : 'Check Metadata'}
                       </Button>
                       {metadataState.status === 'ready' && (
-                        <p className="text-xs text-muted-foreground">
+                        <Text variant="caption" className="text-muted-foreground">
                           Last checked {new Date(metadataState.data.timestamp).toLocaleTimeString()}
-                        </p>
+                        </Text>
                       )}
                     </div>
                   </Card>
@@ -489,7 +490,7 @@ export default function InstallWizardPage({ params }: PageProps) {
                   <div className="flex items-center space-x-3 p-4 border border-border rounded-lg">
                     <Checkbox id="auth-ready" checked={authConfirmed} onCheckedChange={state => setAuthConfirmed(state === true)} />
                     <Label htmlFor="auth-ready" className="flex-1 cursor-pointer">
-                      <p className="font-medium">I can complete OAuth authorization using the metadata above.</p>
+                      <Text variant="small">I can complete OAuth authorization using the metadata above.</Text>
                     </Label>
                   </div>
 
@@ -497,8 +498,8 @@ export default function InstallWizardPage({ params }: PageProps) {
                     <div className="flex items-center space-x-3 p-4 border border-border rounded-lg bg-amber-500/10">
                       <Checkbox id="auth-override" checked={manualAuthOverride} onCheckedChange={state => setManualAuthOverride(state === true)} />
                       <Label htmlFor="auth-override" className="flex-1 cursor-pointer">
-                        <p className="font-medium">Allow manual override if CIMD metadata blocks automated checks.</p>
-                        <p className="text-xs text-muted-foreground">Only enable this if you verified the metadata manually.</p>
+                        <Text variant="small">Allow manual override if CIMD metadata blocks automated checks.</Text>
+                        <Text variant="caption" className="text-muted-foreground">Only enable this if you verified the metadata manually.</Text>
                       </Label>
                     </div>
                   )}
@@ -509,12 +510,12 @@ export default function InstallWizardPage({ params }: PageProps) {
                 <div className="space-y-6">
                   <div className="space-y-3 bg-muted/50 p-4 rounded-lg">
                     {server.requiredScopes.map(scope => (
-                      <div key={scope} className="flex items-center gap-3"><CheckIcon className="w-5 h-5 text-green-500 flex-shrink-0" /><p className="font-medium text-sm">{scope}</p></div>
+                      <div key={scope} className="flex items-center gap-3"><CheckIcon className="w-5 h-5 text-green-500 flex-shrink-0" /><Text variant="small">{scope}</Text></div>
                     ))}
                   </div>
                   <div className="flex items-center space-x-3 p-4 border border-border rounded-lg">
                     <Checkbox id="scopes-accepted" checked={acceptedScopes} onCheckedChange={state => setAcceptedScopes(state === true)} />
-                    <Label htmlFor="scopes-accepted" className="flex-1 cursor-pointer"><p className="font-medium">I accept these permissions</p></Label>
+                    <Label htmlFor="scopes-accepted" className="flex-1 cursor-pointer"><Text variant="small">I accept these permissions</Text></Label>
                   </div>
                   <div className="flex flex-wrap gap-3 items-center">
                     <Button
@@ -533,24 +534,24 @@ export default function InstallWizardPage({ params }: PageProps) {
                   </div>
                   {scopeCheckState.status === 'success' && (
                     <Card className="p-4 space-y-2">
-                      <p className="text-sm text-muted-foreground">
-                        Entitlement status: <span className="font-medium text-foreground">{scopeCheckState.result.entitlementStatus}</span>
-                      </p>
+                      <Text variant="small" className="text-muted-foreground">
+                        Entitlement status: <Text as="span" variant="small" className="text-foreground">{scopeCheckState.result.entitlementStatus}</Text>
+                      </Text>
                       {scopeCheckState.result.autoGrantAvailable && (
-                        <p className="text-sm text-muted-foreground">
+                        <Text variant="small" className="text-muted-foreground">
                           This free server will auto-grant an entitlement during install.
-                        </p>
+                        </Text>
                       )}
                       {scopeCheckState.result.paymentRequired && (
-                        <p className="text-sm text-amber-600 dark:text-amber-400">
+                        <Text variant="small" className="text-amber-600 dark:text-amber-400">
                           You will be prompted to settle payment before install completes.
-                        </p>
+                        </Text>
                       )}
-                      <p className="text-xs text-muted-foreground">Validated scopes: {scopeCheckState.result.grantedScopes.join(', ')}</p>
+                      <Text variant="caption" className="text-muted-foreground">Validated scopes: {scopeCheckState.result.grantedScopes.join(', ')}</Text>
                     </Card>
                   )}
                   {scopeCheckState.status === 'error' && (
-                    <p className="text-sm text-destructive">{scopeCheckState.error}</p>
+                    <Text variant="small" className="text-destructive">{scopeCheckState.error}</Text>
                   )}
                 </div>
               )}
@@ -558,28 +559,28 @@ export default function InstallWizardPage({ params }: PageProps) {
               {currentStep === 'connect' && (
                 <div className="space-y-6">
                   <Card className="bg-muted p-6 border-border space-y-4">
-                    <h3 className="font-semibold">One-Click Install Ready</h3>
-                    <p className="text-sm text-muted-foreground">
+                    <Text variant="h6">One-Click Install Ready</Text>
+                    <Text variant="small" className="text-muted-foreground">
                       Next will create your server connection and generate a client-specific install action.
-                    </p>
+                    </Text>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <p className="text-muted-foreground">Client</p>
-                        <p className="font-medium uppercase">{selectedClient}</p>
+                        <Text variant="small" className="text-muted-foreground">Client</Text>
+                        <Text variant="small" className="uppercase">{selectedClient}</Text>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Permissions</p>
-                        <p className="font-medium">{server.requiredScopes.length} scopes</p>
+                        <Text variant="small" className="text-muted-foreground">Permissions</Text>
+                        <Text variant="small">{server.requiredScopes.length} scopes</Text>
                       </div>
                     </div>
                     <div className="space-y-2 pt-2 border-t border-border">
-                      <p className="text-xs text-muted-foreground">Install payment methods from buyer payment controls</p>
+                      <Text variant="caption" className="text-muted-foreground">Install payment methods from buyer payment controls</Text>
                       {paymentControlsLoading ? (
-                        <p className="text-sm text-muted-foreground">Loading payment readiness...</p>
+                        <Text variant="small" className="text-muted-foreground">Loading payment readiness...</Text>
                       ) : paymentControlsError ? (
-                        <p className="text-sm text-destructive">{paymentControlsError}</p>
+                        <Text variant="small" className="text-destructive">{paymentControlsError}</Text>
                       ) : installPaymentMethods.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No install-capable payment methods were returned by the API.</p>
+                        <Text variant="small" className="text-muted-foreground">No install-capable payment methods were returned by the API.</Text>
                       ) : (
                         <RadioGroup value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
                           {installPaymentMethods.map(method => {
@@ -595,11 +596,11 @@ export default function InstallWizardPage({ params }: PageProps) {
                                 <RadioGroupItem value={method.id} id={method.id} disabled={disabled} />
                                 <div className="flex-1 space-y-2">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <p className="font-medium">{getPaymentMethodTitle(method)}</p>
+                                    <Text variant="small">{getPaymentMethodTitle(method)}</Text>
                                     <Badge variant={readiness.tone}>{readiness.label}</Badge>
                                   </div>
-                                  <p className="text-sm text-muted-foreground">{getPaymentMethodDescription(method)}</p>
-                                  <p className="text-xs text-muted-foreground">{readiness.description}</p>
+                                  <Text variant="small" className="text-muted-foreground">{getPaymentMethodDescription(method)}</Text>
+                                  <Text variant="caption" className="text-muted-foreground">{readiness.description}</Text>
                                 </div>
                               </label>
                             )
@@ -607,22 +608,22 @@ export default function InstallWizardPage({ params }: PageProps) {
                         </RadioGroup>
                       )}
                       {paymentRequiredAheadOfInstall && readyInstallMethods.length === 0 && !paymentControlsLoading && !paymentControlsError && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                        <Text variant="caption" className="text-amber-600 dark:text-amber-400">
                           Scope validation says payment will be required, but no allowed method is ready. Open billing to enable or fund one first.
-                        </p>
+                        </Text>
                       )}
                     </div>
                   </Card>
                   {installing && (
-                    <p className="text-sm text-muted-foreground">Preparing install session...</p>
+                    <Text variant="small" className="text-muted-foreground">Preparing install session...</Text>
                   )}
                   {paymentRequired && (
                     <Card className="p-6 space-y-4 border-2 border-amber-500/50">
-                      <h3 className="font-semibold">Payment Required</h3>
-                      <p className="text-sm text-muted-foreground">{paymentRequired.error || 'Settle payment to continue install.'}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <Text variant="h6">Payment Required</Text>
+                      <Text variant="small" className="text-muted-foreground">{paymentRequired.error || 'Settle payment to continue install.'}</Text>
+                      <Text variant="caption" className="text-muted-foreground">
                         Intent: {paymentRequired.intent?.id} | Amount: {Number(paymentRequired.intent?.amountUsdc || 0).toFixed(2)} USDC
-                      </p>
+                      </Text>
                       {selectedPaymentMethod === 'x402_wallet' && (
                           <div className="space-y-2">
                             <Label htmlFor="external-payment-id">External Payment Payload</Label>
@@ -633,20 +634,20 @@ export default function InstallWizardPage({ params }: PageProps) {
                               className="w-full min-h-28 px-3 py-2 rounded-md border border-input bg-background text-sm font-mono"
                               placeholder='Paste the x402 payment JSON payload, or a payment identifier / tx hash'
                             />
-                            <p className="text-xs text-muted-foreground">
+                            <Text variant="caption" className="text-muted-foreground">
                               x402 clients normally retry the request with a `PAYMENT-SIGNATURE` payload. Paste that JSON here for facilitator-backed settlement testing.
-                            </p>
+                            </Text>
                           </div>
                         )}
                       {paymentRequired.wwwAuthenticate && (
                         <div className="bg-background rounded-md p-3 font-mono text-xs overflow-x-auto">
-                          <p className="text-[11px] uppercase text-muted-foreground mb-1">WWW-Authenticate</p>
+                          <Text variant="caption" className="mb-1 uppercase text-muted-foreground">WWW-Authenticate</Text>
                           <pre className="whitespace-pre-wrap break-all">{paymentRequired.wwwAuthenticate}</pre>
                         </div>
                       )}
                       {parsedPaymentChallenge && (
                         <div className="bg-background rounded-md p-3 font-mono text-xs overflow-x-auto space-y-1">
-                          <p className="text-[11px] uppercase text-muted-foreground">PAYMENT-REQUIRED</p>
+                          <Text variant="caption" className="uppercase text-muted-foreground">PAYMENT-REQUIRED</Text>
                           <pre className="whitespace-pre-wrap break-all">
                             {typeof parsedPaymentChallenge === 'string'
                               ? parsedPaymentChallenge
@@ -694,14 +695,14 @@ export default function InstallWizardPage({ params }: PageProps) {
               {currentStep === 'complete' && (
                 <div className="text-center space-y-6">
                   <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto"><Check className="w-8 h-8 text-green-600 dark:text-green-400" /></div>
-                  <h3 className="text-2xl font-bold">Installation Session Created</h3>
+                  <Text variant="h4">Installation Session Created</Text>
                   <div className="flex flex-wrap gap-2 justify-center">{server.requiredScopes.map(scope => <Badge key={scope} variant="outline">{scope}</Badge>)}</div>
 
                   {selectedAction && (
                     <Card className="text-left p-6 space-y-4">
-                      <p className="font-semibold">{selectedAction.label}</p>
+                      <Text variant="small">{selectedAction.label}</Text>
                       {selectedAction.description && (
-                        <p className="text-sm text-muted-foreground">{selectedAction.description}</p>
+                        <Text variant="small" className="text-muted-foreground">{selectedAction.description}</Text>
                       )}
                       <div className="flex flex-wrap gap-2">
                         <Button onClick={() => runInstallAction(selectedAction)}>
@@ -718,10 +719,10 @@ export default function InstallWizardPage({ params }: PageProps) {
 
                   {showBridgeHelp && selectedAction?.requiresLocalExec && selectedAction.launchUrl?.startsWith('mcp-marketplace://') && (
                     <Card className="text-left p-6 space-y-4 border-dashed">
-                      <p className="font-semibold">Install MCP Local Bridge (one-time)</p>
-                      <p className="text-sm text-muted-foreground">
+                      <Text variant="small">Install MCP Local Bridge (one-time)</Text>
+                      <Text variant="small" className="text-muted-foreground">
                         One-click local command execution needs the local bridge registered once on this machine.
-                      </p>
+                      </Text>
                       <div className="bg-background rounded p-4 font-mono text-xs overflow-x-auto">
                         <pre className="text-foreground/80">{bridgeInstallCommand}</pre>
                       </div>
@@ -734,9 +735,9 @@ export default function InstallWizardPage({ params }: PageProps) {
                   )}
 
                   {installSession?.connection?.id && (
-                    <p className="text-sm text-muted-foreground">
+                    <Text variant="small" className="text-muted-foreground">
                       Connection ID: {installSession.connection.id}
-                    </p>
+                    </Text>
                   )}
                   <Button asChild>
                     <Link href="/buyer/connections">Go to Connections</Link>
@@ -746,7 +747,7 @@ export default function InstallWizardPage({ params }: PageProps) {
 
               <div className="flex items-center justify-between gap-4 mt-8 pt-6 border-t border-border">
                 <Button variant="outline" onClick={handleBack} disabled={currentStepIndex === 0}>Back</Button>
-                <div className="text-sm text-muted-foreground">Step {currentStepIndex + 1} of {steps.length}</div>
+                <Text variant="small" className="text-muted-foreground">Step {currentStepIndex + 1} of {steps.length}</Text>
                 <Button onClick={handleNext} disabled={!canProceed() || installing}>{currentStep === 'complete' ? 'Done' : installing ? 'Preparing...' : 'Next'}{currentStep !== 'complete' && !installing && <ChevronRight className="ml-2 w-4 h-4" />}</Button>
               </div>
             </Card>

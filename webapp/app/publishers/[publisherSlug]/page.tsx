@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { JsonLd } from '@/components/json-ld'
+import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { fetchPublicServers } from '@/lib/public-marketplace'
@@ -77,20 +78,20 @@ export default async function PublisherProfilePage({ params }: PageProps) {
       <div className="mx-auto flex max-w-5xl flex-col gap-8">
         <div className="space-y-4">
           <Badge variant="outline">Publisher Profile</Badge>
-          <h1 className="text-4xl font-black uppercase sm:text-5xl">{profile.publisher}</h1>
-          <p className="max-w-3xl text-lg text-muted-foreground">
+          <Text variant="h1" className="uppercase sm:text-5xl">{profile.publisher}</Text>
+          <Text variant="h6" className="max-w-3xl text-muted-foreground">
             This publisher profile groups public MCP Marketplace listings under the visible author
             identity used on published server pages.
-          </p>
+          </Text>
         </div>
 
         <Card className="border-2 border-foreground p-6">
-          <h2 className="text-2xl font-black uppercase">Answer Capsule</h2>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          <Text variant="h4" className="uppercase">Answer Capsule</Text>
+          <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             {profile.publisher} currently publishes {profile.publisherServers.length} public MCP
             server{profile.publisherServers.length === 1 ? '' : 's'} across {profile.categories.length}{' '}
             categor{profile.categories.length === 1 ? 'y' : 'ies'} on MCP Marketplace.
-          </p>
+          </Text>
         </Card>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -99,8 +100,8 @@ export default async function PublisherProfilePage({ params }: PageProps) {
               <Card className="border-2 border-foreground p-6 transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-black uppercase">{server.name}</h3>
-                    <p className="mt-2 text-sm text-muted-foreground">{server.description}</p>
+                    <Text variant="h6" className="uppercase">{server.name}</Text>
+                    <Text variant="small" className="mt-2 text-muted-foreground">{server.description}</Text>
                   </div>
                   {server.verified ? <Badge>Verified</Badge> : null}
                 </div>

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Text } from '@/components/retroui/Text'
 
 export default function MerchantOnboardingPage() {
   const [sourceType, setSourceType] = useState('docker')
@@ -16,12 +17,12 @@ export default function MerchantOnboardingPage() {
     <AppShell role="merchant">
       <div className="p-6 max-w-4xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Merchant Onboarding</h1>
-          <p className="text-muted-foreground">Publish an MCP server with OAuth, pricing, and deployment ready defaults.</p>
+          <Text variant="h3" className="mb-2">Merchant Onboarding</Text>
+          <Text variant="body" className="text-muted-foreground">Publish an MCP server with OAuth, pricing, and deployment ready defaults.</Text>
         </div>
 
         <Card className="p-6 space-y-4">
-          <h2 className="text-xl font-semibold">1. Import Source</h2>
+          <Text variant="h5">1. Import Source</Text>
           <RadioGroup value={sourceType} onValueChange={setSourceType}>
             <div className="flex items-center space-x-3 p-3 border border-border rounded-lg"><RadioGroupItem value="docker" id="docker" /><Label htmlFor="docker">Docker Hub Image</Label></div>
             <div className="flex items-center space-x-3 p-3 border border-border rounded-lg"><RadioGroupItem value="custom" id="custom" /><Label htmlFor="custom">Custom Registry Image</Label></div>
@@ -33,7 +34,7 @@ export default function MerchantOnboardingPage() {
         </Card>
 
         <Card className="p-6 space-y-4">
-          <h2 className="text-xl font-semibold">2. Server Metadata</h2>
+          <Text variant="h5">2. Server Metadata</Text>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div><Label className="mb-2 block">Server Name</Label><Input placeholder="My MCP Server" /></div>
             <div><Label className="mb-2 block">Slug</Label><Input placeholder="my-mcp-server" /></div>

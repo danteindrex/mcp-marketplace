@@ -18,6 +18,7 @@ import {
   updateMerchantPayoutProfile,
   updateMerchantServerPaymentConfig,
 } from '@/lib/api-client'
+import { Text } from '@/components/retroui/Text'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { AreaChart } from '@/components/retroui/charts/AreaChart'
 import { LineChart } from '@/components/retroui/charts/LineChart'
@@ -58,7 +59,7 @@ export default function RevenuePage() {
     <AppShell role="merchant">
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <div><h1 className="text-3xl font-bold mb-2">Revenue Dashboard</h1><p className="text-muted-foreground">Track earnings from your MCP servers</p></div>
+          <div><Text variant="h3" className="mb-2">Revenue Dashboard</Text><Text variant="body" className="text-muted-foreground">Track earnings from your MCP servers</Text></div>
           <div className="flex gap-2">
             <select value={dateRange} onChange={e => setDateRange(e.target.value)} className="px-3 py-2 rounded-md border border-input bg-background text-sm"><option value="1m">Last Month</option><option value="3m">Last 3 Months</option><option value="6m">Last 6 Months</option></select>
             <Button variant="outline" size="sm"><Download className="w-4 h-4 mr-2" />Export</Button>

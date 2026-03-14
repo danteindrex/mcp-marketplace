@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { JsonLd } from '@/components/json-ld'
+import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 
@@ -52,47 +53,47 @@ export default function HostedVsLocalMCPServersPage() {
       <div className="mx-auto flex max-w-4xl flex-col gap-8">
         <div className="space-y-4">
           <Badge variant="outline">Compatibility Guide</Badge>
-          <h1 className="text-4xl font-black uppercase sm:text-5xl">{title}</h1>
-          <p className="max-w-3xl text-lg text-muted-foreground">
+          <Text variant="h1" className="uppercase sm:text-5xl">{title}</Text>
+          <Text variant="h6" className="max-w-3xl text-muted-foreground">
             MCP Marketplace supports both hosted and local MCP listings, but buyers need the model
             explained in plain language before they click install.
-          </p>
+          </Text>
         </div>
 
         <Card className="border-2 border-foreground p-6">
-          <h2 className="text-2xl font-black uppercase">Answer Capsule</h2>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          <Text variant="h4" className="uppercase">Answer Capsule</Text>
+          <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             Hosted MCP servers run remotely and usually install faster, while local MCP servers run
             on the buyer machine and may require a local bridge or client-specific machine setup.
-          </p>
+          </Text>
         </Card>
 
         <section className="grid gap-4 md:grid-cols-2">
           <Card className="border-2 border-foreground p-6">
-            <h2 className="text-xl font-black uppercase">Hosted MCP</h2>
-            <p className="mt-3 text-sm leading-7 text-muted-foreground">
+            <Text variant="h5" className="uppercase">Hosted MCP</Text>
+            <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
               Best when the buyer wants fast onboarding, managed uptime, and fewer machine-specific
               setup steps. The marketplace can often complete the flow through remote auth and a
               client launch action.
-            </p>
+            </Text>
           </Card>
           <Card className="border-2 border-foreground p-6">
-            <h2 className="text-xl font-black uppercase">Local MCP</h2>
-            <p className="mt-3 text-sm leading-7 text-muted-foreground">
+            <Text variant="h5" className="uppercase">Local MCP</Text>
+            <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
               Best when the buyer needs local execution, device-bound tools, or private network
               access. The marketplace keeps the flow clear by separating the local bridge step from
               metadata, scopes, and payment.
-            </p>
+            </Text>
           </Card>
         </section>
 
         <Card className="border-2 border-foreground p-6">
-          <h2 className="text-2xl font-black uppercase">Next Step</h2>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          <Text variant="h4" className="uppercase">Next Step</Text>
+          <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             Open the <Link className="font-semibold text-foreground underline" href="/marketplace">marketplace</Link>{' '}
             to compare live listings or read the <Link className="font-semibold text-foreground underline" href="/guides/mcp-server-installation">install guide</Link>{' '}
             for the end-to-end setup flow.
-          </p>
+          </Text>
         </Card>
       </div>
     </main>

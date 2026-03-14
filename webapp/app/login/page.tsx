@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowRight, ShieldCheck, Sparkles } from 'lucide-react'
+import { Text } from '@/components/retroui/Text'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -126,16 +127,16 @@ function LoginForm() {
               >
                 MCP Marketplace
               </Sticker>
-              <h2 className="max-w-lg text-4xl font-black uppercase tracking-tight">
+              <Text variant="h2" className="max-w-lg uppercase tracking-tight">
                 Build and sell MCP servers with one secure account.
-              </h2>
-              <p className="max-w-xl text-sm font-medium text-foreground/80">
+              </Text>
+              <Text variant="small" className="max-w-xl text-foreground/80">
                 OAuth-ready marketplace access for buyer, merchant, and admin workflows with a single login.
-              </p>
+              </Text>
             </div>
 
             <div className="relative mt-8 space-y-4 border-2 border-foreground bg-background p-5 shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">What you get</p>
+              <Text variant="caption" className="uppercase tracking-wide text-muted-foreground">What you get</Text>
               <ul className="space-y-3 text-sm font-semibold">
                 <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-tertiary" />PKCE + OAuth-protected server access</li>
                 <li className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-tertiary" />Role-aware dashboards and analytics</li>
@@ -151,15 +152,15 @@ function LoginForm() {
           <section className="flex items-center justify-center bg-background p-6 sm:p-10">
             <Card className="w-full max-w-md border-2 border-foreground bg-card p-6 shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
               <div className="mb-5 space-y-1 text-center">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><ShieldCheck className="h-4 w-4" />Secure account access</p>
-                <h1 className="text-3xl font-black uppercase">{mode === 'login' ? 'Welcome back' : 'Create account'}</h1>
-                <p className="text-sm text-muted-foreground">
+                <Text as="span" variant="caption" className="inline-flex items-center gap-2 uppercase tracking-wide text-muted-foreground"><ShieldCheck className="h-4 w-4" />Secure account access</Text>
+                <Text variant="h3" className="uppercase">{mode === 'login' ? 'Welcome back' : 'Create account'}</Text>
+                <Text variant="small" className="text-muted-foreground">
                   {oauthSignupToken
                     ? 'Finish your social signup by choosing a role and workspace.'
                     : mode === 'login'
                       ? 'Enter your credentials to continue.'
                       : 'Create your buyer or merchant workspace.'}
-                </p>
+                </Text>
               </div>
 
               {error && <div className="mb-4 rounded-none border-2 border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
@@ -300,7 +301,7 @@ function LoginForm() {
                 </Button>
               </form>
 
-              <div className="mt-5 text-center text-sm text-muted-foreground">
+              <div className="mt-5 text-center">
                 <Link href="/" className="font-semibold hover:text-foreground">Back to home</Link>
               </div>
             </Card>

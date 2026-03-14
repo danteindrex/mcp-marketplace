@@ -20,7 +20,17 @@ const variantStyles = {
   h6: 'text-lg font-bold',
   body: 'text-base font-semibold',
   small: 'text-sm font-semibold',
-  caption: 'text-xs font-semibold'
+  caption: 'text-xs font-semibold',
+}
+
+function inferVariant(as?: TextElement): NonNullable<TextProps['variant']> {
+  if (as === 'h1' || as === 'h2' || as === 'h3' || as === 'h4' || as === 'h5' || as === 'h6') {
+    return as
+  }
+  if (as === 'span') {
+    return 'caption'
+  }
+  return 'body'
 }
 
 const defaultTagByVariant: Record<NonNullable<TextProps['variant']>, TextElement> = {
@@ -35,23 +45,24 @@ const defaultTagByVariant: Record<NonNullable<TextProps['variant']>, TextElement
   caption: 'span',
 }
 
-const Text = React.forwardRef<
-  HTMLElement,
-  TextProps
->(({ as, className, variant = 'body', bold = false, ...props }, ref) => {
-  const Component = as || defaultTagByVariant[variant]
+const Text = React.forwardRef<HTMLElement, TextProps>(
+  ({ as, className, variant, bold = false, ...props }, ref) => {
+    const resolvedVariant = variant || inferVariant(as)
+    const Component = as || defaultTagByVariant[resolvedVariant]
 
-  return React.createElement(Component as React.ElementType, {
-    ...props,
-    ref,
-    className: cn(
-      'font-sans text-black dark:text-white',
-      variantStyles[variant],
-      bold && 'font-black',
-      className
-    ),
-  })
-})
+    return React.createElement(Component as React.ElementType, {
+      ...props,
+      ref,
+      className: cn(
+        'font-sans text-black dark:text-white',
+        variantStyles[resolvedVariant],
+        bold && 'font-black',
+        className
+      ),
+    })
+  }
+)
+
 Text.displayName = 'Text'
 
 export { Text }

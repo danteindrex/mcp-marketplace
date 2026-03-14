@@ -6,6 +6,7 @@ import { AppShell } from '@/components/app-shell'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Text } from '@/components/retroui/Text'
 import type { Server } from '@/lib/api-client'
 import { getServerApiBase } from '@/lib/api-base'
 
@@ -61,10 +62,10 @@ export default async function AgentBuilderPage() {
     <AppShell role={resolvedRole}>
       <div className="p-6 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Agent Builder</h1>
-          <p className="text-muted-foreground">
+          <Text variant="h3" className="mb-2">Agent Builder</Text>
+          <Text variant="body" className="text-muted-foreground">
             Use the shared n8n workspace and manage the saved builder configuration for each real MCP server.
-          </p>
+          </Text>
         </div>
 
         <Tabs defaultValue="workspace" className="space-y-4">
@@ -78,10 +79,10 @@ export default async function AgentBuilderPage() {
               <div className="flex items-start gap-3">
                 <Workflow className="w-5 h-5 mt-0.5 text-primary" />
                 <div>
-                  <h2 className="text-lg font-semibold">Launch n8n</h2>
-                  <p className="text-sm text-muted-foreground">
+                  <Text variant="h6">Launch n8n</Text>
+                  <Text variant="small" className="text-muted-foreground">
                     This opens the live n8n builder configured in Admin Integrations. Use it to design real automations, then save the MCP-facing catalog on each server record.
-                  </p>
+                  </Text>
                 </div>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -100,7 +101,7 @@ export default async function AgentBuilderPage() {
                   </Button>
                 ) : null}
               </div>
-              <p className="font-mono text-sm break-all">{n8nURL}</p>
+              <Text variant="small" className="font-mono break-all">{n8nURL}</Text>
             </Card>
           </TabsContent>
 
@@ -109,11 +110,11 @@ export default async function AgentBuilderPage() {
               {(resolvedRole === 'merchant' || resolvedRole === 'admin') ? merchantServers.map(server => (
                 <Card key={server.id} className="p-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="space-y-1">
-                    <p className="font-semibold">{server.name}</p>
-                    <p className="text-sm text-muted-foreground">{server.description}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <Text variant="h6">{server.name}</Text>
+                    <Text variant="small" className="text-muted-foreground">{server.description}</Text>
+                    <Text variant="caption" className="text-muted-foreground">
                       Scopes: {server.builder?.scopeMappings?.length || server.requiredScopes?.length || 0} · Tools: {server.builder?.toolCatalog?.length || 0}
-                    </p>
+                    </Text>
                   </div>
                   <Button asChild variant="outline">
                     <Link href={`/merchant/servers/${server.id}/builder`}>Open Builder Config</Link>

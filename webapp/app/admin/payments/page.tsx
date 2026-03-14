@@ -5,6 +5,7 @@ import { AppShell } from '@/components/app-shell'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Text } from '@/components/retroui/Text'
 import {
   fetchAdminFeePolicies,
   fetchAdminPaymentsOverview,
@@ -88,8 +89,8 @@ export default function AdminPaymentsPage() {
     <AppShell role="admin">
       <div className="p-6 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Payments Control Center</h1>
-          <p className="text-muted-foreground">Manage fee policy, payout execution, KYC readiness, and reconciliation.</p>
+          <Text variant="h3" className="mb-2">Payments Control Center</Text>
+          <Text variant="body" className="text-muted-foreground">Manage fee policy, payout execution, KYC readiness, and reconciliation.</Text>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">

@@ -6,6 +6,7 @@ import { Eye, Edit, Plus, TrendingUp, Users, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
+import { Text } from '@/components/retroui/Text'
 import { TableToolbar } from '@/components/table-toolbar'
 import { fetchMerchantServers, type Server } from '@/lib/api-client'
 
@@ -68,8 +69,8 @@ export default function MerchantServersPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Your Servers</h1>
-            <p className="text-muted-foreground">Manage and monitor your published MCP servers</p>
+            <Text variant="h3" className="mb-2">Your Servers</Text>
+            <Text variant="body" className="text-muted-foreground">Manage and monitor your published MCP servers</Text>
           </div>
           <Button asChild>
             <Link href="/merchant/servers/new/import-docker">

@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Copy } from 'lucide-react'
 import { AppShell } from '@/components/app-shell'
+import { Text } from '@/components/retroui/Text'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -132,10 +133,10 @@ export default function PricingPage({ params }: { params: Promise<{ serverId: st
         </Link>
 
         <div>
-          <h1 className="text-3xl font-bold mb-2">Pricing Configuration</h1>
-          <p className="text-muted-foreground">
+          <Text variant="h3" className="mb-2">Pricing Configuration</Text>
+          <Text variant="body" className="text-muted-foreground">
             Set a real price, save payment constraints, then publish the server.
-          </p>
+          </Text>
         </div>
 
         <Card className="p-8 space-y-6">
@@ -204,12 +205,12 @@ export default function PricingPage({ params }: { params: Promise<{ serverId: st
                       className="mt-1"
                     />
                     <div>
-                      <p className="font-medium">{method.displayName}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <Text variant="body">{method.displayName}</Text>
+                      <Text variant="caption" className="text-muted-foreground">
                         {method.integration}
                         {method.enabled ? '' : ' | disabled'}
                         {method.configured ? '' : ' | not configured'}
-                      </p>
+                      </Text>
                     </div>
                   </label>
                 ))}
@@ -261,33 +262,33 @@ export default function PricingPage({ params }: { params: Promise<{ serverId: st
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <p className="text-xs text-muted-foreground mb-1">Marketplace Status</p>
-              <p className="font-medium capitalize">{data.lifecycle?.marketplaceStatus || 'draft'}</p>
+              <Text variant="caption" className="mb-1 text-muted-foreground">Marketplace Status</Text>
+              <Text variant="body" className="capitalize">{data.lifecycle?.marketplaceStatus || 'draft'}</Text>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground mb-1">Deployment Status</p>
-              <p className="font-medium capitalize">{data.lifecycle?.deploymentStatus || 'not_deployed'}</p>
+              <Text variant="caption" className="mb-1 text-muted-foreground">Deployment Status</Text>
+              <Text variant="body" className="capitalize">{data.lifecycle?.deploymentStatus || 'not_deployed'}</Text>
             </div>
           </div>
 
           <div className="border-t border-border pt-4 space-y-3">
-            <p className="text-sm font-semibold">x402 Configuration</p>
+            <Text variant="small">x402 Configuration</Text>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-muted-foreground">Version</p>
-                <p>{data.pricing.x402.version}</p>
+                <Text variant="small" className="text-muted-foreground">Version</Text>
+                <Text variant="body">{data.pricing.x402.version}</Text>
               </div>
               <div>
-                <p className="text-muted-foreground">Network</p>
-                <p>{data.pricing.x402.network}</p>
+                <Text variant="small" className="text-muted-foreground">Network</Text>
+                <Text variant="body">{data.pricing.x402.network}</Text>
               </div>
               <div>
-                <p className="text-muted-foreground">Asset</p>
-                <p>{data.pricing.x402.asset}</p>
+                <Text variant="small" className="text-muted-foreground">Asset</Text>
+                <Text variant="body">{data.pricing.x402.asset}</Text>
               </div>
               <div>
-                <p className="text-muted-foreground">CAIP-2</p>
-                <p className="font-mono">{data.pricing.x402.caip2}</p>
+                <Text variant="small" className="text-muted-foreground">CAIP-2</Text>
+                <Text variant="body" className="font-mono">{data.pricing.x402.caip2}</Text>
               </div>
             </div>
             <Button
@@ -304,7 +305,7 @@ export default function PricingPage({ params }: { params: Promise<{ serverId: st
 
           {(data.lifecycle?.blockingReasons || []).length > 0 && (
             <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-2">
-              <p className="font-medium">Publish blockers</p>
+              <Text variant="body">Publish blockers</Text>
               <ul className="space-y-1 text-sm text-muted-foreground">
                 {(data.lifecycle.blockingReasons || []).map(reason => (
                   <li key={`${reason.stage}-${reason.code}`}>{reason.message}</li>

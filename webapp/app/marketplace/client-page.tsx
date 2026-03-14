@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { TableToolbar } from '@/components/table-toolbar'
 import { fetchCurrentUser, fetchServers, type CurrentUser, type Server } from '@/lib/api-client'
-import { Breadcrumb, Button as RetroButton } from '@/components/retroui'
+import { Breadcrumb, Button as RetroButton, Text } from '@/components/retroui'
 import { LightModeOnly, DarkModeOnly } from '@/components/theme-aware'
 
 type ViewMode = 'grid' | 'list'
@@ -132,26 +132,26 @@ export function MarketplaceClientPage({ initialServers }: { initialServers: Serv
             </Breadcrumb>
             <div className="flex items-center gap-2">
               {currentUser ? (
-                <span className="hidden md:inline text-xs font-semibold text-muted-foreground">
+                <Text as="span" variant="caption" className="hidden md:inline text-muted-foreground">
                   Signed in as {currentUser.email}
-                </span>
+                </Text>
               ) : authResolved ? (
                 <Button asChild size="sm" variant="outline" className="whitespace-nowrap">
                   <Link href="/login">Login</Link>
                 </Button>
               ) : null}
               {!currentUser && !authResolved ? (
-                <span className="hidden md:inline text-xs font-semibold text-muted-foreground">
+                <Text as="span" variant="caption" className="hidden md:inline text-muted-foreground">
                   Checking session...
-                </span>
+                </Text>
               ) : null}
               <Button asChild size="sm" className="button-coral-solid whitespace-nowrap">
                 <Link href={currentUser ? dashboardPath : '/'}>{currentUser ? 'Dashboard' : 'Return Home'}</Link>
               </Button>
             </div>
           </div>
-          <h1 className="text-4xl font-black uppercase mb-2">MCP Marketplace</h1>
-          <p className="text-muted-foreground font-medium">Discover and install verified MCP servers</p>
+          <Text variant="h2" className="mb-2 uppercase">MCP Marketplace</Text>
+          <Text variant="body" className="text-muted-foreground">Discover and install verified MCP servers</Text>
         </div>
       </div>
 
@@ -193,7 +193,7 @@ export function MarketplaceClientPage({ initialServers }: { initialServers: Serv
 
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
               <div className="flex items-center gap-2">
-                <label className="text-sm text-muted-foreground font-semibold">Sort by:</label>
+                <Text as="label" variant="small" className="text-muted-foreground">Sort by:</Text>
                 <select
                   value={sortBy}
                   onChange={e => setSortBy(e.target.value)}
@@ -249,10 +249,10 @@ export function MarketplaceClientPage({ initialServers }: { initialServers: Serv
             </div>
           </div>
 
-          <div className="text-sm text-muted-foreground font-semibold">{resultSummary}</div>
+          <Text variant="small" className="text-muted-foreground">{resultSummary}</Text>
           {filteredServers.length === 0 ? (
             <div className="text-center py-16 brutal-surface">
-              <p className="text-muted-foreground mb-4">No servers found matching your criteria.</p>
+              <Text variant="body" className="mb-4 text-muted-foreground">No servers found matching your criteria.</Text>
               <DarkModeOnly>
                 <Button
                   onClick={() => {
@@ -285,10 +285,10 @@ export function MarketplaceClientPage({ initialServers }: { initialServers: Serv
                   <Card className="h-full p-6 border-2 border-foreground shadow-[4px_4px_0px_hsl(var(--shadow-color))] hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_hsl(var(--shadow-color))] transition-all cursor-pointer group flex flex-col">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
-                        <h3 className="font-black uppercase group-hover:text-primary transition-colors line-clamp-1">
+                        <Text variant="h6" className="line-clamp-1 uppercase group-hover:text-primary transition-colors">
                           {server.name}
-                        </h3>
-                        <p className="text-sm text-muted-foreground font-semibold">{server.author}</p>
+                        </Text>
+                        <Text variant="small" className="text-muted-foreground">{server.author}</Text>
                       </div>
                       {server.verified && (
                         <span className="ml-2 text-xs bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-1 rounded whitespace-nowrap">
@@ -297,7 +297,7 @@ export function MarketplaceClientPage({ initialServers }: { initialServers: Serv
                       )}
                     </div>
 
-                    <p className="text-sm text-muted-foreground mb-4 flex-1 line-clamp-2 font-medium">{server.description}</p>
+                    <Text variant="small" className="mb-4 flex-1 line-clamp-2 text-muted-foreground">{server.description}</Text>
 
                     <div className="space-y-3 border-t-2 border-foreground/40 pt-3">
                       <div className="flex items-center justify-between text-sm font-semibold">
@@ -324,16 +324,16 @@ export function MarketplaceClientPage({ initialServers }: { initialServers: Serv
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-black uppercase group-hover:text-primary transition-colors truncate">
+                          <Text variant="h6" className="truncate uppercase group-hover:text-primary transition-colors">
                             {server.name}
-                          </h3>
+                          </Text>
                           {server.verified && (
                             <span className="text-xs bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-1 rounded whitespace-nowrap">
                               Verified
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground truncate font-medium">{server.description}</p>
+                        <Text variant="small" className="truncate text-muted-foreground">{server.description}</Text>
                       </div>
                       <div className="flex items-center gap-6 text-sm text-muted-foreground whitespace-nowrap font-semibold">
                         <span className="hidden sm:inline">{server.author}</span>

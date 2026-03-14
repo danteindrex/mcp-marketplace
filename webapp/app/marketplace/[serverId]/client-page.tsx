@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { fetchServerBySlug, type Server } from '@/lib/api-client'
 import { slugifyText } from '@/lib/slugs'
-import { Breadcrumb, Button as RetroButton } from '@/components/retroui'
+import { Breadcrumb, Button as RetroButton, Text } from '@/components/retroui'
 import { LightModeOnly, DarkModeOnly } from '@/components/theme-aware'
 
 export function ServerDetailClientPage({
@@ -36,7 +36,7 @@ export function ServerDetailClientPage({
   if (!server) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 grid-pattern bg-background">
-        <h1 className="text-2xl font-black uppercase mb-4">Server not found</h1>
+        <Text variant="h4" className="mb-4 uppercase">Server not found</Text>
         <DarkModeOnly>
           <Button asChild className="button-coral-solid">
             <Link href="/marketplace">Back to Marketplace</Link>
@@ -60,7 +60,7 @@ export function ServerDetailClientPage({
     <div className="flex flex-col min-h-screen grid-pattern bg-background">
       <div className="border-b-2 border-foreground bg-background/90 backdrop-blur sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-between">
-          <div className="space-y-3">
+            <div className="space-y-3">
             <Breadcrumb>
               <Breadcrumb.List>
                 <Breadcrumb.Item>
@@ -96,8 +96,8 @@ export function ServerDetailClientPage({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
             <div className="space-y-4">
-              <h1 className="text-4xl font-black uppercase">{server.name}</h1>
-              <p className="text-xl text-muted-foreground font-medium">{server.description}</p>
+              <Text variant="h2" className="uppercase">{server.name}</Text>
+              <Text variant="h6" className="text-muted-foreground">{server.description}</Text>
               <div className="flex flex-wrap gap-3">
                 <Badge variant="secondary">{server.category}</Badge>
                 <Badge variant="outline">v{server.version}</Badge>
@@ -110,21 +110,21 @@ export function ServerDetailClientPage({
             </div>
 
             <Card className="p-6 space-y-4 border-2 border-foreground shadow-[4px_4px_0px_hsl(var(--shadow-color))]">
-              <h2 className="text-xl font-black uppercase">Required Scopes</h2>
+              <Text variant="h5" className="uppercase">Required Scopes</Text>
               <div className="flex flex-wrap gap-2">
                 {server.requiredScopes.map(scope => <Badge key={scope} variant="outline">{scope}</Badge>)}
               </div>
             </Card>
 
             <Card className="p-6 space-y-4 border-2 border-foreground shadow-[4px_4px_0px_hsl(var(--shadow-color))]">
-              <h2 className="text-xl font-black uppercase">Available Tools</h2>
+              <Text variant="h5" className="uppercase">Available Tools</Text>
               <div className="space-y-3">
                 {server.requiredScopes.map((scope, i) => (
                   <div key={scope + i} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg border border-foreground/40">
                     <Package className="w-4 h-4 mt-1 text-primary flex-shrink-0" />
                     <div>
-                      <p className="font-semibold uppercase">Tool {i + 1}</p>
-                      <p className="text-sm text-muted-foreground font-medium">Scope-bound capability: {scope}</p>
+                      <Text variant="small" className="uppercase">Tool {i + 1}</Text>
+                      <Text variant="small" className="text-muted-foreground">Scope-bound capability: {scope}</Text>
                     </div>
                   </div>
                 ))}
@@ -133,10 +133,10 @@ export function ServerDetailClientPage({
 
             <div className="grid gap-4 md:grid-cols-2">
               <Card className="p-6 space-y-4 border-2 border-foreground shadow-[4px_4px_0px_hsl(var(--shadow-color))]">
-                <h2 className="text-xl font-black uppercase">Published By</h2>
-                <p className="text-sm text-muted-foreground">
+                <Text variant="h5" className="uppercase">Published By</Text>
+                <Text variant="small" className="text-muted-foreground">
                   Browse other public MCP listings from {server.author}.
-                </p>
+                </Text>
                 <div className="flex gap-3">
                   <Button asChild variant="outline">
                     <Link href={`/authors/${slugifyText(server.author)}`}>Open Author Profile</Link>
@@ -148,7 +148,7 @@ export function ServerDetailClientPage({
               </Card>
 
               <Card className="p-6 space-y-4 border-2 border-foreground shadow-[4px_4px_0px_hsl(var(--shadow-color))]">
-                <h2 className="text-xl font-black uppercase">Related Guides</h2>
+                <Text variant="h5" className="uppercase">Related Guides</Text>
                 <div className="space-y-2 text-sm font-semibold">
                   <Link href="/guides/mcp-server-installation" className="block underline">General MCP Install Guide</Link>
                   <Link href="/guides/hosted-vs-local-mcp-servers" className="block underline">Hosted vs Local MCP Servers</Link>
@@ -161,8 +161,8 @@ export function ServerDetailClientPage({
           <div className="lg:col-span-1">
             <Card className="p-6 sticky top-24 space-y-6 border-2 border-foreground shadow-[4px_4px_0px_hsl(var(--shadow-color))]">
               <div>
-                <p className="text-sm text-muted-foreground mb-2 font-semibold">Price</p>
-                {server.pricingType === 'free' ? <p className="text-3xl font-black uppercase">Free</p> : <p className="text-3xl font-black">${server.pricingAmount}</p>}
+                <Text variant="small" className="mb-2 text-muted-foreground">Price</Text>
+                {server.pricingType === 'free' ? <Text variant="h3" className="uppercase">Free</Text> : <Text variant="h3">${server.pricingAmount}</Text>}
               </div>
               <DarkModeOnly>
                 <Button onClick={handleInstall} disabled={isInstalling} size="lg" className="w-full button-orange-solid">
@@ -175,8 +175,8 @@ export function ServerDetailClientPage({
                 </RetroButton>
               </LightModeOnly>
               <div className="space-y-3 border-t-2 border-foreground/40 pt-6">
-                <div className="flex items-start gap-3"><Shield className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" /><div><p className="font-semibold text-sm">Verified & Secure</p></div></div>
-                <div className="flex items-start gap-3"><Users className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" /><div><p className="font-semibold text-sm">Community Trusted</p></div></div>
+                <div className="flex items-start gap-3"><Shield className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" /><div><Text variant="small">Verified & Secure</Text></div></div>
+                <div className="flex items-start gap-3"><Users className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" /><div><Text variant="small">Community Trusted</Text></div></div>
               </div>
             </Card>
           </div>

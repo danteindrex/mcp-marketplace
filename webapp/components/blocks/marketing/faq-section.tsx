@@ -4,6 +4,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
+import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -25,7 +26,7 @@ function AccordionSection({
     <section className="px-4 sm:px-6 lg:px-8 py-20 max-w-4xl mx-auto w-full border-t border-border">
       <div className="text-center mb-10">
         {subtitle ? <Badge variant="outline" className="mb-4">{subtitle}</Badge> : null}
-        <h2 className="text-4xl font-bold mb-4">{title}</h2>
+        <Text variant="h2" className="mb-4">{title}</Text>
       </div>
       <Card className="border-[3px] border-foreground shadow-[4px_4px_0px_hsl(var(--shadow-color))]">
         <CardContent className="p-6">

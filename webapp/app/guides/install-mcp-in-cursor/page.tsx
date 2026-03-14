@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { JsonLd } from '@/components/json-ld'
+import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { getSiteUrl } from '@/lib/site'
@@ -38,26 +39,26 @@ export default function InstallMCPInCursorGuidePage() {
       <div className="mx-auto flex max-w-4xl flex-col gap-8">
         <div className="space-y-4">
           <Badge variant="outline">Cursor Guide</Badge>
-          <h1 className="text-4xl font-black uppercase sm:text-5xl">{title}</h1>
-          <p className="max-w-3xl text-lg text-muted-foreground">
+          <Text variant="h1" className="uppercase sm:text-5xl">{title}</Text>
+          <Text variant="h6" className="max-w-3xl text-muted-foreground">
             Cursor installation stays straightforward when the marketplace handles readiness checks
             before the buyer reaches the final setup step.
-          </p>
+          </Text>
         </div>
         <Card className="border-2 border-foreground p-6">
-          <h2 className="text-2xl font-black uppercase">Answer Capsule</h2>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          <Text variant="h4" className="uppercase">Answer Capsule</Text>
+          <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             To install MCP in Cursor through MCP Marketplace, open a listing, choose Cursor,
             review scopes and readiness, settle payment if required, and launch the generated
             Cursor-specific install action.
-          </p>
+          </Text>
         </Card>
         <Card className="border-2 border-foreground p-6">
-          <h2 className="text-2xl font-black uppercase">Next Step</h2>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          <Text variant="h4" className="uppercase">Next Step</Text>
+          <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             Continue to the <Link className="font-semibold text-foreground underline" href="/marketplace">marketplace</Link>{' '}
             or compare with the <Link className="font-semibold text-foreground underline" href="/guides/install-mcp-in-vs-code">VS Code install path</Link>.
-          </p>
+          </Text>
         </Card>
       </div>
     </main>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { LoadingState } from '@/components/empty-state'
+import { Text } from '@/components/retroui/Text'
 import { TableToolbar } from '@/components/table-toolbar'
 import { toast } from 'sonner'
 import { fetchConnections, rotateToken, revokeConnection } from '@/lib/api-client'
@@ -98,8 +99,8 @@ export default function ConnectionsPage() {
       <div className="p-6 space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold mb-2">Connections</h1>
-          <p className="text-muted-foreground">Manage your MCP server connections and API tokens</p>
+          <Text variant="h3" className="mb-2">Connections</Text>
+          <Text variant="body" className="text-muted-foreground">Manage your MCP server connections and API tokens</Text>
         </div>
 
         {/* Toolbar */}
@@ -124,7 +125,7 @@ export default function ConnectionsPage() {
         <div className="space-y-4">
           {filteredConnections.length === 0 ? (
             <Card className="p-8 text-center">
-              <p className="text-muted-foreground mb-4">No connections found</p>
+              <Text variant="body" className="mb-4 text-muted-foreground">No connections found</Text>
               <Button asChild>
                 <a href="/marketplace">Browse Marketplace</a>
               </Button>
@@ -147,7 +148,7 @@ export default function ConnectionsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     {/* Server Info */}
                     <div>
-                      <h3 className="font-semibold mb-2">{conn.serverName}</h3>
+                      <Text variant="h6" className="mb-2">{conn.serverName}</Text>
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <div
@@ -173,7 +174,7 @@ export default function ConnectionsPage() {
 
                     {/* Scopes */}
                     <div>
-                      <h4 className="text-sm text-muted-foreground mb-2">Scopes</h4>
+                      <Text variant="small" className="mb-2 text-muted-foreground">Scopes</Text>
                       <div className="flex flex-wrap gap-1">
                         {conn.scopes.map((scope: string) => (
                           <span
@@ -188,7 +189,7 @@ export default function ConnectionsPage() {
 
                     {/* Expiration */}
                     <div>
-                      <h4 className="text-sm text-muted-foreground mb-2">Token Expires</h4>
+                      <Text variant="small" className="mb-2 text-muted-foreground">Token Expires</Text>
                       {conn.tokenExpiresAt ? (
                         <div>
                           <p className="text-sm font-medium">{conn.tokenExpiresAt.toLocaleDateString()}</p>
@@ -206,7 +207,7 @@ export default function ConnectionsPage() {
 
                     {/* Last Used */}
                     <div>
-                      <h4 className="text-sm text-muted-foreground mb-2">Last Used</h4>
+                      <Text variant="small" className="mb-2 text-muted-foreground">Last Used</Text>
                       <p className="text-sm font-medium">
                         {conn.lastUsed ? conn.lastUsed.toLocaleDateString() : 'Never'}
                       </p>
@@ -258,14 +259,14 @@ export default function ConnectionsPage() {
 
         {/* Help Section */}
         <Card className="bg-blue-500/10 border-blue-200 dark:border-blue-800 p-6">
-          <h3 className="font-semibold mb-2 flex items-center gap-2">
+          <Text variant="h6" className="mb-2 flex items-center gap-2">
             <AlertCircle className="w-4 h-4" />
             Need Help?
-          </h3>
-          <p className="text-sm text-foreground/80 mb-4">
+          </Text>
+          <Text variant="small" className="mb-4 text-foreground/80">
             A connection allows a server to access specific resources on your behalf. You can rotate tokens anytime for
             security, or revoke access entirely.
-          </p>
+          </Text>
           <ul className="text-sm space-y-2 text-foreground/70">
             <li>• Rotate tokens regularly to maintain security</li>
             <li>• Revoked connections can be re-authorized from the marketplace</li>

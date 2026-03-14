@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { fetchServerObservability } from '@/lib/api-client'
+import { Text } from '@/components/retroui/Text'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { LineChart } from '@/components/retroui/charts/LineChart'
 
@@ -37,7 +38,7 @@ export default function ObservabilityPage({ params }: { params: Promise<{ server
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load observability data'))
   }, [serverId])
 
-  if (error) return <AppShell role="merchant"><div className="p-6"><div className="flex items-center gap-2 text-red-500"><AlertCircle className="w-5 h-5" /><p>Error loading observability: {error}</p></div></div></AppShell>
+  if (error) return <AppShell role="merchant"><div className="p-6"><div className="flex items-center gap-2 text-red-500"><AlertCircle className="w-5 h-5" /><Text variant="body">Error loading observability: {error}</Text></div></div></AppShell>
   if (!data) return <AppShell role="merchant"><div className="p-6">Loading...</div></AppShell>
 
   const bars = [
@@ -54,19 +55,19 @@ export default function ObservabilityPage({ params }: { params: Promise<{ server
       <div className="p-6 space-y-6">
         <Link href="/merchant/servers" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors w-fit"><ArrowLeft className="w-4 h-4" />Back to Servers</Link>
         <div className="flex items-center justify-between">
-          <div><h1 className="text-3xl font-bold mb-2">Observability</h1><p className="text-muted-foreground">Monitor server performance and tool usage</p></div>
+          <div><Text variant="h3" className="mb-2">Observability</Text><Text variant="body" className="text-muted-foreground">Monitor server performance and tool usage</Text></div>
           <div className="flex gap-2"><select value={dateRange} onChange={e => setDateRange(e.target.value)} className="px-3 py-2 rounded-md border border-input bg-background text-sm"><option value="24h">Last 24 Hours</option><option value="7d">Last 7 Days</option><option value="30d">Last 30 Days</option></select><Button variant="outline" size="sm"><Download className="w-4 h-4 mr-2" />Export</Button></div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="p-6"><p className="text-sm text-muted-foreground mb-2">p50 Latency</p><p className="text-3xl font-bold">{data.metrics.p50LatencyMs}ms</p></Card>
-          <Card className="p-6"><p className="text-sm text-muted-foreground mb-2">p95 Latency</p><p className="text-3xl font-bold">{data.metrics.p95LatencyMs}ms</p></Card>
-          <Card className="p-6"><p className="text-sm text-muted-foreground mb-2">Error Rate</p><p className="text-3xl font-bold">{(data.metrics.errorRate * 100).toFixed(2)}%</p></Card>
-          <Card className="p-6"><p className="text-sm text-muted-foreground mb-2">Insufficient Scope</p><p className="text-3xl font-bold">{data.metrics.insufficientScopeCount}</p></Card>
+          <Card className="p-6"><Text variant="small" className="mb-2 text-muted-foreground">p50 Latency</Text><Text variant="h3">{data.metrics.p50LatencyMs}ms</Text></Card>
+          <Card className="p-6"><Text variant="small" className="mb-2 text-muted-foreground">p95 Latency</Text><Text variant="h3">{data.metrics.p95LatencyMs}ms</Text></Card>
+          <Card className="p-6"><Text variant="small" className="mb-2 text-muted-foreground">Error Rate</Text><Text variant="h3">{(data.metrics.errorRate * 100).toFixed(2)}%</Text></Card>
+          <Card className="p-6"><Text variant="small" className="mb-2 text-muted-foreground">Insufficient Scope</Text><Text variant="h3">{data.metrics.insufficientScopeCount}</Text></Card>
         </div>
 
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4">Latency Percentiles</h2>
+          <Text variant="h6" className="mb-4">Latency Percentiles</Text>
           <BarChart
             data={bars}
             index="p"
@@ -75,7 +76,7 @@ export default function ObservabilityPage({ params }: { params: Promise<{ server
         </Card>
 
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4">Recent Error/Latency Trend</h2>
+          <Text variant="h6" className="mb-4">Recent Error/Latency Trend</Text>
           {hasHistoricalData ? (
             <LineChart
               data={trend}
@@ -84,8 +85,8 @@ export default function ObservabilityPage({ params }: { params: Promise<{ server
             />
           ) : (
             <div className="text-center py-12 text-muted-foreground">
-              <p className="text-sm">No historical trend data available yet.</p>
-              <p className="text-xs mt-1">Error and latency trends will appear as data is collected over time.</p>
+              <Text variant="small">No historical trend data available yet.</Text>
+              <Text variant="caption" className="mt-1">Error and latency trends will appear as data is collected over time.</Text>
             </div>
           )}
         </Card>

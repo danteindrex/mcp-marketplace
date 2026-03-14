@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { AppShell } from '@/components/app-shell'
+import { Text } from '@/components/retroui/Text'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -83,31 +84,31 @@ export default function BuilderPage({ params }: { params: Promise<{ serverId: st
         </Link>
 
         <div>
-          <h1 className="text-3xl font-bold mb-2">Agent Builder</h1>
-          <p className="text-muted-foreground">
+          <Text variant="h3" className="mb-2">Agent Builder</Text>
+          <Text variant="body" className="text-muted-foreground">
             Configure the MCP tool catalog, scope mapping, and implementation notes for this server.
-          </p>
+          </Text>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card className="p-6 space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Framework</label>
+              <Text as="label" variant="small">Framework</Text>
               <Input value={framework} onChange={e => setFramework(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Template</label>
+              <Text as="label" variant="small">Template</Text>
               <Input value={template} onChange={e => setTemplate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Instructions</label>
+              <Text as="label" variant="small">Instructions</Text>
               <Textarea value={instructions} onChange={e => setInstructions(e.target.value)} rows={8} />
             </div>
           </Card>
 
           <Card className="p-6 space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Required Scopes</label>
+              <Text as="label" variant="small">Required Scopes</Text>
               <Input
                 value={scopeMappings}
                 onChange={e => setScopeMappings(e.target.value)}
@@ -115,7 +116,7 @@ export default function BuilderPage({ params }: { params: Promise<{ serverId: st
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Tool Catalog JSON</label>
+              <Text as="label" variant="small">Tool Catalog JSON</Text>
               <Textarea
                 value={toolCatalogJSON}
                 onChange={e => setToolCatalogJSON(e.target.value)}
@@ -123,14 +124,14 @@ export default function BuilderPage({ params }: { params: Promise<{ serverId: st
                 className="font-mono text-xs"
               />
             </div>
-            <p className="text-xs text-muted-foreground">
+            <Text variant="caption" className="text-muted-foreground">
               Last edited by {data.lastEditedBy || 'nobody yet'}
               {data.lastEditedAt ? ` at ${new Date(data.lastEditedAt).toLocaleString()}` : ''}
-            </p>
+            </Text>
             <Button onClick={handleSave} disabled={saving}>
               {saving ? 'Saving...' : 'Save Builder Config'}
             </Button>
-            {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+            {message ? <Text variant="small" className="text-muted-foreground">{message}</Text> : null}
           </Card>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
+import { Text } from '@/components/retroui/Text'
 import { TableToolbar } from '@/components/table-toolbar'
 import { fetchAuditLogs } from '@/lib/api-client'
 
@@ -34,8 +35,8 @@ export default function AdminAuditLogsPage() {
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Audit Logs</h1>
-            <p className="text-muted-foreground">Append-only record of all platform actions and changes</p>
+            <Text variant="h3" className="mb-2">Audit Logs</Text>
+            <Text variant="body" className="text-muted-foreground">Append-only record of all platform actions and changes</Text>
           </div>
           <Button variant="outline"><Download className="w-4 h-4 mr-2" />Export Logs</Button>
         </div>
@@ -50,9 +51,9 @@ export default function AdminAuditLogsPage() {
         />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-4"><p className="text-sm text-muted-foreground mb-1">Total Logs</p><p className="text-2xl font-bold">{logs.length}</p></Card>
-          <Card className="p-4"><p className="text-sm text-muted-foreground mb-1">Successful Actions</p><p className="text-2xl font-bold text-green-600 dark:text-green-400">{logs.filter(l => l.result === 'success').length}</p></Card>
-          <Card className="p-4"><p className="text-sm text-muted-foreground mb-1">Failed Actions</p><p className="text-2xl font-bold text-red-600 dark:text-red-400">{logs.filter(l => l.result === 'failure').length}</p></Card>
+          <Card className="p-4"><Text variant="small" className="mb-1 text-muted-foreground">Total Logs</Text><Text variant="h4">{logs.length}</Text></Card>
+          <Card className="p-4"><Text variant="small" className="mb-1 text-muted-foreground">Successful Actions</Text><Text variant="h4" className="text-green-600 dark:text-green-400">{logs.filter(l => l.result === 'success').length}</Text></Card>
+          <Card className="p-4"><Text variant="small" className="mb-1 text-muted-foreground">Failed Actions</Text><Text variant="h4" className="text-red-600 dark:text-red-400">{logs.filter(l => l.result === 'failure').length}</Text></Card>
         </div>
 
         <Card className="overflow-hidden">

@@ -1,6 +1,5 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import 'pixel-retroui/dist/fonts.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -94,7 +93,7 @@
 }
 
 @theme inline {
-  --font-sans: 'Minecraft', 'Trebuchet MS', 'Arial Black', sans-serif;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Consolas', 'Courier New', monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -151,7 +150,6 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
-    text-rendering: optimizeSpeed;
   }
 }
 
