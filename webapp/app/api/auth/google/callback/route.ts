@@ -89,7 +89,7 @@ export async function GET(request: Request) {
 
     const response = NextResponse.redirect(new URL('/login?oauth=success', request.url))
     return withSessionCookies(response, payload)
-  } catch (error) {
+  } catch {
     return NextResponse.redirect(new URL('/login?error=callback_failed', request.url))
   }
 }

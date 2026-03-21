@@ -412,6 +412,123 @@ func TestMarketplaceInstallAndMCPHub(t *testing.T) {
 	}
 }
 
+func TestMarketplaceServerCanExposeChatGPTAppInstallOption(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "chatgptapp-buyer@acme.local", "BuyerPass123!@", "buyer")
+	signup(t, h, "chatgptapp-merchant@acme.local", "MerchantPass123!@", "merchant")
+	buyerToken := login(t, h, "chatgptapp-buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "chatgptapp-merchant@acme.local", "MerchantPass123!@")
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":               "ChatGPT App Server",
+		"slug":               "chatgpt-app-server",
+		"description":        "Install flow test",
+		"category":           "integration",
+		"dockerImage":        "tenant/chatgpt-app:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/chatgpt-app-server",
+		"requiredScopes":     []string{"db:read"},
+		"pricingType":        "free",
+		"supportsCloud":      true,
+		"supportsLocal":      true,
+		"supportsChatGptApp": true,
+		"chatGptAppUrl":      "https://chatgpt.com/g/g-chatgpt-app-server",
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+	serverSlug := createdBody["slug"].(string)
+
+	deploy := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/deploy", merchantToken, nil)
+	if deploy.Code != http.StatusOK {
+		t.Fatalf("deploy chatgpt app server status %d body=%s", deploy.Code, deploy.Body.String())
+	}
+	publish := call(t, h, http.MethodPost, "/v1/merchant/servers/"+serverID+"/publish", merchantToken, map[string]interface{}{"pricingAmount": 0})
+	if publish.Code != http.StatusOK {
+		t.Fatalf("publish chatgpt app server status %d body=%s", publish.Code, publish.Body.String())
+	}
+
+	detail := call(t, h, http.MethodGet, "/v1/marketplace/servers/"+serverSlug, "", nil)
+	if detail.Code != http.StatusOK {
+		t.Fatalf("detail status %d body=%s", detail.Code, detail.Body.String())
+	}
+	var detailBody map[string]interface{}
+	_ = json.Unmarshal(detail.Body.Bytes(), &detailBody)
+	install := detailBody["install"].(map[string]interface{})
+	clients := install["clients"].([]interface{})
+	foundClient := false
+	for _, raw := range clients {
+		if raw.(string) == "chatgpt_app" {
+			foundClient = true
+			break
+		}
+	}
+	if !foundClient {
+		t.Fatalf("expected chatgpt_app in install clients, got body=%s", detail.Body.String())
+	}
+
+	installed := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+serverSlug+"/install", buyerToken, map[string]interface{}{
+		"client": "chatgpt_app",
+	})
+	if installed.Code != http.StatusCreated {
+		t.Fatalf("chatgpt app install status %d body=%s", installed.Code, installed.Body.String())
+	}
+	var installedBody map[string]interface{}
+	_ = json.Unmarshal(installed.Body.Bytes(), &installedBody)
+	installBody := installedBody["install"].(map[string]interface{})
+	selected := installBody["selected"].(map[string]interface{})
+	if selected["client"] != "chatgpt_app" {
+		t.Fatalf("expected selected client chatgpt_app, got body=%s", installed.Body.String())
+	}
+	if selected["openUrl"] != "https://chatgpt.com/g/g-chatgpt-app-server" {
+		t.Fatalf("expected ChatGPT app openUrl, got body=%s", installed.Body.String())
+	}
+}
+
+func updateAdminWalletIntegrations(t *testing.T, h http.Handler, adminToken string, wallet map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	res := call(t, h, http.MethodPut, "/v1/admin/integrations", adminToken, map[string]interface{}{
+		"google": map[string]interface{}{},
+		"github": map[string]interface{}{},
+		"stripe": map[string]interface{}{
+			"publishableKey":       "",
+			"secretKey":            "",
+			"webhookSecret":        "",
+			"onrampReturnUrl":      "",
+			"onrampRefreshUrl":     "",
+			"onrampMinUsd":         10,
+			"onrampDefaultUsd":     50,
+			"connectReturnUrl":     "",
+			"connectRefreshUrl":    "",
+			"connectWebhookSecret": "",
+		},
+		"wallet": wallet,
+		"x402": map[string]interface{}{
+			"mode":              "disabled",
+			"facilitatorUrl":    "",
+			"facilitatorApiKey": "",
+		},
+		"n8n": map[string]interface{}{
+			"baseUrl":        "",
+			"apiKey":         "",
+			"timeoutSeconds": 12,
+		},
+	})
+	if res.Code != http.StatusOK {
+		t.Fatalf("admin integrations update status %d body=%s", res.Code, res.Body.String())
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(res.Body.Bytes(), &body)
+	return body
+}
+
+func marshalAny(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
 func TestMarketplaceInstallAndMCPHubWithSDKMode(t *testing.T) {
 	var upstreamCalls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1643,7 +1760,7 @@ func TestMCPToolsCallX402MetaFlow(t *testing.T) {
 	toolName := "invoke_" + strings.ReplaceAll(serverSlug, "-", "_")
 	hubToken := oauthAccessToken(t, h, buyerToken, buyerUser["tenantId"].(string), buyerUser["id"].(string), []string{"documents:read"})
 
-	needPay := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
+	autoPaid := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      "mcp-pay-1",
 		"method":  "tools/call",
@@ -1652,14 +1769,13 @@ func TestMCPToolsCallX402MetaFlow(t *testing.T) {
 			"arguments": map[string]interface{}{"query": "hello"},
 		},
 	})
-	if needPay.Code != http.StatusOK {
-		t.Fatalf("expected jsonrpc envelope status 200, got %d body=%s", needPay.Code, needPay.Body.String())
+	if autoPaid.Code != http.StatusOK {
+		t.Fatalf("expected jsonrpc envelope status 200, got %d body=%s", autoPaid.Code, autoPaid.Body.String())
 	}
-	var needPayBody map[string]interface{}
-	_ = json.Unmarshal(needPay.Body.Bytes(), &needPayBody)
-	errObj, _ := needPayBody["error"].(map[string]interface{})
-	if int(errObj["code"].(float64)) != -32002 {
-		t.Fatalf("expected payment required error -32002, got %v body=%s", errObj["code"], needPay.Body.String())
+	var autoPaidBody map[string]interface{}
+	_ = json.Unmarshal(autoPaid.Body.Bytes(), &autoPaidBody)
+	if autoPaidBody["error"] != nil {
+		t.Fatalf("expected managed wallet auto payment success, got body=%s", autoPaid.Body.String())
 	}
 
 	paid := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
@@ -2110,6 +2226,305 @@ func TestPaidInstallFlowAndInstallAutoSettle(t *testing.T) {
 	})
 	if autoSettleInstall.Code != http.StatusCreated {
 		t.Fatalf("expected auto-settle install success, got %d body=%s", autoSettleInstall.Code, autoSettleInstall.Body.String())
+	}
+}
+
+func TestManagedWalletProvisioningAndAutoX402Settle(t *testing.T) {
+	cfg := config.Config{
+		AllowInsecureDefaults: true,
+		X402Mode:              "disabled",
+		SuperAdminEmail:       "admin@platform.local",
+		SuperAdminPassword:    "admin-pass",
+	}
+	st := store.NewMemoryStore(cfg)
+	h := newTestServerWithStore(cfg, st)
+	signup(t, h, "managed-buyer@acme.local", "BuyerPass123!@", "buyer")
+	signup(t, h, "managed-merchant@acme.local", "MerchantPass123!@", "merchant")
+	buyerToken := login(t, h, "managed-buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "managed-merchant@acme.local", "MerchantPass123!@")
+
+	controls := call(t, h, http.MethodGet, "/v1/buyer/payments/controls", buyerToken, nil)
+	if controls.Code != http.StatusOK {
+		t.Fatalf("buyer payment controls status %d body=%s", controls.Code, controls.Body.String())
+	}
+	var controlsBody map[string]interface{}
+	_ = json.Unmarshal(controls.Body.Bytes(), &controlsBody)
+	managedWallet, _ := controlsBody["managedWallet"].(map[string]interface{})
+	if strings.TrimSpace(managedWallet["address"].(string)) == "" {
+		t.Fatalf("expected managed wallet address in controls response: %s", controls.Body.String())
+	}
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Managed Wallet Server",
+		"slug":                 "managed-wallet-server",
+		"description":          "Managed wallet server",
+		"category":             "ai",
+		"dockerImage":          "tenant/managed-wallet:1.0.0",
+		"canonicalResourceUri": "https://mcp.marketplace.local/resource/managed-wallet-server",
+		"requiredScopes":       []string{"documents:read"},
+		"pricingType":          "x402",
+		"pricingAmount":        0.5,
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+		"paymentMethods":       []string{"x402_wallet"},
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create merchant server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+	serverSlug := createdBody["slug"].(string)
+	if strings.TrimSpace(createdBody["paymentAddress"].(string)) == "" {
+		t.Fatalf("expected seller payment address to default from managed wallet: %s", created.Body.String())
+	}
+	server, ok := st.GetServerByID(serverID)
+	if !ok {
+		t.Fatalf("expected created server %s to exist in store", serverID)
+	}
+	server.Status = storemodels.ServerStatusPublished
+	server.DeploymentStatus = storemodels.ServerDeploymentDeployed
+	server.PublishedAt = time.Now().UTC()
+	server.DeployedAt = time.Now().UTC()
+	st.UpdateServer(server)
+
+	intent := call(t, h, http.MethodPost, "/v1/billing/x402/intents", buyerToken, map[string]interface{}{
+		"serverId":      serverID,
+		"toolName":      "managed_wallet_call",
+		"paymentMethod": "x402_wallet",
+	})
+	if intent.Code != http.StatusPaymentRequired {
+		t.Fatalf("x402 intent status %d body=%s", intent.Code, intent.Body.String())
+	}
+	var intentBody map[string]interface{}
+	_ = json.Unmarshal(intent.Body.Bytes(), &intentBody)
+	intentObj := intentBody["intent"].(map[string]interface{})
+	intentID := intentObj["id"].(string)
+	if !strings.Contains(intentObj["challenge"].(string), createdBody["paymentAddress"].(string)) {
+		t.Fatalf("expected challenge to contain server payment address: %s", intentObj["challenge"].(string))
+	}
+
+	settle := call(t, h, http.MethodPost, "/v1/billing/x402/intents/"+intentID+"/settle", buyerToken, nil)
+	if settle.Code != http.StatusOK {
+		t.Fatalf("managed wallet settle status %d body=%s", settle.Code, settle.Body.String())
+	}
+
+	install := call(t, h, http.MethodPost, "/v1/marketplace/servers/"+serverSlug+"/install", buyerToken, map[string]interface{}{
+		"client":        "vscode",
+		"paymentMethod": "x402_wallet",
+		"autoSettle":    true,
+	})
+	if install.Code != http.StatusCreated {
+		t.Fatalf("managed wallet install status %d body=%s", install.Code, install.Body.String())
+	}
+}
+
+func TestAdminCanSelectFireflyWalletProvider(t *testing.T) {
+	h := newTestServer()
+	adminToken := login(t, h, "admin@platform.local", "admin-pass")
+
+	body := updateAdminWalletIntegrations(t, h, adminToken, map[string]interface{}{
+		"provider":                  "firefly",
+		"managedAutoPayEnabled":     true,
+		"legacyPaymentModeEnabled":  true,
+		"externalWalletsEnabled":    false,
+		"cdpEnabled":                true,
+		"fireflyEnabled":            true,
+		"cdpApiKeyId":               "",
+		"cdpApiKeySecret":           "",
+		"cdpWalletSecret":           "",
+		"fireflySignerUrl":          "http://firefly-signer:8545",
+		"fireflyAuthToken":          "",
+		"fireflyKeystoreDir":        "./data/firefly/keystore",
+		"fireflyKeystorePassphrase": "dev-passphrase",
+		"defaultNetwork":            "base",
+		"defaultAsset":              "USDC",
+		"custodyMode":               "provider_managed",
+	})
+
+	settings := body["settings"].(map[string]interface{})
+	wallet := settings["wallet"].(map[string]interface{})
+	if wallet["provider"] != "firefly" {
+		t.Fatalf("expected selected wallet provider firefly, got body=%s", marshalAny(body))
+	}
+	if wallet["activeProvider"] != "firefly" {
+		t.Fatalf("expected active wallet provider firefly, got body=%s", marshalAny(body))
+	}
+	if wallet["managedAutoPayEnabled"] != true {
+		t.Fatalf("expected managed auto-pay enabled, got body=%s", marshalAny(body))
+	}
+}
+
+func TestFireflyDisabledFallsBackToCDPProvider(t *testing.T) {
+	h := newTestServer()
+	signup(t, h, "fallback-buyer@acme.local", "BuyerPass123!@", "buyer")
+	adminToken := login(t, h, "admin@platform.local", "admin-pass")
+	buyerToken := login(t, h, "fallback-buyer@acme.local", "BuyerPass123!@")
+
+	updateAdminWalletIntegrations(t, h, adminToken, map[string]interface{}{
+		"provider":                  "firefly",
+		"managedAutoPayEnabled":     true,
+		"legacyPaymentModeEnabled":  true,
+		"externalWalletsEnabled":    false,
+		"cdpEnabled":                true,
+		"fireflyEnabled":            false,
+		"cdpApiKeyId":               "",
+		"cdpApiKeySecret":           "",
+		"cdpWalletSecret":           "",
+		"fireflySignerUrl":          "http://firefly-signer:8545",
+		"fireflyAuthToken":          "",
+		"fireflyKeystoreDir":        "./data/firefly/keystore",
+		"fireflyKeystorePassphrase": "dev-passphrase",
+		"defaultNetwork":            "base",
+		"defaultAsset":              "USDC",
+		"custodyMode":               "provider_managed",
+	})
+
+	controls := call(t, h, http.MethodGet, "/v1/buyer/payments/controls", buyerToken, nil)
+	if controls.Code != http.StatusOK {
+		t.Fatalf("buyer payment controls status %d body=%s", controls.Code, controls.Body.String())
+	}
+	var controlsBody map[string]interface{}
+	_ = json.Unmarshal(controls.Body.Bytes(), &controlsBody)
+	managedWallet := controlsBody["managedWallet"].(map[string]interface{})
+	if managedWallet["provider"] != "cdp" {
+		t.Fatalf("expected fallback to cdp when firefly disabled, got body=%s", controls.Body.String())
+	}
+}
+
+func TestFireflyProviderProvisioningAndHubAutopayAttribution(t *testing.T) {
+	cfg := config.Config{
+		AllowInsecureDefaults: true,
+		X402Mode:              "disabled",
+		SuperAdminEmail:       "admin@platform.local",
+		SuperAdminPassword:    "admin-pass",
+	}
+	st := store.NewMemoryStore(cfg)
+	h := newTestServerWithStore(cfg, st)
+	signup(t, h, "ff-buyer@acme.local", "BuyerPass123!@", "buyer")
+	signup(t, h, "ff-merchant@acme.local", "MerchantPass123!@", "merchant")
+	adminToken := login(t, h, "admin@platform.local", "admin-pass")
+	buyerToken := login(t, h, "ff-buyer@acme.local", "BuyerPass123!@")
+	merchantToken := login(t, h, "ff-merchant@acme.local", "MerchantPass123!@")
+
+	updateAdminWalletIntegrations(t, h, adminToken, map[string]interface{}{
+		"provider":                  "firefly",
+		"managedAutoPayEnabled":     true,
+		"legacyPaymentModeEnabled":  true,
+		"externalWalletsEnabled":    false,
+		"cdpEnabled":                true,
+		"fireflyEnabled":            true,
+		"cdpApiKeyId":               "",
+		"cdpApiKeySecret":           "",
+		"cdpWalletSecret":           "",
+		"fireflySignerUrl":          "http://firefly-signer:8545",
+		"fireflyAuthToken":          "",
+		"fireflyKeystoreDir":        "./data/firefly/keystore",
+		"fireflyKeystorePassphrase": "dev-passphrase",
+		"defaultNetwork":            "base",
+		"defaultAsset":              "USDC",
+		"custodyMode":               "provider_managed",
+	})
+
+	buyerControls := call(t, h, http.MethodGet, "/v1/buyer/payments/controls", buyerToken, nil)
+	if buyerControls.Code != http.StatusOK {
+		t.Fatalf("buyer payment controls status %d body=%s", buyerControls.Code, buyerControls.Body.String())
+	}
+	var buyerControlsBody map[string]interface{}
+	_ = json.Unmarshal(buyerControls.Body.Bytes(), &buyerControlsBody)
+	if buyerControlsBody["managedWallet"].(map[string]interface{})["provider"] != "firefly" {
+		t.Fatalf("expected buyer managed wallet provider firefly, got body=%s", buyerControls.Body.String())
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      "ff-pay-1",
+			"result": map[string]interface{}{
+				"content": []map[string]interface{}{{
+					"type": "text",
+					"text": "ok",
+				}},
+				"isError": false,
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	created := call(t, h, http.MethodPost, "/v1/merchant/servers", merchantToken, map[string]interface{}{
+		"name":                 "Firefly Paid Tool",
+		"slug":                 "firefly-paid-tool",
+		"description":          "paid tool",
+		"category":             "ai",
+		"dockerImage":          "tenant/firefly-paid:1.0.0",
+		"canonicalResourceUri": upstream.URL,
+		"requiredScopes":       []string{"documents:read"},
+		"pricingType":          "x402",
+		"pricingAmount":        0.05,
+		"supportsCloud":        true,
+		"supportsLocal":        true,
+		"paymentMethods":       []string{"x402_wallet"},
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create merchant server status %d body=%s", created.Code, created.Body.String())
+	}
+	var createdBody map[string]interface{}
+	_ = json.Unmarshal(created.Body.Bytes(), &createdBody)
+	serverID := createdBody["id"].(string)
+	serverSlug := createdBody["slug"].(string)
+	if createdBody["paymentAddress"] == "" {
+		t.Fatalf("expected seller wallet payment address, got body=%s", created.Body.String())
+	}
+
+	server, ok := st.GetServerByID(serverID)
+	if !ok {
+		t.Fatalf("expected created server %s to exist in store", serverID)
+	}
+	server.Status = storemodels.ServerStatusPublished
+	server.DeploymentStatus = storemodels.ServerDeploymentDeployed
+	server.PublishedAt = time.Now().UTC()
+	server.DeployedAt = time.Now().UTC()
+	st.UpdateServer(server)
+
+	buyerSignup := signup(t, h, "ff-hub-buyer@acme.local", "BuyerPass123!@", "buyer")
+	hubBuyerToken := login(t, h, "ff-hub-buyer@acme.local", "BuyerPass123!@")
+	hubBuyerUser := buyerSignup["user"].(map[string]interface{})
+	adminGrant := call(t, h, http.MethodPost, "/v1/admin/entitlements", adminToken, map[string]interface{}{
+		"tenantId": hubBuyerUser["tenantId"], "userId": hubBuyerUser["id"], "serverId": serverID, "allowedScopes": []string{"documents:read"}, "cloudAllowed": true, "localAllowed": true,
+	})
+	if adminGrant.Code != http.StatusCreated {
+		t.Fatalf("grant entitlement status %d body=%s", adminGrant.Code, adminGrant.Body.String())
+	}
+
+	hubPath := "/mcp/hub/" + hubBuyerUser["tenantId"].(string) + "/" + hubBuyerUser["id"].(string)
+	toolName := "invoke_" + strings.ReplaceAll(serverSlug, "-", "_")
+	hubToken := oauthAccessToken(t, h, hubBuyerToken, hubBuyerUser["tenantId"].(string), hubBuyerUser["id"].(string), []string{"documents:read"})
+	autoPaid := call(t, h, http.MethodPost, hubPath, hubToken, map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      "ff-pay-1",
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      toolName,
+			"arguments": map[string]interface{}{"query": "hello"},
+		},
+	})
+	if autoPaid.Code != http.StatusOK {
+		t.Fatalf("expected jsonrpc envelope status 200, got %d body=%s", autoPaid.Code, autoPaid.Body.String())
+	}
+	var autoPaidBody map[string]interface{}
+	_ = json.Unmarshal(autoPaid.Body.Bytes(), &autoPaidBody)
+	if autoPaidBody["error"] != nil {
+		t.Fatalf("expected firefly managed wallet auto payment success, got body=%s", autoPaid.Body.String())
+	}
+	intents := st.ListX402Intents(hubBuyerUser["tenantId"].(string), hubBuyerUser["id"].(string))
+	if len(intents) == 0 {
+		t.Fatalf("expected x402 intents for hub buyer")
+	}
+	if intents[0].WalletProvider != "firefly" {
+		t.Fatalf("expected firefly wallet attribution, got %+v", intents[0])
+	}
+	if intents[0].WalletAddress == "" {
+		t.Fatalf("expected wallet address attribution, got %+v", intents[0])
 	}
 }
 

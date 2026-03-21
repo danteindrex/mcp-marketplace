@@ -156,7 +156,7 @@ func (a *App) installMarketplaceServer(w http.ResponseWriter, r *http.Request) {
 	server.InstallCount++
 	a.store.UpdateServer(server)
 
-	actions := buildInstallActions(server.Name, server.Slug, hub.HubURL)
+	actions := buildInstallActions(server.Name, server.Slug, hub.HubURL, strings.TrimSpace(server.ChatGPTAppURL), server.SupportsChatGPTApp)
 	selected := actions[0]
 	for _, action := range actions {
 		if action.Client == client {
@@ -344,9 +344,12 @@ func (a *App) ensureInstallPayment(
 	if strings.TrimSpace(resource) == "" {
 		resource = server.CanonicalResourceURI
 	}
+	if strings.TrimSpace(server.PaymentAddress) == "" {
+		server.PaymentAddress = a.resolveServerPaymentAddress(server)
+	}
 	requirement := buildX402Requirement(server, toolName, amount, resource, method, idempotencyKey)
 	challengeBytes, _ := json.Marshal([]map[string]interface{}{requirement})
-	intent := a.store.CreateX402Intent(models.X402Intent{
+	intent := models.X402Intent{
 		TenantID:           tenantID,
 		UserID:             userID,
 		ServerID:           server.ID,
@@ -363,7 +366,11 @@ func (a *App) ensureInstallPayment(
 		Quantity:           1,
 		RemainingQuantity:  0,
 		RequestFingerprint: hashAny(map[string]interface{}{"serverId": server.ID, "toolName": toolName, "idempotencyKey": idempotencyKey}),
-	})
+	}
+	if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), tenantID, userID); ok {
+		applyIntentWallet(&intent, wallet)
+	}
+	intent = a.store.CreateX402Intent(intent)
 	if !req.AutoSettle && len(req.PaymentResponse) == 0 {
 		w.Header().Set("PAYMENT-REQUIRED", string(challengeBytes))
 		w.Header().Set("WWW-Authenticate", `Bearer error="insufficient_scope"`)
@@ -405,12 +412,33 @@ func (a *App) ensureInstallPayment(
 		if settled.RemainingQuantity <= 0 {
 			settled.RemainingQuantity = settled.Quantity
 		}
+		if settled.WalletAddress == "" {
+			if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), tenantID, userID); ok {
+				applyIntentWallet(&settled, wallet)
+			}
+		}
 		_ = a.store.UpdateX402Intent(settled)
 		if _, err := a.postIntentAccounting(settled); err != nil {
 			return false, err
 		}
 		a.ensurePaidEntitlement(settled)
 		return true, nil
+	}
+
+	if method == "x402_wallet" && len(req.PaymentResponse) == 0 {
+		autoResponse, wallet, err := a.signManagedWalletPayment(r.Context(), tenantID, userID, requirement)
+		if err != nil {
+			writeJSON(w, http.StatusPaymentRequired, map[string]interface{}{
+				"error":       err.Error(),
+				"intent":      intent,
+				"requirement": requirement,
+			})
+			return false, nil
+		}
+		req.PaymentResponse = autoResponse
+		intent.WalletID = nonEmpty(wallet.ID, wallet.ProviderWalletID)
+		intent.WalletAddress = wallet.Address
+		intent.WalletProvider = wallet.Provider
 	}
 
 	verifyRes, err := a.currentX402Service().verifyAndSettle(r.Context(), requirement, req.PaymentResponse)
@@ -439,6 +467,11 @@ func (a *App) ensureInstallPayment(
 	if settled.RemainingQuantity <= 0 {
 		settled.RemainingQuantity = settled.Quantity
 	}
+	if settled.WalletAddress == "" {
+		if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), tenantID, userID); ok {
+			applyIntentWallet(&settled, wallet)
+		}
+	}
 	_ = a.store.UpdateX402Intent(settled)
 	if _, err := a.postIntentAccounting(settled); err != nil {
 		return false, err
@@ -457,7 +490,7 @@ func (e *installPaymentError) Error() string {
 	return e.message
 }
 
-func buildInstallActions(serverName string, serverSlug string, resourceURL string) []installAction {
+func buildInstallActions(serverName string, serverSlug string, resourceURL string, chatGPTAppURL string, supportsChatGPTApp bool) []installAction {
 	vscodePayload, _ := json.Marshal(map[string]string{
 		"name":      serverName,
 		"serverUrl": resourceURL,
@@ -473,7 +506,7 @@ func buildInstallActions(serverName string, serverSlug string, resourceURL strin
 	codexLaunchURL := buildLocalBridgeInstallURL("codex", serverSlug, resourceURL)
 	claudeLaunchURL := buildLocalBridgeInstallURL("claude", serverSlug, resourceURL)
 
-	return []installAction{
+	actions := []installAction{
 		{
 			Client:      "vscode",
 			Label:       "Install in VS Code",
@@ -507,6 +540,15 @@ func buildInstallActions(serverName string, serverSlug string, resourceURL strin
 			Description: "Open connector settings to finish connecting this remote MCP server.",
 		},
 	}
+	if supportsChatGPTApp && chatGPTAppURL != "" {
+		actions = append(actions, installAction{
+			Client:      "chatgpt_app",
+			Label:       "Open ChatGPT App",
+			OpenURL:     chatGPTAppURL,
+			Description: "Launch the merchant-provided ChatGPT app for this MCP server.",
+		})
+	}
+	return actions
 }
 
 func buildLocalBridgeInstallURL(client string, serverSlug string, resourceURL string) string {

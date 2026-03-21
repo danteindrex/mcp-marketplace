@@ -11,6 +11,7 @@ type resolvedIntegrations struct {
 	Google models.OAuthProviderSettings
 	GitHub models.OAuthProviderSettings
 	Stripe models.StripeIntegrationSettings
+	Wallet models.WalletIntegrationSettings
 	X402   models.X402IntegrationSettings
 	N8N    models.N8NIntegrationSettings
 }
@@ -58,6 +59,24 @@ func (a *App) resolvedIntegrations() resolvedIntegrations {
 			ConnectRefreshURL:    strings.TrimSpace(a.cfg.StripeConnectRefreshURL),
 			ConnectWebhookSecret: strings.TrimSpace(a.cfg.StripeConnectWebhookSecret),
 		},
+		Wallet: models.WalletIntegrationSettings{
+			Provider:                  strings.TrimSpace(a.cfg.WalletProvider),
+			ManagedAutoPayEnabled:     a.cfg.WalletManagedAutoPayEnabled,
+			LegacyPaymentModeEnabled:  a.cfg.WalletLegacyPaymentModeEnabled,
+			ExternalWalletsEnabled:    a.cfg.WalletExternalWalletsEnabled,
+			CDPEnabled:                a.cfg.WalletCDPEnabled,
+			FireflyEnabled:            a.cfg.WalletFireflyEnabled,
+			CDPAPIKeyID:               strings.TrimSpace(a.cfg.CDPAPIKeyID),
+			CDPAPIKeySecret:           strings.TrimSpace(a.cfg.CDPAPIKeySecret),
+			CDPWalletSecret:           strings.TrimSpace(a.cfg.CDPWalletSecret),
+			FireflySignerURL:          strings.TrimSpace(a.cfg.FireflySignerURL),
+			FireflyAuthToken:          strings.TrimSpace(a.cfg.FireflyAuthToken),
+			FireflyKeystoreDir:        strings.TrimSpace(a.cfg.FireflyKeystoreDir),
+			FireflyKeystorePassphrase: strings.TrimSpace(a.cfg.FireflyKeystorePassphrase),
+			DefaultNetwork:            strings.TrimSpace(a.cfg.WalletDefaultNetwork),
+			DefaultAsset:              strings.TrimSpace(a.cfg.WalletDefaultAsset),
+			CustodyMode:               strings.TrimSpace(a.cfg.WalletCustodyMode),
+		},
 		X402: models.X402IntegrationSettings{
 			Mode:              strings.TrimSpace(a.cfg.X402Mode),
 			FacilitatorURL:    strings.TrimSpace(a.cfg.X402FacilitatorURL),
@@ -72,9 +91,52 @@ func (a *App) resolvedIntegrations() resolvedIntegrations {
 	mergeOAuthSettings(&out.Google, stored.Google)
 	mergeOAuthSettings(&out.GitHub, stored.GitHub)
 	mergeStripeSettings(&out.Stripe, stored.Stripe)
+	mergeWalletSettings(&out.Wallet, stored.Wallet)
+	out.Wallet = normalizeWalletSettings(out.Wallet)
 	mergeX402Settings(&out.X402, stored.X402)
 	mergeN8NSettings(&out.N8N, stored.N8N, a.cfg)
 	return out
+}
+
+func mergeWalletSettings(dst *models.WalletIntegrationSettings, src models.WalletIntegrationSettings) {
+	if strings.TrimSpace(src.Provider) != "" {
+		dst.Provider = strings.TrimSpace(src.Provider)
+	}
+	dst.ManagedAutoPayEnabled = src.ManagedAutoPayEnabled
+	dst.LegacyPaymentModeEnabled = src.LegacyPaymentModeEnabled
+	dst.ExternalWalletsEnabled = src.ExternalWalletsEnabled
+	dst.CDPEnabled = src.CDPEnabled
+	dst.FireflyEnabled = src.FireflyEnabled
+	if strings.TrimSpace(src.CDPAPIKeyID) != "" {
+		dst.CDPAPIKeyID = strings.TrimSpace(src.CDPAPIKeyID)
+	}
+	if strings.TrimSpace(src.CDPAPIKeySecret) != "" {
+		dst.CDPAPIKeySecret = strings.TrimSpace(src.CDPAPIKeySecret)
+	}
+	if strings.TrimSpace(src.CDPWalletSecret) != "" {
+		dst.CDPWalletSecret = strings.TrimSpace(src.CDPWalletSecret)
+	}
+	if strings.TrimSpace(src.FireflySignerURL) != "" {
+		dst.FireflySignerURL = strings.TrimSpace(src.FireflySignerURL)
+	}
+	if strings.TrimSpace(src.FireflyAuthToken) != "" {
+		dst.FireflyAuthToken = strings.TrimSpace(src.FireflyAuthToken)
+	}
+	if strings.TrimSpace(src.FireflyKeystoreDir) != "" {
+		dst.FireflyKeystoreDir = strings.TrimSpace(src.FireflyKeystoreDir)
+	}
+	if strings.TrimSpace(src.FireflyKeystorePassphrase) != "" {
+		dst.FireflyKeystorePassphrase = strings.TrimSpace(src.FireflyKeystorePassphrase)
+	}
+	if strings.TrimSpace(src.DefaultNetwork) != "" {
+		dst.DefaultNetwork = strings.TrimSpace(src.DefaultNetwork)
+	}
+	if strings.TrimSpace(src.DefaultAsset) != "" {
+		dst.DefaultAsset = strings.TrimSpace(src.DefaultAsset)
+	}
+	if strings.TrimSpace(src.CustodyMode) != "" {
+		dst.CustodyMode = strings.TrimSpace(src.CustodyMode)
+	}
 }
 
 func mergeOAuthSettings(dst *models.OAuthProviderSettings, src models.OAuthProviderSettings) {
@@ -205,6 +267,18 @@ func (a *App) runtimePublicConfig() map[string]interface{} {
 			"googleConfigured": strings.TrimSpace(resolved.Google.ClientID) != "" && strings.TrimSpace(resolved.Google.ClientSecret) != "",
 			"githubConfigured": strings.TrimSpace(resolved.GitHub.ClientID) != "" && strings.TrimSpace(resolved.GitHub.ClientSecret) != "",
 		},
+		"wallet": map[string]interface{}{
+			"provider":                 strings.TrimSpace(resolved.Wallet.Provider),
+			"activeProvider":           a.resolveWalletProviderName(resolved.Wallet),
+			"managedAutoPayEnabled":    resolved.Wallet.ManagedAutoPayEnabled,
+			"legacyPaymentModeEnabled": resolved.Wallet.LegacyPaymentModeEnabled,
+			"externalWalletsEnabled":   resolved.Wallet.ExternalWalletsEnabled,
+			"cdpEnabled":               resolved.Wallet.CDPEnabled,
+			"fireflyEnabled":           resolved.Wallet.FireflyEnabled,
+			"defaultNetwork":           strings.TrimSpace(resolved.Wallet.DefaultNetwork),
+			"defaultAsset":             strings.TrimSpace(resolved.Wallet.DefaultAsset),
+			"custodyMode":              strings.TrimSpace(resolved.Wallet.CustodyMode),
+		},
 	}
 }
 
@@ -215,6 +289,7 @@ func (a *App) integrationSettingsResponse() map[string]interface{} {
 	githubSource := sectionSource(hasStored && sectionHasOAuthValues(stored.GitHub), strings.TrimSpace(a.cfg.GitHubClientID) != "" || strings.TrimSpace(a.cfg.GitHubClientSecret) != "")
 	stripeSource := sectionSource(hasStored && sectionHasStripeValues(stored.Stripe), strings.TrimSpace(a.cfg.StripeSecretKey) != "" || strings.TrimSpace(a.cfg.StripeOnrampReturnURL) != "" || strings.TrimSpace(a.cfg.StripeConnectReturnURL) != "")
 	x402Source := sectionSource(hasStored && sectionHasX402Values(stored.X402), strings.TrimSpace(a.cfg.X402Mode) != "" || strings.TrimSpace(a.cfg.X402FacilitatorURL) != "")
+	walletSource := sectionSource(hasStored && sectionHasWalletValues(stored.Wallet), strings.TrimSpace(a.cfg.WalletProvider) != "" || strings.TrimSpace(a.cfg.CDPAPIKeyID) != "" || strings.TrimSpace(a.cfg.FireflySignerURL) != "")
 	n8nSource := sectionSource(hasStored && sectionHasN8NValues(stored.N8N), strings.TrimSpace(a.cfg.N8NBaseURL) != "" || strings.TrimSpace(a.cfg.N8NAPIKey) != "")
 
 	return map[string]interface{}{
@@ -241,6 +316,25 @@ func (a *App) integrationSettingsResponse() map[string]interface{} {
 				"connectRefreshUrl":    resolved.Stripe.ConnectRefreshURL,
 				"connectWebhookSecret": secretField(resolved.Stripe.ConnectWebhookSecret),
 			},
+			"wallet": map[string]interface{}{
+				"provider":                  resolved.Wallet.Provider,
+				"activeProvider":            a.resolveWalletProviderName(resolved.Wallet),
+				"managedAutoPayEnabled":     resolved.Wallet.ManagedAutoPayEnabled,
+				"legacyPaymentModeEnabled":  resolved.Wallet.LegacyPaymentModeEnabled,
+				"externalWalletsEnabled":    resolved.Wallet.ExternalWalletsEnabled,
+				"cdpEnabled":                resolved.Wallet.CDPEnabled,
+				"fireflyEnabled":            resolved.Wallet.FireflyEnabled,
+				"cdpApiKeyId":               resolved.Wallet.CDPAPIKeyID,
+				"cdpApiKeySecret":           secretField(resolved.Wallet.CDPAPIKeySecret),
+				"cdpWalletSecret":           secretField(resolved.Wallet.CDPWalletSecret),
+				"fireflySignerUrl":          resolved.Wallet.FireflySignerURL,
+				"fireflyAuthToken":          secretField(resolved.Wallet.FireflyAuthToken),
+				"fireflyKeystoreDir":        resolved.Wallet.FireflyKeystoreDir,
+				"fireflyKeystorePassphrase": secretField(resolved.Wallet.FireflyKeystorePassphrase),
+				"defaultNetwork":            resolved.Wallet.DefaultNetwork,
+				"defaultAsset":              resolved.Wallet.DefaultAsset,
+				"custodyMode":               resolved.Wallet.CustodyMode,
+			},
 			"x402": map[string]interface{}{
 				"mode":              resolved.X402.Mode,
 				"facilitatorUrl":    resolved.X402.FacilitatorURL,
@@ -264,6 +358,11 @@ func (a *App) integrationSettingsResponse() map[string]interface{} {
 			"stripe": integrationStatus{
 				Configured: strings.TrimSpace(resolved.Stripe.SecretKey) != "",
 				Source:     stripeSource,
+			},
+			"wallet": integrationStatus{
+				Configured: strings.TrimSpace(a.resolveWalletProviderName(resolved.Wallet)) != "",
+				Source:     walletSource,
+				Notes:      a.walletStatusNote(resolved.Wallet),
 			},
 			"x402": integrationStatus{
 				Configured: strings.TrimSpace(resolved.X402.Mode) != "" && (strings.EqualFold(strings.TrimSpace(resolved.X402.Mode), "disabled") || strings.TrimSpace(resolved.X402.FacilitatorURL) != ""),
@@ -323,6 +422,87 @@ func sectionHasX402Values(settings models.X402IntegrationSettings) bool {
 	return strings.TrimSpace(settings.Mode) != "" || strings.TrimSpace(settings.FacilitatorURL) != "" || strings.TrimSpace(settings.FacilitatorAPIKey) != ""
 }
 
+func sectionHasWalletValues(settings models.WalletIntegrationSettings) bool {
+	return strings.TrimSpace(settings.Provider) != "" ||
+		settings.ManagedAutoPayEnabled ||
+		settings.LegacyPaymentModeEnabled ||
+		settings.ExternalWalletsEnabled ||
+		settings.CDPEnabled ||
+		settings.FireflyEnabled ||
+		strings.TrimSpace(settings.CDPAPIKeyID) != "" ||
+		strings.TrimSpace(settings.CDPAPIKeySecret) != "" ||
+		strings.TrimSpace(settings.CDPWalletSecret) != "" ||
+		strings.TrimSpace(settings.FireflySignerURL) != "" ||
+		strings.TrimSpace(settings.FireflyAuthToken) != "" ||
+		strings.TrimSpace(settings.FireflyKeystoreDir) != "" ||
+		strings.TrimSpace(settings.FireflyKeystorePassphrase) != "" ||
+		strings.TrimSpace(settings.DefaultNetwork) != "" ||
+		strings.TrimSpace(settings.DefaultAsset) != "" ||
+		strings.TrimSpace(settings.CustodyMode) != ""
+}
+
+func (a *App) walletStatusNote(settings models.WalletIntegrationSettings) string {
+	active := a.resolveWalletProviderName(settings)
+	if active == "" {
+		return "No managed wallet backend selected."
+	}
+	if !settings.ManagedAutoPayEnabled {
+		return "Managed wallet auto-pay is disabled."
+	}
+	switch active {
+	case "firefly":
+		if strings.TrimSpace(settings.FireflySignerURL) == "" {
+			return "FireFly selected without signer URL."
+		}
+	case "cdp":
+		if strings.TrimSpace(settings.CDPAPIKeyID) == "" {
+			return "CDP selected without API credentials."
+		}
+	}
+	return "Active provider: " + active
+}
+
+func (a *App) resolveWalletProviderName(settings models.WalletIntegrationSettings) string {
+	preferred := strings.ToLower(strings.TrimSpace(settings.Provider))
+	switch preferred {
+	case "firefly":
+		if settings.FireflyEnabled {
+			return "firefly"
+		}
+	case "cdp":
+		if settings.CDPEnabled {
+			return "cdp"
+		}
+	}
+	if settings.CDPEnabled {
+		return "cdp"
+	}
+	if settings.FireflyEnabled {
+		return "firefly"
+	}
+	return preferred
+}
+
 func sectionHasN8NValues(settings models.N8NIntegrationSettings) bool {
 	return strings.TrimSpace(settings.BaseURL) != "" || strings.TrimSpace(settings.APIKey) != "" || settings.TimeoutSeconds > 0
+}
+
+func normalizeWalletSettings(settings models.WalletIntegrationSettings) models.WalletIntegrationSettings {
+	if !settings.ManagedAutoPayEnabled && !settings.LegacyPaymentModeEnabled && !settings.CDPEnabled && !settings.FireflyEnabled && !settings.ExternalWalletsEnabled {
+		settings.ManagedAutoPayEnabled = true
+		settings.LegacyPaymentModeEnabled = true
+		switch strings.ToLower(strings.TrimSpace(settings.Provider)) {
+		case "firefly":
+			settings.FireflyEnabled = true
+		default:
+			settings.CDPEnabled = true
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(settings.Provider), "firefly") && !settings.CDPEnabled && !settings.FireflyEnabled {
+		settings.FireflyEnabled = true
+	}
+	if strings.EqualFold(strings.TrimSpace(settings.Provider), "cdp") && !settings.CDPEnabled && !settings.FireflyEnabled {
+		settings.CDPEnabled = true
+	}
+	return settings
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 
 interface CursorProps {
@@ -19,9 +19,9 @@ export const CursorProvider: React.FC<{ children: React.ReactNode; global?: bool
   children, 
   global = false 
 }) => {
-  const [position, setPosition] = useState({ x: 0, y: 0 })
-  const [followPosition, setFollowPosition] = useState({ x: 0, y: 0 })
-  const [isVisible, setIsVisible] = useState(false)
+  const [_position, setPosition] = useState({ x: 0, y: 0 })
+  const [_followPosition, setFollowPosition] = useState({ x: 0, y: 0 })
+  const [_isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
     if (!global) return
@@ -58,7 +58,7 @@ export const CursorProvider: React.FC<{ children: React.ReactNode; global?: bool
 export const Cursor: React.FC<CursorProps> = ({
   color = 'rgba(59, 130, 246, 0.8)',
   size = 12,
-  followDelay = 0.1
+  followDelay: _followDelay = 0.1
 }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isVisible, setIsVisible] = useState(false)

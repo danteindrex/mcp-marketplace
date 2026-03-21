@@ -295,6 +295,11 @@ export function MarketplaceClientPage({ initialServers }: { initialServers: Serv
                           Verified
                         </span>
                       )}
+                      {server.supportsChatGptApp && server.chatGptAppUrl && (
+                        <span className="ml-2 text-xs bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 px-2 py-1 rounded whitespace-nowrap">
+                          ChatGPT App
+                        </span>
+                      )}
                     </div>
 
                     <Text variant="small" className="mb-4 flex-1 line-clamp-2 text-muted-foreground">{server.description}</Text>
@@ -330,6 +335,11 @@ export function MarketplaceClientPage({ initialServers }: { initialServers: Serv
                           {server.verified && (
                             <span className="text-xs bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-1 rounded whitespace-nowrap">
                               Verified
+                            </span>
+                          )}
+                          {server.supportsChatGptApp && server.chatGptAppUrl && (
+                            <span className="text-xs bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 px-2 py-1 rounded whitespace-nowrap">
+                              ChatGPT App
                             </span>
                           )}
                         </div>

@@ -22,7 +22,7 @@ func (a *App) ensureHubProfile(tenantID, userID string) models.HubProfile {
 func normalizeClientName(v string) string {
 	client := strings.ToLower(strings.TrimSpace(v))
 	switch client {
-	case "vscode", "cursor", "claude", "codex", "chatgpt":
+	case "vscode", "cursor", "claude", "codex", "chatgpt", "chatgpt_app":
 		return client
 	default:
 		if client == "" {

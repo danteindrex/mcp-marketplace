@@ -17,6 +17,7 @@ export default function DeploymentsPage({ params }: { params: Promise<{ serverId
   const [lifecycle, setLifecycle] = useState<ServerLifecycle | null>(null)
   const [queue, setQueue] = useState<any>(null)
   const [isDeploying, setIsDeploying] = useState(false)
+  const [target, setTarget] = useState<'local-docker' | 'external'>('local-docker')
 
   const load = useCallback(async () => {
     const data = await fetchServerDeployments(serverId)
@@ -44,8 +45,12 @@ export default function DeploymentsPage({ params }: { params: Promise<{ serverId
   const handleDeploy = async () => {
     setIsDeploying(true)
     try {
-      await deployMerchantServer(serverId, { deploymentTarget: 'local-docker' })
-      toast.success('Deploy queued. We will keep retrying automatically.')
+      await deployMerchantServer(serverId, { deploymentTarget: target })
+      toast.success(
+        target === 'external'
+          ? 'External runtime marked as deployed.'
+          : 'Deploy queued. We will keep retrying automatically.',
+      )
       await load()
     } catch (e: any) {
       toast.error(e?.message || 'Deploy failed')
@@ -82,9 +87,17 @@ export default function DeploymentsPage({ params }: { params: Promise<{ serverId
               {queue.lastError && <Text variant="caption" className="mt-1 text-destructive">{queue.lastError}</Text>}
             </div>
           )}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3 items-center">
+            <select
+              value={target}
+              onChange={e => setTarget(e.target.value as 'local-docker' | 'external')}
+              className="px-3 py-2 rounded-md border border-input bg-background text-sm"
+            >
+              <option value="local-docker">Managed deploy (Docker)</option>
+              <option value="external">External hosted MCP URL</option>
+            </select>
             <Button onClick={handleDeploy} disabled={isDeploying}>
-              {isDeploying ? 'Deploying...' : 'Deploy Now'}
+              {isDeploying ? 'Deploying...' : target === 'external' ? 'Mark External Runtime Ready' : 'Deploy Now'}
             </Button>
             <Button variant="outline" asChild>
               <Link href={`/merchant/servers/${serverId}/pricing`}>Set Price / Publish</Link>

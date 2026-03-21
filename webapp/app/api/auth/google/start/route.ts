@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { getServerApiBase } from '@/lib/api-base'
 
 const API_BASE = getServerApiBase()
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8
 
 export async function GET(request: Request) {
   try {
@@ -21,7 +20,7 @@ export async function GET(request: Request) {
     
     const data = await upstream.json()
     return NextResponse.json(data, { status: 200 })
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Failed to initiate Google OAuth' },
       { status: 500 }

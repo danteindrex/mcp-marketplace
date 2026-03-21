@@ -6,7 +6,7 @@ import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { fetchPublicServers } from '@/lib/public-marketplace'
-import { getSiteUrl } from '@/lib/site'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 import { slugifyText } from '@/lib/slugs'
 
 interface PageProps {
@@ -59,18 +59,34 @@ export default async function AuthorProfilePage({ params }: PageProps) {
     notFound()
   }
 
-  const siteUrl = getSiteUrl()
-  const profileUrl = `${siteUrl}/authors/${authorSlug}`
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'ProfilePage',
-    url: profileUrl,
-    mainEntity: {
-      '@type': 'Person',
-      name: profile.author,
-      description: `${profile.author} publishes MCP servers on MCP Marketplace.`,
+  const profileUrl = toAbsoluteUrl(`/authors/${authorSlug}`)
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Marketplace', path: '/marketplace' },
+      { name: profile.author, path: `/authors/${authorSlug}` },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'ProfilePage',
+      url: profileUrl,
+      mainEntity: {
+        '@type': 'Person',
+        name: profile.author,
+        description: `${profile.author} publishes MCP servers on MCP Marketplace.`,
+      },
     },
-  }
+    {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      itemListElement: profile.authorServers.map((server, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        name: server.name,
+        url: toAbsoluteUrl(`/marketplace/${server.slug}`),
+      })),
+    },
+  ]
 
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">

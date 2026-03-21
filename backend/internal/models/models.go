@@ -79,42 +79,47 @@ type Tenant struct {
 }
 
 type Server struct {
-	ID                   string    `json:"id" bson:"id"`
-	TenantID             string    `json:"tenantId" bson:"tenantId"`
-	Author               string    `json:"author" bson:"author"`
-	Name                 string    `json:"name" bson:"name"`
-	Slug                 string    `json:"slug" bson:"slug"`
-	Description          string    `json:"description" bson:"description"`
-	Category             string    `json:"category" bson:"category"`
-	Version              string    `json:"version" bson:"version"`
-	DockerImage          string    `json:"dockerImage" bson:"dockerImage"`
-	ContainerPort        int       `json:"containerPort,omitempty" bson:"containerPort,omitempty"`
-	CanonicalResourceURI string    `json:"canonicalResourceUri" bson:"canonicalResourceUri"`
-	RequiredScopes       []string  `json:"requiredScopes" bson:"requiredScopes"`
-	PricingType          string    `json:"pricingType" bson:"pricingType"`
-	PricingAmount        float64   `json:"pricingAmount" bson:"pricingAmount"`
-	Verified             bool      `json:"verified" bson:"verified"`
-	Featured             bool      `json:"featured" bson:"featured"`
-	InstallCount         int       `json:"installCount" bson:"installCount"`
-	Rating               float64   `json:"rating" bson:"rating"`
-	Status               string    `json:"status" bson:"status"`
-	DeploymentStatus     string    `json:"deploymentStatus,omitempty" bson:"deploymentStatus,omitempty"`
-	DeploymentTarget     string    `json:"deploymentTarget,omitempty" bson:"deploymentTarget,omitempty"`
-	DeployedBy           string    `json:"deployedBy,omitempty" bson:"deployedBy,omitempty"`
-	DeployedAt           time.Time `json:"deployedAt,omitempty" bson:"deployedAt,omitempty"`
-	N8nWorkflowID        string    `json:"n8nWorkflowId,omitempty" bson:"n8nWorkflowId,omitempty"`
-	N8nWorkflowURL       string    `json:"n8nWorkflowUrl,omitempty" bson:"n8nWorkflowUrl,omitempty"`
-	RuntimeContainerID   string    `json:"runtimeContainerId,omitempty" bson:"runtimeContainerId,omitempty"`
-	PublishedAt          time.Time `json:"publishedAt,omitempty" bson:"publishedAt,omitempty"`
-	SupportsLocal        bool      `json:"supportsLocal" bson:"supportsLocal"`
-	SupportsCloud        bool      `json:"supportsCloud" bson:"supportsCloud"`
-	PaymentMethods       []string  `json:"paymentMethods,omitempty" bson:"paymentMethods,omitempty"`
-	PaymentAddress       string    `json:"paymentAddress,omitempty" bson:"paymentAddress,omitempty"`
-	PerCallCapUSDC       float64   `json:"perCallCapUsdc,omitempty" bson:"perCallCapUsdc,omitempty"`
-	DailyCapUSDC         float64   `json:"dailyCapUsdc,omitempty" bson:"dailyCapUsdc,omitempty"`
-	MonthlyCapUSDC       float64   `json:"monthlyCapUsdc,omitempty" bson:"monthlyCapUsdc,omitempty"`
-	UpdatedAt            time.Time `json:"updatedAt" bson:"updatedAt"`
-	CreatedAt            time.Time `json:"createdAt" bson:"createdAt"`
+	ID                   string             `json:"id" bson:"id"`
+	TenantID             string             `json:"tenantId" bson:"tenantId"`
+	Author               string             `json:"author" bson:"author"`
+	Name                 string             `json:"name" bson:"name"`
+	Slug                 string             `json:"slug" bson:"slug"`
+	Description          string             `json:"description" bson:"description"`
+	Category             string             `json:"category" bson:"category"`
+	Version              string             `json:"version" bson:"version"`
+	DockerImage          string             `json:"dockerImage" bson:"dockerImage"`
+	ContainerPort        int                `json:"containerPort,omitempty" bson:"containerPort,omitempty"`
+	CanonicalResourceURI string             `json:"canonicalResourceUri" bson:"canonicalResourceUri"`
+	UpstreamAuthType     string             `json:"upstreamAuthType,omitempty" bson:"upstreamAuthType,omitempty"`
+	UpstreamAuthToken    string             `json:"-" bson:"upstreamAuthToken,omitempty"`
+	UpstreamHeaders      map[string]string  `json:"upstreamHeaders,omitempty" bson:"upstreamHeaders,omitempty"`
+	RequiredScopes       []string           `json:"requiredScopes" bson:"requiredScopes"`
+	PricingType          string             `json:"pricingType" bson:"pricingType"`
+	PricingAmount        float64            `json:"pricingAmount" bson:"pricingAmount"`
+	Verified             bool               `json:"verified" bson:"verified"`
+	Featured             bool               `json:"featured" bson:"featured"`
+	InstallCount         int                `json:"installCount" bson:"installCount"`
+	Rating               float64            `json:"rating" bson:"rating"`
+	Status               string             `json:"status" bson:"status"`
+	DeploymentStatus     string             `json:"deploymentStatus,omitempty" bson:"deploymentStatus,omitempty"`
+	DeploymentTarget     string             `json:"deploymentTarget,omitempty" bson:"deploymentTarget,omitempty"`
+	DeployedBy           string             `json:"deployedBy,omitempty" bson:"deployedBy,omitempty"`
+	DeployedAt           time.Time          `json:"deployedAt,omitempty" bson:"deployedAt,omitempty"`
+	N8nWorkflowID        string             `json:"n8nWorkflowId,omitempty" bson:"n8nWorkflowId,omitempty"`
+	N8nWorkflowURL       string             `json:"n8nWorkflowUrl,omitempty" bson:"n8nWorkflowUrl,omitempty"`
+	RuntimeContainerID   string             `json:"runtimeContainerId,omitempty" bson:"runtimeContainerId,omitempty"`
+	PublishedAt          time.Time          `json:"publishedAt,omitempty" bson:"publishedAt,omitempty"`
+	SupportsLocal        bool               `json:"supportsLocal" bson:"supportsLocal"`
+	SupportsCloud        bool               `json:"supportsCloud" bson:"supportsCloud"`
+	SupportsChatGPTApp   bool               `json:"supportsChatGptApp,omitempty" bson:"supportsChatGptApp,omitempty"`
+	ChatGPTAppURL        string             `json:"chatGptAppUrl,omitempty" bson:"chatGptAppUrl,omitempty"`
+	PaymentMethods       []string           `json:"paymentMethods,omitempty" bson:"paymentMethods,omitempty"`
+	PaymentAddress       string             `json:"paymentAddress,omitempty" bson:"paymentAddress,omitempty"`
+	PerCallCapUSDC       float64            `json:"perCallCapUsdc,omitempty" bson:"perCallCapUsdc,omitempty"`
+	DailyCapUSDC         float64            `json:"dailyCapUsdc,omitempty" bson:"dailyCapUsdc,omitempty"`
+	MonthlyCapUSDC       float64            `json:"monthlyCapUsdc,omitempty" bson:"monthlyCapUsdc,omitempty"`
+	UpdatedAt            time.Time          `json:"updatedAt" bson:"updatedAt"`
+	CreatedAt            time.Time          `json:"createdAt" bson:"createdAt"`
 	Builder              AgentBuilderConfig `json:"builder,omitempty" bson:"builder,omitempty"`
 }
 
@@ -236,6 +241,9 @@ type X402Intent struct {
 	UserID             string    `json:"userId" bson:"userId"`
 	ServerID           string    `json:"serverId" bson:"serverId"`
 	ToolName           string    `json:"toolName" bson:"toolName"`
+	WalletID           string    `json:"walletId,omitempty" bson:"walletId,omitempty"`
+	WalletAddress      string    `json:"walletAddress,omitempty" bson:"walletAddress,omitempty"`
+	WalletProvider     string    `json:"walletProvider,omitempty" bson:"walletProvider,omitempty"`
 	AmountUSDC         float64   `json:"amountUsdc" bson:"amountUsdc"`
 	Network            string    `json:"network" bson:"network"`
 	Asset              string    `json:"asset" bson:"asset"`
@@ -305,6 +313,26 @@ type WalletTopUp struct {
 	CreatedAt          time.Time              `json:"createdAt" bson:"createdAt"`
 	UpdatedAt          time.Time              `json:"updatedAt" bson:"updatedAt"`
 	FulfilledAt        time.Time              `json:"fulfilledAt,omitempty" bson:"fulfilledAt,omitempty"`
+}
+
+type ManagedWallet struct {
+	ID                 string    `json:"id" bson:"id"`
+	TenantID           string    `json:"tenantId" bson:"tenantId"`
+	UserID             string    `json:"userId,omitempty" bson:"userId,omitempty"`
+	Role               string    `json:"role" bson:"role"` // buyer, seller
+	Provider           string    `json:"provider" bson:"provider"`
+	ProviderWalletID   string    `json:"providerWalletId,omitempty" bson:"providerWalletId,omitempty"`
+	ProviderAccountID  string    `json:"providerAccountId,omitempty" bson:"providerAccountId,omitempty"`
+	Network            string    `json:"network" bson:"network"`
+	Asset              string    `json:"asset" bson:"asset"`
+	Address            string    `json:"address" bson:"address"`
+	Status             string    `json:"status" bson:"status"`           // pending, active, restricted
+	CustodyMode        string    `json:"custodyMode" bson:"custodyMode"` // provider_managed
+	IsDefaultFunding   bool      `json:"isDefaultFunding,omitempty" bson:"isDefaultFunding,omitempty"`
+	IsDefaultReceiving bool      `json:"isDefaultReceiving,omitempty" bson:"isDefaultReceiving,omitempty"`
+	LastSyncedAt       time.Time `json:"lastSyncedAt,omitempty" bson:"lastSyncedAt,omitempty"`
+	CreatedAt          time.Time `json:"createdAt" bson:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt" bson:"updatedAt"`
 }
 
 type PaymentFeePolicy struct {
@@ -439,9 +467,28 @@ type StripeIntegrationSettings struct {
 	ConnectWebhookSecret string  `json:"connectWebhookSecret,omitempty" bson:"connectWebhookSecret,omitempty"`
 }
 
+type WalletIntegrationSettings struct {
+	Provider                  string `json:"provider,omitempty" bson:"provider,omitempty"`
+	ManagedAutoPayEnabled     bool   `json:"managedAutoPayEnabled,omitempty" bson:"managedAutoPayEnabled,omitempty"`
+	LegacyPaymentModeEnabled  bool   `json:"legacyPaymentModeEnabled,omitempty" bson:"legacyPaymentModeEnabled,omitempty"`
+	ExternalWalletsEnabled    bool   `json:"externalWalletsEnabled,omitempty" bson:"externalWalletsEnabled,omitempty"`
+	CDPEnabled                bool   `json:"cdpEnabled,omitempty" bson:"cdpEnabled,omitempty"`
+	FireflyEnabled            bool   `json:"fireflyEnabled,omitempty" bson:"fireflyEnabled,omitempty"`
+	CDPAPIKeyID               string `json:"cdpApiKeyId,omitempty" bson:"cdpApiKeyId,omitempty"`
+	CDPAPIKeySecret           string `json:"cdpApiKeySecret,omitempty" bson:"cdpApiKeySecret,omitempty"`
+	CDPWalletSecret           string `json:"cdpWalletSecret,omitempty" bson:"cdpWalletSecret,omitempty"`
+	FireflySignerURL          string `json:"fireflySignerUrl,omitempty" bson:"fireflySignerUrl,omitempty"`
+	FireflyAuthToken          string `json:"fireflyAuthToken,omitempty" bson:"fireflyAuthToken,omitempty"`
+	FireflyKeystoreDir        string `json:"fireflyKeystoreDir,omitempty" bson:"fireflyKeystoreDir,omitempty"`
+	FireflyKeystorePassphrase string `json:"fireflyKeystorePassphrase,omitempty" bson:"fireflyKeystorePassphrase,omitempty"`
+	DefaultNetwork            string `json:"defaultNetwork,omitempty" bson:"defaultNetwork,omitempty"`
+	DefaultAsset              string `json:"defaultAsset,omitempty" bson:"defaultAsset,omitempty"`
+	CustodyMode               string `json:"custodyMode,omitempty" bson:"custodyMode,omitempty"`
+}
+
 type X402IntegrationSettings struct {
-	Mode             string `json:"mode,omitempty" bson:"mode,omitempty"`
-	FacilitatorURL   string `json:"facilitatorUrl,omitempty" bson:"facilitatorUrl,omitempty"`
+	Mode              string `json:"mode,omitempty" bson:"mode,omitempty"`
+	FacilitatorURL    string `json:"facilitatorUrl,omitempty" bson:"facilitatorUrl,omitempty"`
 	FacilitatorAPIKey string `json:"facilitatorApiKey,omitempty" bson:"facilitatorApiKey,omitempty"`
 }
 
@@ -456,6 +503,7 @@ type PlatformIntegrationSettings struct {
 	Google    OAuthProviderSettings     `json:"google" bson:"google"`
 	GitHub    OAuthProviderSettings     `json:"github" bson:"github"`
 	Stripe    StripeIntegrationSettings `json:"stripe" bson:"stripe"`
+	Wallet    WalletIntegrationSettings `json:"wallet" bson:"wallet"`
 	X402      X402IntegrationSettings   `json:"x402" bson:"x402"`
 	N8N       N8NIntegrationSettings    `json:"n8n" bson:"n8n"`
 	UpdatedBy string                    `json:"updatedBy,omitempty" bson:"updatedBy,omitempty"`

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ type updateMerchantPayoutProfileRequest struct {
 func (a *App) merchantPayoutProfile(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	profile := a.effectiveSellerPayoutProfile(claims.TenantID)
+	sellerWallet, _ := a.ensureSellerManagedWallet(r.Context(), claims.TenantID)
 	stripeConnect := a.currentStripeConnectService()
 	if r.Method == http.MethodPut {
 		var req updateMerchantPayoutProfileRequest
@@ -58,9 +60,17 @@ func (a *App) merchantPayoutProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		profile = a.store.UpsertSellerPayoutProfile(profile)
 	}
+	if strings.TrimSpace(profile.StablecoinAddress) == "" {
+		profile.StablecoinAddress = sellerWallet.Address
+	}
+	if strings.TrimSpace(profile.StablecoinNetwork) == "" {
+		profile.StablecoinNetwork = nonEmpty(sellerWallet.Network, "base")
+	}
 	entries := a.store.ListLedgerEntries(claims.TenantID, 2000)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"profile":        profile,
+		"managedWallet":  sellerWallet,
+		"walletConfig":   a.runtimePublicConfig()["wallet"],
 		"payableUsdc":    sellerPayableBalance(entries, claims.TenantID),
 		"recentPayouts":  a.store.ListPayoutRecords(claims.TenantID, 20),
 		"payoutMethods":  a.payoutMethodsCatalog(),
@@ -617,10 +627,12 @@ func parseLimit(raw string, fallback int, max int) int {
 
 func (a *App) defaultSellerPayoutProfile(tenantID string) models.SellerPayoutProfile {
 	now := time.Now().UTC()
+	wallet, _ := a.ensureSellerManagedWallet(context.Background(), tenantID)
 	return models.SellerPayoutProfile{
 		TenantID:          tenantID,
 		PreferredMethod:   "stablecoin",
-		StablecoinNetwork: "base",
+		StablecoinAddress: wallet.Address,
+		StablecoinNetwork: nonEmpty(wallet.Network, "base"),
 		KYCStatus:         "pending",
 		TaxFormStatus:     "missing",
 		RiskLevel:         "medium",
@@ -644,6 +656,11 @@ func (a *App) effectiveSellerPayoutProfile(tenantID string) models.SellerPayoutP
 		}
 		if item.HoldDays < 0 {
 			item.HoldDays = 0
+		}
+		if strings.TrimSpace(item.StablecoinAddress) == "" {
+			if wallet, ok := a.store.GetManagedWalletByOwner(tenantID, "", "seller"); ok {
+				item.StablecoinAddress = wallet.Address
+			}
 		}
 		return item
 	}

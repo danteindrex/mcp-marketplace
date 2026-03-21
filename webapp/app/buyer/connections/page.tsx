@@ -62,7 +62,7 @@ export default function ConnectionsPage() {
       )
       setConnections(updated)
       toast.success('Token rotated successfully')
-    } catch (error) {
+    } catch {
       toast.error('Failed to rotate token')
     } finally {
       setRotating(null)
@@ -79,7 +79,7 @@ export default function ConnectionsPage() {
       await revokeConnection(connId)
       setConnections(connections.map(c => (c.id === connId ? { ...c, status: 'revoked' } : c)))
       toast.success('Connection revoked')
-    } catch (error) {
+    } catch {
       toast.error('Failed to revoke connection')
     } finally {
       setRevoking(null)

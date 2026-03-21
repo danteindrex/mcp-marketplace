@@ -8,8 +8,8 @@ const PAYMENT_METHOD_COPY: Record<string, { title: string; description: string }
     description: 'Auto-settle paid installs from your buyer wallet when balance and policy allow it.',
   },
   x402_wallet: {
-    title: 'External x402 wallet',
-    description: 'Bring an external wallet payment response when the install flow returns a 402 challenge.',
+    title: 'Marketplace wallet',
+    description: 'Use the managed marketplace wallet to sign and settle x402 payments automatically.',
   },
   stripe_onramp: {
     title: 'Stripe onramp top-up',

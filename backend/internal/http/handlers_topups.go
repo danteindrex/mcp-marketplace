@@ -57,12 +57,16 @@ func (a *App) createBuyerStripeTopUpSession(w http.ResponseWriter, r *http.Reque
 	}
 
 	policy := a.effectivePaymentPolicy(claims.TenantID, claims.UserID)
+	buyerWallet, _ := a.ensureBuyerManagedWallet(r.Context(), claims.TenantID, claims.UserID)
 	walletAddress := strings.TrimSpace(req.WalletAddress)
 	if walletAddress == "" {
 		walletAddress = strings.TrimSpace(policy.WalletAddress)
 	}
 	if walletAddress == "" {
 		walletAddress = strings.TrimSpace(policy.SIWXWallet)
+	}
+	if walletAddress == "" {
+		walletAddress = strings.TrimSpace(buyerWallet.Address)
 	}
 
 	session, err := stripe.createSession(r.Context(), stripeCreateSessionInput{

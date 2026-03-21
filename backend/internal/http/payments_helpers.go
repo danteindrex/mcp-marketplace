@@ -122,39 +122,66 @@ func (a *App) validateEnabledPaymentMethods(methods []string) error {
 func (a *App) describePaymentMethod(method string) paymentMethodDescriptor {
 	method = strings.ToLower(strings.TrimSpace(method))
 	integrations := a.resolvedIntegrations()
+	activeProvider := a.resolveWalletProviderName(integrations.Wallet)
 	switch method {
 	case "wallet_balance":
+		enabled := integrations.Wallet.LegacyPaymentModeEnabled
+		readiness := "production_ready"
+		notes := "Usable today after the buyer wallet is funded."
+		if !enabled {
+			readiness = "disabled_by_admin"
+			notes = "Legacy payment mode is disabled in admin controls."
+		}
 		return paymentMethodDescriptor{
 			ID:              method,
 			DisplayName:     "Prepaid Wallet Balance",
-			Enabled:         true,
-			Configured:      true,
-			ProductionReady: true,
-			Readiness:       "production_ready",
+			Enabled:         enabled,
+			Configured:      enabled,
+			ProductionReady: enabled,
+			Readiness:       readiness,
 			Integration:     "deduct x402 spend from in-app USDC balance",
-			Notes:           "Usable today after the buyer wallet is funded.",
+			Notes:           notes,
 			Docs:            "Fund wallet via Stripe onramp or another supported balance credit flow, then spend with wallet_balance.",
 			Network:         "base",
 			Asset:           "USDC",
 		}
 	case "x402_wallet":
-		productionReady := strings.EqualFold(strings.TrimSpace(integrations.X402.Mode), "facilitator") && strings.TrimSpace(integrations.X402.FacilitatorURL) != ""
+		enabled := integrations.Wallet.ManagedAutoPayEnabled && activeProvider != ""
+		configured := enabled
+		switch activeProvider {
+		case "firefly":
+			configured = configured && integrations.Wallet.FireflyEnabled && strings.TrimSpace(integrations.Wallet.FireflySignerURL) != ""
+		case "cdp":
+			configured = configured && integrations.Wallet.CDPEnabled && strings.TrimSpace(integrations.Wallet.CDPAPIKeyID) != "" &&
+				strings.TrimSpace(integrations.Wallet.CDPAPIKeySecret) != "" && strings.TrimSpace(integrations.Wallet.CDPWalletSecret) != ""
+		default:
+			configured = false
+		}
+		productionReady := configured && strings.EqualFold(strings.TrimSpace(integrations.X402.Mode), "facilitator") && strings.TrimSpace(integrations.X402.FacilitatorURL) != ""
 		readiness := "development_only"
-		notes := "Mock verification is enabled; switch to facilitator mode for production settlement verification."
+		notes := "Managed marketplace wallet signs x402 payments automatically. Switch to facilitator mode for production settlement verification."
+		if !integrations.Wallet.ManagedAutoPayEnabled {
+			readiness = "disabled_by_admin"
+			notes = "Managed wallet auto-pay is disabled in admin controls."
+		} else if activeProvider == "firefly" {
+			notes = "Uses FireFly Signer with Keystore V3/fswallet-compatible storage."
+		} else if activeProvider == "cdp" {
+			notes = "Uses the existing CDP managed wallet adapter."
+		}
 		if productionReady {
 			readiness = "production_ready"
-			notes = "Uses verified x402 facilitator settlement."
+			notes = "Uses managed wallet signing with verified x402 facilitator settlement via " + activeProvider + "."
 		}
 		return paymentMethodDescriptor{
 			ID:              method,
-			DisplayName:     "x402 Wallet Signature",
-			Enabled:         true,
-			Configured:      strings.TrimSpace(integrations.X402.Mode) != "",
+			DisplayName:     "Marketplace Wallet",
+			Enabled:         enabled,
+			Configured:      configured,
 			ProductionReady: productionReady,
 			Readiness:       readiness,
-			Integration:     "x402 payment-response with facilitator verify/settle",
+			Integration:     "provider-managed wallet signing with x402 facilitator verify/settle",
 			Notes:           notes,
-			Docs:            "Set X402_MODE=facilitator and X402_FACILITATOR_URL for production verification.",
+			Docs:            "Set the managed wallet provider plus X402 facilitator settings for verified settlement.",
 			Network:         "base",
 			Asset:           "USDC",
 		}

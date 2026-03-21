@@ -10,10 +10,14 @@ import (
 
 func (a *App) marketplaceInstallMetadata(server models.Server) map[string]interface{} {
 	baseURL := strings.TrimRight(a.cfg.BaseURL, "/")
+	clients := []string{"vscode", "codex", "claude", "cursor", "chatgpt"}
+	if strings.TrimSpace(server.ChatGPTAppURL) != "" && server.SupportsChatGPTApp {
+		clients = append(clients, "chatgpt_app")
+	}
 	return map[string]interface{}{
 		"oneClick":           true,
 		"hubStrategy":        "single-personal-hub",
-		"clients":            []string{"vscode", "codex", "claude", "cursor", "chatgpt"},
+		"clients":            clients,
 		"installEndpoint":    "/v1/marketplace/servers/" + server.Slug + "/install",
 		"supportsCommands":   true,
 		"discoveryBaseUrl":   baseURL,
@@ -22,6 +26,8 @@ func (a *App) marketplaceInstallMetadata(server models.Server) map[string]interf
 		"jwksUrl":            baseURL + "/.well-known/jwks.json",
 		"resourceTemplate":   baseURL + "/mcp/hub/{tenantID}/{userID}",
 		"upstreamResourceUrl": server.CanonicalResourceURI,
+		"supportsChatGptApp": server.SupportsChatGPTApp,
+		"chatGptAppUrl":      strings.TrimSpace(server.ChatGPTAppURL),
 	}
 }
 

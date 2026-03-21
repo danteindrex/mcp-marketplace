@@ -88,6 +88,11 @@ export function ServerDetailClientPage({
           <div className="flex items-center gap-2">
             {server.verified && <Badge className="bg-green-500/20 text-green-700 dark:text-green-400 hover:bg-green-500/30">Verified</Badge>}
             {server.featured && <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/30">Featured</Badge>}
+            {server.supportsChatGptApp && server.chatGptAppUrl && (
+              <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/30">
+                ChatGPT App
+              </Badge>
+            )}
           </div>
         </div>
       </div>
@@ -101,6 +106,9 @@ export function ServerDetailClientPage({
               <div className="flex flex-wrap gap-3">
                 <Badge variant="secondary">{server.category}</Badge>
                 <Badge variant="outline">v{server.version}</Badge>
+                {server.supportsChatGptApp && server.chatGptAppUrl && (
+                  <Badge variant="outline">ChatGPT App Available</Badge>
+                )}
               </div>
               <div className="flex flex-wrap gap-6 text-sm font-semibold">
                 <div className="flex items-center gap-2"><Star className="w-4 h-4 fill-amber-400 text-amber-400" /><span>{server.rating}</span></div>

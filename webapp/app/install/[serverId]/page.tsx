@@ -14,6 +14,7 @@ import { Text } from '@/components/retroui/Text'
 import {
   fetchBuyerHub,
   fetchBuyerPaymentControls,
+  fetchRuntimeConfig,
   fetchServerDetailBySlug,
   installMarketplaceServer,
   settleX402Intent,
@@ -47,13 +48,14 @@ const steps: Array<{ id: Step; label: string; title: string }> = [
   { id: 'complete', label: 'Done', title: 'Installation Complete' },
 ]
 
-const clientOptions = [
-  { value: 'vscode', label: 'VS Code', description: 'Full support with native extension' },
-  { value: 'cursor', label: 'Cursor', description: 'Built-in MCP support' },
-  { value: 'claude', label: 'Claude', description: 'Desktop application' },
-  { value: 'codex', label: 'OpenAI Codex', description: 'CLI MCP install flow' },
-  { value: 'chatgpt', label: 'ChatGPT', description: 'Connector setup for remote MCP' },
-]
+const clientOptionMap: Record<string, { value: string; label: string; description: string }> = {
+  vscode: { value: 'vscode', label: 'VS Code', description: 'Full support with native extension' },
+  cursor: { value: 'cursor', label: 'Cursor', description: 'Built-in MCP support' },
+  claude: { value: 'claude', label: 'Claude', description: 'Desktop application' },
+  codex: { value: 'codex', label: 'OpenAI Codex', description: 'One-click local install via bridge' },
+  chatgpt: { value: 'chatgpt', label: 'ChatGPT Connector', description: 'Connector setup for remote MCP' },
+  chatgpt_app: { value: 'chatgpt_app', label: 'ChatGPT App', description: 'Merchant-provided ChatGPT app backed by this MCP server' },
+}
 
 type MetadataState =
   | { status: 'idle' | 'loading'; data?: undefined; error?: undefined }
@@ -109,11 +111,11 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [installSession, setInstallSession] = useState<InstallSession | null>(null)
   const [paymentRequired, setPaymentRequired] = useState<InstallPaymentRequired | null>(null)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('')
-  const [externalPaymentInput, setExternalPaymentInput] = useState('')
   const [server, setServer] = useState<Server | null>(null)
   const [installMetadata, setInstallMetadata] = useState<MarketplaceInstallMetadata | null>(null)
   const [hubResource, setHubResource] = useState<string>('')
   const [paymentControls, setPaymentControls] = useState<BuyerPaymentControls | null>(null)
+  const [runtimeWalletConfig, setRuntimeWalletConfig] = useState<any>(null)
   const [paymentControlsLoading, setPaymentControlsLoading] = useState(true)
   const [paymentControlsError, setPaymentControlsError] = useState('')
   const [metadataState, setMetadataState] = useState<MetadataState>({ status: 'idle' })
@@ -148,6 +150,8 @@ export default function InstallWizardPage({ params }: PageProps) {
         setPaymentControlsError('')
         const controls = await fetchBuyerPaymentControls()
         setPaymentControls(controls)
+        const runtimeConfig = await fetchRuntimeConfig()
+        setRuntimeWalletConfig(runtimeConfig.wallet || null)
       } catch (error) {
         setPaymentControlsError(error instanceof Error ? error.message : 'Unable to load buyer payment controls')
       } finally {
@@ -227,13 +231,15 @@ export default function InstallWizardPage({ params }: PageProps) {
   const currentStepIndex = steps.findIndex(s => s.id === currentStep)
   const currentStepData = steps[currentStepIndex]
   const selectedAction: InstallAction | null = installSession?.install?.selected || null
+  const clientOptions = (installMetadata?.clients || ['vscode', 'cursor', 'claude', 'codex', 'chatgpt'])
+    .map(client => clientOptionMap[client])
+    .filter((value): value is { value: string; label: string; description: string } => Boolean(value))
   const allowedMethods = paymentControls?.policy?.allowedMethods || []
   const installPaymentMethods = (paymentControls?.methods || []).filter(method => isInstallPaymentMethod(method.id))
   const readyInstallMethods = installPaymentMethods.filter(
     method => getPaymentMethodStatus(method, allowedMethods).selectable,
   )
   const paymentRequiredAheadOfInstall = Boolean(scopeCheckState.result?.paymentRequired)
-  const bridgeInstallCommand = 'powershell -ExecutionPolicy Bypass -File backend\\scripts\\install-local-bridge.ps1'
   const installActionLabel = (() => {
     if (selectedAction?.requiresLocalExec && selectedAction?.launchUrl) return 'Run One-Click Install'
     return 'Open Installer'
@@ -299,9 +305,9 @@ export default function InstallWizardPage({ params }: PageProps) {
 
   const handleNext = async () => {
     if (currentStep === 'connect') {
-      const paidAndInstalled = await runInstallAttempt(selectedPaymentMethod === 'wallet_balance')
+      const paidAndInstalled = await runInstallAttempt(selectedPaymentMethod === 'wallet_balance' || selectedPaymentMethod === 'x402_wallet')
       if (!paidAndInstalled && selectedPaymentMethod === 'wallet_balance') {
-        toast.info('Payment required. You can fund wallet or retry with external x402 payment.')
+        toast.info('Payment required. Fund your wallet or retry the install.')
       }
       return
     }
@@ -337,19 +343,6 @@ export default function InstallWizardPage({ params }: PageProps) {
     }
   }
 
-  const parseExternalPaymentResponse = () => {
-    const raw = externalPaymentInput.trim()
-    if (!raw) return null
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return {
-        paymentIdentifier: raw,
-        method: 'x402_wallet',
-      }
-    }
-  }
-
   const runInstallAction = (action: InstallAction) => {
     setShowBridgeHelp(false)
     if (action.launchUrl) {
@@ -369,6 +362,14 @@ export default function InstallWizardPage({ params }: PageProps) {
       return
     }
     toast.error('No one-click install action is available for this client.')
+  }
+
+  const downloadBridgeInstaller = (platform: 'windows' | 'macos') => {
+    window.location.href =
+      platform === 'windows'
+        ? '/api/local-bridge/windows-installer'
+        : '/api/local-bridge/macos-installer'
+    toast.info('Download started. Run the installer once, then retry the one-click install.')
   }
 
   return (
@@ -575,6 +576,9 @@ export default function InstallWizardPage({ params }: PageProps) {
                     </div>
                     <div className="space-y-2 pt-2 border-t border-border">
                       <Text variant="caption" className="text-muted-foreground">Install payment methods from buyer payment controls</Text>
+                      <Text variant="caption" className="text-muted-foreground">
+                        Managed backend: {runtimeWalletConfig?.activeProvider || runtimeWalletConfig?.provider || 'not selected'} | Auto-pay {runtimeWalletConfig?.managedAutoPayEnabled ? 'on' : 'off'}
+                      </Text>
                       {paymentControlsLoading ? (
                         <Text variant="small" className="text-muted-foreground">Loading payment readiness...</Text>
                       ) : paymentControlsError ? (
@@ -625,20 +629,10 @@ export default function InstallWizardPage({ params }: PageProps) {
                         Intent: {paymentRequired.intent?.id} | Amount: {Number(paymentRequired.intent?.amountUsdc || 0).toFixed(2)} USDC
                       </Text>
                       {selectedPaymentMethod === 'x402_wallet' && (
-                          <div className="space-y-2">
-                            <Label htmlFor="external-payment-id">External Payment Payload</Label>
-                            <textarea
-                              id="external-payment-id"
-                              value={externalPaymentInput}
-                              onChange={e => setExternalPaymentInput(e.target.value)}
-                              className="w-full min-h-28 px-3 py-2 rounded-md border border-input bg-background text-sm font-mono"
-                              placeholder='Paste the x402 payment JSON payload, or a payment identifier / tx hash'
-                            />
-                            <Text variant="caption" className="text-muted-foreground">
-                              x402 clients normally retry the request with a `PAYMENT-SIGNATURE` payload. Paste that JSON here for facilitator-backed settlement testing.
-                            </Text>
-                          </div>
-                        )}
+                        <Text variant="small" className="text-muted-foreground">
+                          The managed marketplace wallet will sign and settle this x402 payment automatically.
+                        </Text>
+                      )}
                       {paymentRequired.wwwAuthenticate && (
                         <div className="bg-background rounded-md p-3 font-mono text-xs overflow-x-auto">
                           <Text variant="caption" className="mb-1 uppercase text-muted-foreground">WWW-Authenticate</Text>
@@ -657,20 +651,16 @@ export default function InstallWizardPage({ params }: PageProps) {
                       )}
                       <div className="flex flex-wrap gap-2">
                           <Button
-                            disabled={installing || (selectedPaymentMethod === 'x402_wallet' && !externalPaymentInput.trim())}
+                            disabled={installing}
                             onClick={async () => {
                               if (!paymentRequired?.intent?.id) return
                               try {
                                 setInstalling(true)
-                                if (selectedPaymentMethod === 'wallet_balance') {
+                                if (selectedPaymentMethod === 'wallet_balance' || selectedPaymentMethod === 'x402_wallet') {
                                   await settleX402Intent(paymentRequired.intent.id)
                                 } else {
-                                  const parsed = parseExternalPaymentResponse()
-                                  if (!parsed) {
-                                    throw new Error('Provide an x402 payment payload or payment identifier before settling.')
-                                  }
                                   await settleX402Intent(paymentRequired.intent.id, {
-                                    paymentResponse: parsed,
+                                    paymentResponse: {},
                                   })
                                 }
                                 await runInstallAttempt(false)
@@ -721,12 +711,15 @@ export default function InstallWizardPage({ params }: PageProps) {
                     <Card className="text-left p-6 space-y-4 border-dashed">
                       <Text variant="small">Install MCP Local Bridge (one-time)</Text>
                       <Text variant="small" className="text-muted-foreground">
-                        One-click local command execution needs the local bridge registered once on this machine.
+                        Codex one-click install needs the local bridge registered once on this machine. No terminal input is required here.
                       </Text>
-                      <div className="bg-background rounded p-4 font-mono text-xs overflow-x-auto">
-                        <pre className="text-foreground/80">{bridgeInstallCommand}</pre>
-                      </div>
                       <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={() => downloadBridgeInstaller('windows')}>
+                          Download Windows Installer
+                        </Button>
+                        <Button variant="outline" onClick={() => downloadBridgeInstaller('macos')}>
+                          Download macOS Installer
+                        </Button>
                         <Button onClick={() => runInstallAction(selectedAction)}>
                           Retry One-Click Install
                         </Button>

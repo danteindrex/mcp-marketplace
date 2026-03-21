@@ -153,6 +153,13 @@ export default function RevenuePage() {
                 <p className="text-xs text-muted-foreground mt-1">charges={String(Boolean(payoutData.profile?.kycChargesEnabled))} payouts={String(Boolean(payoutData.profile?.kycPayoutsEnabled))}</p>
               </div>
               <div className="border border-border rounded-md p-3">
+                <p className="text-xs text-muted-foreground">Marketplace Receive Wallet</p>
+                <p className="text-sm font-mono break-all">{payoutData.managedWallet?.address || payoutData.profile?.stablecoinAddress || 'provisioning'}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Backend: {payoutData.walletConfig?.activeProvider || payoutData.managedWallet?.provider || 'not selected'}
+                </p>
+              </div>
+              <div className="border border-border rounded-md p-3">
                 <p className="text-xs text-muted-foreground">Stripe Account</p>
                 <p className="text-sm font-mono">{payoutData.profile?.stripeAccountId || 'not connected'}</p>
               </div>

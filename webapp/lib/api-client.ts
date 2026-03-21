@@ -15,6 +15,8 @@ export interface Server {
   dockerImage: string
   containerPort?: number
   canonicalResourceUri: string
+  upstreamAuthType?: string
+  upstreamHeaders?: Record<string, string>
   requiredScopes: string[]
   pricingType: string
   pricingAmount: number
@@ -32,6 +34,8 @@ export interface Server {
   publishedAt?: string
   supportsLocal: boolean
   supportsCloud: boolean
+  supportsChatGptApp?: boolean
+  chatGptAppUrl?: string
   updatedAt: string
   createdAt: string
   builder?: ServerBuilderConfig
@@ -72,14 +76,19 @@ export interface CreateMerchantServerPayload {
   slug: string
   description: string
   category: string
-  dockerImage: string
+  dockerImage?: string
   containerPort?: number
   canonicalResourceUri: string
+  upstreamAuthType?: string
+  upstreamAuthToken?: string
+  upstreamHeaders?: Record<string, string>
   requiredScopes: string[]
   pricingType: string
   pricingAmount: number
   supportsLocal: boolean
   supportsCloud: boolean
+  supportsChatGptApp?: boolean
+  chatGptAppUrl?: string
   paymentMethods?: string[]
   paymentAddress?: string
   perCallCapUsdc?: number
@@ -96,11 +105,16 @@ export interface UpdateMerchantServerPayload {
   dockerImage?: string
   containerPort?: number
   canonicalResourceUri?: string
+  upstreamAuthType?: string
+  upstreamAuthToken?: string
+  upstreamHeaders?: Record<string, string>
   requiredScopes?: string[]
   pricingType?: string
   pricingAmount?: number
   supportsLocal?: boolean
   supportsCloud?: boolean
+  supportsChatGptApp?: boolean
+  chatGptAppUrl?: string
   paymentMethods?: string[]
   paymentAddress?: string
   perCallCapUsdc?: number
@@ -161,6 +175,8 @@ export interface MarketplaceInstallMetadata {
   jwksUrl?: string
   resourceTemplate?: string
   upstreamResourceUrl?: string
+  supportsChatGptApp?: boolean
+  chatGptAppUrl?: string
 }
 
 export interface InstallAction {
@@ -269,9 +285,23 @@ export interface Billing {
     hardStopOnLowFunds?: boolean
     fundingMethod?: string
     walletAddress?: string
+    provider?: string
+    network?: string
+    asset?: string
+    custodyMode?: string
     lastTopUpAt?: string
   }
   status: string
+}
+
+export interface ManagedWallet {
+  id?: string
+  provider?: string
+  network?: string
+  asset?: string
+  address?: string
+  status?: string
+  custodyMode?: string
 }
 
 export interface PaymentMethodCatalogItem {
@@ -321,7 +351,9 @@ export interface BuyerPaymentControls {
     walletAddress?: string
     lastTopUpAt?: string
   }
+  managedWallet?: ManagedWallet
   topups?: WalletTopUp[]
+  walletConfig?: PlatformRuntimeConfig['wallet']
 }
 
 export interface WalletTopUp {
@@ -482,6 +514,18 @@ export interface PlatformRuntimeConfig {
   stripe: {
     publishableKey?: string
   }
+  wallet?: {
+    provider?: string
+    activeProvider?: string
+    managedAutoPayEnabled?: boolean
+    legacyPaymentModeEnabled?: boolean
+    externalWalletsEnabled?: boolean
+    cdpEnabled?: boolean
+    fireflyEnabled?: boolean
+    defaultNetwork?: string
+    defaultAsset?: string
+    custodyMode?: string
+  }
   n8n: {
     url?: string
   }
@@ -531,6 +575,25 @@ export interface PlatformIntegrationSettingsResponse {
       connectReturnUrl: string
       connectRefreshUrl: string
       connectWebhookSecret: SecretFieldState
+    }
+    wallet: {
+      provider: string
+      activeProvider?: string
+      managedAutoPayEnabled: boolean
+      legacyPaymentModeEnabled: boolean
+      externalWalletsEnabled: boolean
+      cdpEnabled: boolean
+      fireflyEnabled: boolean
+      cdpApiKeyId: string
+      cdpApiKeySecret: SecretFieldState
+      cdpWalletSecret: SecretFieldState
+      fireflySignerUrl: string
+      fireflyAuthToken: SecretFieldState
+      fireflyKeystoreDir: string
+      fireflyKeystorePassphrase: SecretFieldState
+      defaultNetwork: string
+      defaultAsset: string
+      custodyMode: string
     }
     x402: {
       mode: string
@@ -944,6 +1007,24 @@ export async function updateAdminIntegrations(payload: {
     connectRefreshUrl: string
     connectWebhookSecret: string
   }
+  wallet: {
+    provider: string
+    managedAutoPayEnabled: boolean
+    legacyPaymentModeEnabled: boolean
+    externalWalletsEnabled: boolean
+    cdpEnabled: boolean
+    fireflyEnabled: boolean
+    cdpApiKeyId: string
+    cdpApiKeySecret: string
+    cdpWalletSecret: string
+    fireflySignerUrl: string
+    fireflyAuthToken: string
+    fireflyKeystoreDir: string
+    fireflyKeystorePassphrase: string
+    defaultNetwork: string
+    defaultAsset: string
+    custodyMode: string
+  }
   x402: { mode: string; facilitatorUrl: string; facilitatorApiKey: string }
   n8n: { baseUrl: string; apiKey: string; timeoutSeconds: number }
 }): Promise<PlatformIntegrationSettingsResponse> {
@@ -1055,6 +1136,8 @@ export async function fetchMerchantPaymentsOverview() {
 
 export async function fetchMerchantPayoutProfile(): Promise<{
   profile: SellerPayoutProfile
+  managedWallet?: ManagedWallet
+  walletConfig?: PlatformRuntimeConfig['wallet']
   payableUsdc: number
   recentPayouts: PayoutRecord[]
   payoutMethods: Array<{ id: string; displayName: string; configured: boolean; notes?: string }>

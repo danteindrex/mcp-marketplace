@@ -4,6 +4,7 @@ import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 const title = 'What Is Model Context Protocol'
 const description =
@@ -17,20 +18,34 @@ export const metadata: Metadata = {
 }
 
 export default function WhatIsMCPPage() {
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: [
-      {
-        '@type': 'Question',
-        name: 'What is Model Context Protocol?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'Model Context Protocol is a standard for connecting AI clients to tools and data sources through structured capability, auth, and transport contracts.',
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Guides', path: '/guides' },
+      { name: title, path: '/guides/what-is-mcp' },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: title,
+      description,
+      url: toAbsoluteUrl('/guides/what-is-mcp'),
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'What is Model Context Protocol?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Model Context Protocol is a standard for connecting AI clients to tools and data sources through structured capability, auth, and transport contracts.',
+          },
         },
-      },
-    ],
-  }
+      ],
+    },
+  ]
 
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">

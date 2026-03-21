@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { useTheme } from 'next-themes'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { Moon, Sun, Bell, Command, Settings, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -28,7 +28,6 @@ export interface AppShellProps {
 
 export function AppShell({ children, role = 'buyer', userEmail = '' }: AppShellProps) {
   const { theme, setTheme } = useTheme()
-  const router = useRouter()
   const pathname = usePathname()
   const crumbs = pathname.split('/').filter(Boolean)
   const [resolvedEmail, setResolvedEmail] = useState(userEmail)

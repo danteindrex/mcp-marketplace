@@ -4,7 +4,7 @@ import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { getSiteUrl } from '@/lib/site'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 const title = 'How To Install MCP In VS Code'
 const description =
@@ -18,20 +18,27 @@ export const metadata: Metadata = {
 }
 
 export default function InstallMCPInVSCodeGuidePage() {
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'HowTo',
-    name: title,
-    description,
-    url: `${getSiteUrl()}/guides/install-mcp-in-vs-code`,
-    step: [
-      { '@type': 'HowToStep', name: 'Choose a listing', text: 'Open the server you want to use from the marketplace.' },
-      { '@type': 'HowToStep', name: 'Select VS Code', text: 'Pick VS Code so the marketplace prepares the right install action.' },
-      { '@type': 'HowToStep', name: 'Check readiness', text: 'Let the platform validate metadata, scopes, and buyer hub state.' },
-      { '@type': 'HowToStep', name: 'Settle payment if required', text: 'Paid servers expose payment as a separate install step.' },
-      { '@type': 'HowToStep', name: 'Open VS Code setup', text: 'Launch the generated VS Code action to finish the connection.' },
-    ],
-  }
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Guides', path: '/guides' },
+      { name: title, path: '/guides/install-mcp-in-vs-code' },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'HowTo',
+      name: title,
+      description,
+      url: toAbsoluteUrl('/guides/install-mcp-in-vs-code'),
+      step: [
+        { '@type': 'HowToStep', name: 'Choose a listing', text: 'Open the server you want to use from the marketplace.' },
+        { '@type': 'HowToStep', name: 'Select VS Code', text: 'Pick VS Code so the marketplace prepares the right install action.' },
+        { '@type': 'HowToStep', name: 'Check readiness', text: 'Let the platform validate metadata, scopes, and buyer hub state.' },
+        { '@type': 'HowToStep', name: 'Settle payment if required', text: 'Paid servers expose payment as a separate install step.' },
+        { '@type': 'HowToStep', name: 'Open VS Code setup', text: 'Launch the generated VS Code action to finish the connection.' },
+      ],
+    },
+  ]
 
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">

@@ -4,7 +4,7 @@ import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { getSiteUrl } from '@/lib/site'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 const title = 'How To Install MCP In Cursor'
 const description =
@@ -18,20 +18,27 @@ export const metadata: Metadata = {
 }
 
 export default function InstallMCPInCursorGuidePage() {
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'HowTo',
-    name: title,
-    description,
-    url: `${getSiteUrl()}/guides/install-mcp-in-cursor`,
-    step: [
-      { '@type': 'HowToStep', name: 'Pick a listing', text: 'Choose the MCP server you want from the marketplace.' },
-      { '@type': 'HowToStep', name: 'Select Cursor', text: 'Choose Cursor as the client target in the guided flow.' },
-      { '@type': 'HowToStep', name: 'Review permissions', text: 'Confirm the required scopes and install readiness state.' },
-      { '@type': 'HowToStep', name: 'Resolve billing when needed', text: 'Only paid servers trigger wallet or x402 settlement.' },
-      { '@type': 'HowToStep', name: 'Launch Cursor setup', text: 'Use the generated action to finish setup in Cursor.' },
-    ],
-  }
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Guides', path: '/guides' },
+      { name: title, path: '/guides/install-mcp-in-cursor' },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'HowTo',
+      name: title,
+      description,
+      url: toAbsoluteUrl('/guides/install-mcp-in-cursor'),
+      step: [
+        { '@type': 'HowToStep', name: 'Pick a listing', text: 'Choose the MCP server you want from the marketplace.' },
+        { '@type': 'HowToStep', name: 'Select Cursor', text: 'Choose Cursor as the client target in the guided flow.' },
+        { '@type': 'HowToStep', name: 'Review permissions', text: 'Confirm the required scopes and install readiness state.' },
+        { '@type': 'HowToStep', name: 'Resolve billing when needed', text: 'Only paid servers trigger wallet or x402 settlement.' },
+        { '@type': 'HowToStep', name: 'Launch Cursor setup', text: 'Use the generated action to finish setup in Cursor.' },
+      ],
+    },
+  ]
 
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">

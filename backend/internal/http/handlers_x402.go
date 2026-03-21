@@ -91,9 +91,12 @@ func (a *App) createX402Intent(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(resource) == "" {
 		resource = a.cfg.BaseURL + "/mcp/hub/" + claims.TenantID + "/" + claims.UserID
 	}
+	if strings.TrimSpace(server.PaymentAddress) == "" {
+		server.PaymentAddress = a.resolveServerPaymentAddress(server)
+	}
 	requirement := buildX402Requirement(server, req.ToolName, amount, resource, method, idempotencyKey)
 	challengeBytes, _ := json.Marshal([]map[string]interface{}{requirement})
-	intent := a.store.CreateX402Intent(models.X402Intent{
+	intent := models.X402Intent{
 		TenantID:           claims.TenantID,
 		UserID:             claims.UserID,
 		ServerID:           req.ServerID,
@@ -110,7 +113,11 @@ func (a *App) createX402Intent(w http.ResponseWriter, r *http.Request) {
 		Quantity:           1,
 		RemainingQuantity:  0,
 		RequestFingerprint: hashAny(map[string]interface{}{"serverId": req.ServerID, "toolName": req.ToolName, "idempotencyKey": idempotencyKey}),
-	})
+	}
+	if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), claims.TenantID, claims.UserID); ok {
+		applyIntentWallet(&intent, wallet)
+	}
+	intent = a.store.CreateX402Intent(intent)
 	w.Header().Set("PAYMENT-REQUIRED", string(challengeBytes))
 	w.Header().Set("WWW-Authenticate", `Bearer error="insufficient_scope"`)
 	writeJSON(w, http.StatusPaymentRequired, map[string]interface{}{
@@ -167,6 +174,11 @@ func (a *App) settleX402Intent(w http.ResponseWriter, r *http.Request) {
 		if intent.RemainingQuantity <= 0 {
 			intent.RemainingQuantity = intent.Quantity
 		}
+		if intent.WalletAddress == "" {
+			if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), existing.TenantID, existing.UserID); ok {
+				applyIntentWallet(&intent, wallet)
+			}
+		}
 		_ = a.store.UpdateX402Intent(intent)
 		intent, err = a.postIntentAccounting(intent)
 		if err != nil {
@@ -185,6 +197,16 @@ func (a *App) settleX402Intent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	requirement := firstRequirement(existing.Challenge)
+	var wallet models.ManagedWallet
+	if len(req.PaymentResponse) == 0 && strings.EqualFold(existing.PaymentMethod, "x402_wallet") {
+		autoResponse, signedWallet, err := a.signManagedWalletPayment(r.Context(), existing.TenantID, existing.UserID, requirement)
+		if err != nil {
+			writeJSON(w, http.StatusPaymentRequired, map[string]string{"error": err.Error()})
+			return
+		}
+		wallet = signedWallet
+		req.PaymentResponse = autoResponse
+	}
 	verifyRes, err := a.currentX402Service().verifyAndSettle(r.Context(), requirement, req.PaymentResponse)
 	if err != nil {
 		writeJSON(w, http.StatusPaymentRequired, map[string]string{"error": err.Error()})
@@ -220,6 +242,13 @@ func (a *App) settleX402Intent(w http.ResponseWriter, r *http.Request) {
 	if intent.RemainingQuantity <= 0 {
 		intent.RemainingQuantity = intent.Quantity
 	}
+	if wallet.Address != "" {
+		applyIntentWallet(&intent, wallet)
+	} else if intent.WalletAddress == "" {
+		if buyerWallet, ok := a.currentBuyerWalletAttribution(r.Context(), existing.TenantID, existing.UserID); ok {
+			applyIntentWallet(&intent, buyerWallet)
+		}
+	}
 	_ = a.store.UpdateX402Intent(intent)
 	intent, err = a.postIntentAccounting(intent)
 	if err != nil {
@@ -237,6 +266,7 @@ func (a *App) listX402Intents(w http.ResponseWriter, r *http.Request) {
 }
 
 func buildX402Requirement(server models.Server, toolName string, amount float64, resource string, method string, idempotencyKey string) map[string]interface{} {
+	paymentAddress := strings.TrimSpace(server.PaymentAddress)
 	return map[string]interface{}{
 		"x402Version":     "2",
 		"scheme":          "exact",
@@ -249,7 +279,7 @@ func buildX402Requirement(server models.Server, toolName string, amount float64,
 		"toolName":        toolName,
 		"method":          method,
 		"idempotencyKey":  idempotencyKey,
-		"paymentAddress":  server.PaymentAddress,
+		"paymentAddress":  paymentAddress,
 		"paymentMethods":  server.PaymentMethods,
 		"description":     "Pay to execute MCP tool via marketplace x402 proxy.",
 		"maxAmountUsdc":   amount,

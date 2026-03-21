@@ -31,10 +31,28 @@ export MCP_SDK_ENABLED="true" # optional: enable MCP SDK-backed initialize/tools
 # in-memory fallback is disabled by design
 
 # x402 + payment rails
-export X402_MODE="facilitator" # or "mock" for local testing
+export X402_MODE="facilitator" # or "disabled"/"test" for local testing
 export X402_FACILITATOR_URL="https://<your-facilitator>"
 export X402_FACILITATOR_API_KEY="<facilitator-key>"
 export SUPPORTED_PAYMENT_METHODS="x402_wallet,wallet_balance,stripe"
+
+# Managed marketplace wallets (provider-managed signing for seamless x402)
+export WALLET_PROVIDER="cdp"
+export WALLET_MANAGED_AUTOPAY_ENABLED="true"
+export WALLET_LEGACY_PAYMENT_MODE_ENABLED="true"
+export WALLET_EXTERNAL_WALLETS_ENABLED="false"
+export WALLET_CDP_ENABLED="true"
+export WALLET_FIREFLY_ENABLED="false"
+export CDP_API_KEY_ID="<cdp-api-key-id>"
+export CDP_API_KEY_SECRET="<cdp-api-key-secret>"
+export CDP_WALLET_SECRET="<cdp-wallet-secret>"
+export FIREFLY_SIGNER_URL="http://localhost:8545" # when WALLET_PROVIDER=firefly
+export FIREFLY_SIGNER_AUTH_TOKEN=""
+export FIREFLY_KEYSTORE_DIR="./data/firefly/keystore"
+export FIREFLY_KEYSTORE_PASSPHRASE="<strong-passphrase>"
+export WALLET_DEFAULT_NETWORK="base"
+export WALLET_DEFAULT_ASSET="USDC"
+export WALLET_CUSTODY_MODE="provider_managed"
 
 # Stripe Onramp (card/ACH -> USDC prepaid wallet)
 export STRIPE_SECRET_KEY="sk_live_..."
@@ -82,3 +100,8 @@ npm run dev
   - webapp: `npm ci`, `npm run lint`, `npm run typecheck`, `npm run build`
 - `.github/workflows/security.yml`
   - weekly `govulncheck`
+
+## Wallet docs
+- `docs/FIREFLY_MANAGED_WALLETS.md`
+- `docs/FIREFLY_WALLET_ROLLOUT_CHECKLIST.md`
+- `docs/WALLET_IMPLEMENTATION_CHECKLIST.md`

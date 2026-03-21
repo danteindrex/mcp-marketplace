@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     
     const data = await upstream.json()
     return NextResponse.json(data, { status: 200 })
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Failed to initiate GitHub OAuth' },
       { status: 500 }

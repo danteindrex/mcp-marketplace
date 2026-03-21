@@ -179,7 +179,12 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 				idempotencyKey := extractIdempotencyKey(req.ID, params.Meta, params.Name)
 				selectedMethod := nonEmpty(stringFromAny(params.Meta["x402/payment-method"]), firstMethod(policy.AllowedMethods))
 				requirement := buildX402Requirement(
-					server,
+					func() models.Server {
+						if strings.TrimSpace(server.PaymentAddress) == "" {
+							server.PaymentAddress = a.resolveServerPaymentAddress(server)
+						}
+						return server
+					}(),
 					params.Name,
 					server.PricingAmount,
 					nonEmpty(server.CanonicalResourceURI, hub.HubURL),
@@ -212,7 +217,7 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 						return
 					}
 					challengeBytes, _ := json.Marshal([]map[string]interface{}{requirement})
-					pending := a.store.CreateX402Intent(models.X402Intent{
+					pending := models.X402Intent{
 						TenantID:           claims.TenantID,
 						UserID:             claims.UserID,
 						ServerID:           server.ID,
@@ -231,12 +236,21 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 						Quantity:           1,
 						RemainingQuantity:  1,
 						RequestFingerprint: hashAny(map[string]interface{}{"tool": params.Name, "idempotencyKey": idempotencyKey, "requestID": req.ID}),
-					})
+					}
+					if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), claims.TenantID, claims.UserID); ok {
+						applyIntentWallet(&pending, wallet)
+					}
+					pending = a.store.CreateX402Intent(pending)
 					settled, _ := a.store.SettleX402Intent(pending.ID)
 					settled.PaymentIdentifier = walletPaymentID
 					settled.PaymentMethod = "wallet_balance"
 					settled.VerificationStatus = "verified"
 					settled.VerificationNote = "debited from prepaid wallet balance"
+					if settled.WalletAddress == "" {
+						if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), claims.TenantID, claims.UserID); ok {
+							applyIntentWallet(&settled, wallet)
+						}
+					}
 					accounted, aerr := a.postIntentAccounting(settled)
 					if aerr != nil {
 						writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
@@ -263,8 +277,29 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 				}
 
 				if !creditOK && paymentResponse == nil {
+					if selectedMethod == "x402_wallet" {
+						autoResponse, wallet, serr := a.signManagedWalletPayment(r.Context(), claims.TenantID, claims.UserID, requirement)
+						if serr != nil {
+							writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
+								JSONRPC: "2.0",
+								ID:      req.ID,
+								Error: &mcpJSONRPCError{
+									Code:    -32002,
+									Message: "managed wallet payment unavailable",
+									Data:    map[string]interface{}{"error": serr.Error()},
+								},
+							})
+							return
+						}
+						paymentResponse = autoResponse
+						resultMeta["wallet/address"] = wallet.Address
+						resultMeta["wallet/provider"] = wallet.Provider
+					}
+				}
+
+				if !creditOK && paymentResponse == nil {
 					challengeBytes, _ := json.Marshal([]map[string]interface{}{requirement})
-					intent := a.store.CreateX402Intent(models.X402Intent{
+					intent := models.X402Intent{
 						TenantID:           claims.TenantID,
 						UserID:             claims.UserID,
 						ServerID:           server.ID,
@@ -281,7 +316,11 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 						Quantity:           1,
 						RemainingQuantity:  0,
 						RequestFingerprint: hashAny(map[string]interface{}{"tool": params.Name, "idempotencyKey": idempotencyKey, "requestID": req.ID}),
-					})
+					}
+					if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), claims.TenantID, claims.UserID); ok {
+						applyIntentWallet(&intent, wallet)
+					}
+					intent = a.store.CreateX402Intent(intent)
 					w.Header().Set("PAYMENT-REQUIRED", string(challengeBytes))
 					writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
 						JSONRPC: "2.0",
@@ -367,7 +406,7 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 					}
 					if !creditOK {
 						challengeBytes, _ := json.Marshal([]map[string]interface{}{requirement})
-						pending := a.store.CreateX402Intent(models.X402Intent{
+						pending := models.X402Intent{
 							TenantID:           claims.TenantID,
 							UserID:             claims.UserID,
 							ServerID:           server.ID,
@@ -387,13 +426,22 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 							Quantity:           1,
 							RemainingQuantity:  1,
 							RequestFingerprint: hashAny(map[string]interface{}{"tool": params.Name, "idempotencyKey": idempotencyKey, "requestID": req.ID}),
-						})
+						}
+						if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), claims.TenantID, claims.UserID); ok {
+							applyIntentWallet(&pending, wallet)
+						}
+						pending = a.store.CreateX402Intent(pending)
 						settled, _ := a.store.SettleX402Intent(pending.ID)
 						settled.PaymentIdentifier = verifyRes.PaymentIdentifier
 						settled.PaymentMethod = nonEmpty(verifyRes.Method, "x402_wallet")
 						settled.VerificationStatus = "verified"
 						settled.VerificationNote = verifyRes.Note
 						settled.FacilitatorTx = verifyRes.TxHash
+						if settled.WalletAddress == "" {
+							if wallet, ok := a.currentBuyerWalletAttribution(r.Context(), claims.TenantID, claims.UserID); ok {
+								applyIntentWallet(&settled, wallet)
+							}
+						}
 						accounted, aerr := a.postIntentAccounting(settled)
 						if aerr != nil {
 							writeJSON(w, http.StatusOK, mcpJSONRPCResponse{
@@ -490,6 +538,15 @@ func (a *App) mcpHub(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		upstreamReq.Header.Set("Content-Type", "application/json")
+		if strings.EqualFold(strings.TrimSpace(server.UpstreamAuthType), "bearer") && strings.TrimSpace(server.UpstreamAuthToken) != "" {
+			upstreamReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(server.UpstreamAuthToken))
+		}
+		for hk, hv := range server.UpstreamHeaders {
+			if strings.TrimSpace(hk) == "" || strings.EqualFold(hk, "authorization") {
+				continue
+			}
+			upstreamReq.Header.Set(hk, hv)
+		}
 
 		resp, err := client.Do(upstreamReq)
 		if err != nil {

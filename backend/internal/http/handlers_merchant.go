@@ -141,14 +141,19 @@ type createServerRequest struct {
 	Slug                 string   `json:"slug"`
 	Description          string   `json:"description"`
 	Category             string   `json:"category"`
-	DockerImage          string   `json:"dockerImage"`
-	ContainerPort        int      `json:"containerPort"`
-	CanonicalResourceURI string   `json:"canonicalResourceUri"`
-	RequiredScopes       []string `json:"requiredScopes"`
+	DockerImage          string            `json:"dockerImage"`
+	ContainerPort        int               `json:"containerPort"`
+	CanonicalResourceURI string            `json:"canonicalResourceUri"`
+	UpstreamAuthType     string            `json:"upstreamAuthType"`
+	UpstreamAuthToken    string            `json:"upstreamAuthToken"`
+	UpstreamHeaders      map[string]string `json:"upstreamHeaders"`
+	RequiredScopes       []string          `json:"requiredScopes"`
 	PricingType          string   `json:"pricingType"`
 	PricingAmount        float64  `json:"pricingAmount"`
 	SupportsLocal        bool     `json:"supportsLocal"`
 	SupportsCloud        bool     `json:"supportsCloud"`
+	SupportsChatGPTApp   bool     `json:"supportsChatGptApp"`
+	ChatGPTAppURL        string   `json:"chatGptAppUrl"`
 	PaymentMethods       []string `json:"paymentMethods"`
 	PaymentAddress       string   `json:"paymentAddress"`
 	PerCallCapUSDC       float64  `json:"perCallCapUsdc"`
@@ -160,13 +165,22 @@ type createServerRequest struct {
 func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
 	var req createServerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" || req.Slug == "" || req.DockerImage == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" || req.Slug == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+	if strings.TrimSpace(req.DockerImage) == "" && strings.TrimSpace(req.CanonicalResourceURI) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "either dockerImage or canonicalResourceUri is required"})
 		return
 	}
 	status, ok := normalizeServerStatus(req.Status, models.ServerStatusDraft)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be draft, published, or archived"})
+		return
+	}
+	upstreamAuthType := strings.ToLower(strings.TrimSpace(req.UpstreamAuthType))
+	if upstreamAuthType != "" && upstreamAuthType != "bearer" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "upstreamAuthType must be empty or 'bearer'"})
 		return
 	}
 	if status != models.ServerStatusDraft {
@@ -189,6 +203,9 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		DockerImage:          req.DockerImage,
 		ContainerPort:        containerPort,
 		CanonicalResourceURI: req.CanonicalResourceURI,
+		UpstreamAuthType:     upstreamAuthType,
+		UpstreamAuthToken:    strings.TrimSpace(req.UpstreamAuthToken),
+		UpstreamHeaders:      sanitizeUpstreamHeaders(req.UpstreamHeaders),
 		RequiredScopes:       req.RequiredScopes,
 		PricingType:          req.PricingType,
 		PricingAmount:        req.PricingAmount,
@@ -196,6 +213,8 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 		DeploymentStatus:     models.ServerDeploymentPending,
 		SupportsCloud:        req.SupportsCloud,
 		SupportsLocal:        req.SupportsLocal,
+		SupportsChatGPTApp:   req.SupportsChatGPTApp,
+		ChatGPTAppURL:        strings.TrimSpace(req.ChatGPTAppURL),
 		PaymentMethods:       normalizePaymentMethods(req.PaymentMethods),
 		PaymentAddress:       strings.TrimSpace(req.PaymentAddress),
 		PerCallCapUSDC:       req.PerCallCapUSDC,
@@ -206,6 +225,15 @@ func (a *App) createMerchantServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(server.PaymentMethods) == 0 {
 		server.PaymentMethods = a.defaultAllowedPaymentMethods()
+	}
+	if server.SupportsChatGPTApp && server.ChatGPTAppURL == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "chatGptAppUrl is required when supportsChatGptApp is enabled"})
+		return
+	}
+	if strings.TrimSpace(server.PaymentAddress) == "" {
+		if wallet, err := a.ensureSellerManagedWallet(r.Context(), claims.TenantID); err == nil {
+			server.PaymentAddress = wallet.Address
+		}
 	}
 	if err := a.validateEnabledPaymentMethods(server.PaymentMethods); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -247,6 +275,20 @@ func (a *App) updateMerchantServer(w http.ResponseWriter, r *http.Request) {
 	if req.CanonicalResourceURI != "" {
 		server.CanonicalResourceURI = req.CanonicalResourceURI
 	}
+	if strings.TrimSpace(req.UpstreamAuthType) != "" {
+		authType := strings.ToLower(strings.TrimSpace(req.UpstreamAuthType))
+		if authType != "bearer" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "upstreamAuthType must be 'bearer' when provided"})
+			return
+		}
+		server.UpstreamAuthType = authType
+	}
+	if strings.TrimSpace(req.UpstreamAuthToken) != "" {
+		server.UpstreamAuthToken = strings.TrimSpace(req.UpstreamAuthToken)
+	}
+	if req.UpstreamHeaders != nil {
+		server.UpstreamHeaders = sanitizeUpstreamHeaders(req.UpstreamHeaders)
+	}
 	if len(req.RequiredScopes) > 0 {
 		server.RequiredScopes = req.RequiredScopes
 	}
@@ -254,12 +296,27 @@ func (a *App) updateMerchantServer(w http.ResponseWriter, r *http.Request) {
 		server.PricingType = req.PricingType
 		server.PricingAmount = req.PricingAmount
 	}
+	if req.SupportsChatGPTApp || strings.TrimSpace(req.ChatGPTAppURL) != "" {
+		server.SupportsChatGPTApp = req.SupportsChatGPTApp
+		server.ChatGPTAppURL = strings.TrimSpace(req.ChatGPTAppURL)
+	}
+	if strings.TrimSpace(req.PaymentAddress) != "" {
+		server.PaymentAddress = strings.TrimSpace(req.PaymentAddress)
+	} else if strings.TrimSpace(server.PaymentAddress) == "" {
+		if wallet, err := a.ensureSellerManagedWallet(r.Context(), server.TenantID); err == nil {
+			server.PaymentAddress = wallet.Address
+		}
+	}
 	if len(req.PaymentMethods) > 0 {
 		server.PaymentMethods = normalizePaymentMethods(req.PaymentMethods)
 		if err := a.validateEnabledPaymentMethods(server.PaymentMethods); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
+	}
+	if server.SupportsChatGPTApp && server.ChatGPTAppURL == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "chatGptAppUrl is required when supportsChatGptApp is enabled"})
+		return
 	}
 	if strings.TrimSpace(req.PaymentAddress) != "" {
 		server.PaymentAddress = strings.TrimSpace(req.PaymentAddress)
@@ -345,7 +402,32 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 		target = "local-docker"
 		server.DeploymentTarget = target
 	}
-	if target == "local-docker" || (a.currentN8NService() != nil && a.currentN8NService().configured()) {
+
+	if target == "external" {
+		server.DeploymentStatus = models.ServerDeploymentDeployed
+		server.DeployedAt = now
+		if server.Status != models.ServerStatusPublished {
+			server.Status = models.ServerStatusDraft
+			server.PublishedAt = time.Time{}
+		}
+		server.UpdatedAt = now
+		a.store.UpdateServer(server)
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"server":    server,
+			"lifecycle": a.serverLifecyclePayload(server),
+			"n8n": map[string]interface{}{
+				"configured": false,
+			},
+		})
+		return
+	}
+
+	n8nConfigured := a.currentN8NService() != nil && a.currentN8NService().configured()
+	if n8nConfigured && strings.TrimSpace(req.DeploymentTarget) == "" && target == "local-docker" {
+		server.DeploymentTarget = "managed-cloud"
+		target = server.DeploymentTarget
+	}
+	if n8nConfigured {
 		preferredWorkflowID := strings.TrimSpace(req.N8nWorkflowID)
 		if preferredWorkflowID == "" {
 			preferredWorkflowID = strings.TrimSpace(server.N8nWorkflowID)
@@ -396,13 +478,49 @@ func (a *App) deployMerchantServer(w http.ResponseWriter, r *http.Request) {
 				"nextAttemptAt": task.NextAttemptAt,
 			},
 			"n8n": map[string]interface{}{
-				"configured":  a.currentN8NService() != nil && a.currentN8NService().configured(),
+				"configured":  n8nConfigured,
 				"workflowId":  server.N8nWorkflowID,
 				"workflowUrl": server.N8nWorkflowURL,
 			},
 		})
 		return
 	}
+
+	if a.cfg.AllowInsecureDefaults {
+		server.DeploymentStatus = models.ServerDeploymentDeployed
+		server.DeployedAt = now
+		if server.Status != models.ServerStatusPublished {
+			server.Status = models.ServerStatusDraft
+			server.PublishedAt = time.Time{}
+		}
+		server.UpdatedAt = now
+		a.store.UpdateServer(server)
+		a.store.AddAuditLog(models.AuditLog{
+			TenantID:   claims.TenantID,
+			ActorID:    claims.UserID,
+			Action:     "server.deploy",
+			TargetType: "server",
+			TargetID:   server.ID,
+			Outcome:    "success",
+			Metadata: map[string]interface{}{
+				"deploymentStatus":  server.DeploymentStatus,
+				"marketplaceStatus": server.Status,
+				"target":            target,
+				"mode":              "insecure-defaults",
+			},
+		})
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"server":    server,
+			"lifecycle": a.serverLifecyclePayload(server),
+			"n8n": map[string]interface{}{
+				"configured":  false,
+				"workflowId":  server.N8nWorkflowID,
+				"workflowUrl": server.N8nWorkflowURL,
+			},
+		})
+		return
+	}
+
 	writeJSON(w, http.StatusConflict, map[string]string{"error": "no deployment provider is configured for this target"})
 }
 
@@ -482,8 +600,8 @@ func (a *App) serverPublishability(server models.Server) serverPublishability {
 	if server.DeploymentStatus != models.ServerDeploymentDeployed {
 		reasons = append(reasons, serverBlockingReason{Code: "server_not_deployed", Message: "Deploy the server before publishing.", Stage: "deployment", Field: "deploymentStatus"})
 	}
-	if server.PricingAmount <= 0 {
-		reasons = append(reasons, serverBlockingReason{Code: "pricing_amount_required", Message: "Set a positive price before publishing.", Stage: "pricing", Field: "pricingAmount"})
+	if server.PricingType == "x402" && server.PricingAmount <= 0 {
+		reasons = append(reasons, serverBlockingReason{Code: "pricing_amount_required", Message: "Set a positive price before publishing x402 servers.", Stage: "pricing", Field: "pricingAmount"})
 	}
 	if server.PricingType == "x402" {
 		if len(server.PaymentMethods) == 0 {
@@ -493,6 +611,16 @@ func (a *App) serverPublishability(server models.Server) serverPublishability {
 		}
 	}
 	reasons = append(reasons, canonicalResourceBlockingReasons(server)...)
+	if a.cfg.MCPSDKEnabled {
+		filtered := make([]serverBlockingReason, 0, len(reasons))
+		for _, reason := range reasons {
+			if reason.Code == "upstream_runtime_local_only" {
+				continue
+			}
+			filtered = append(filtered, reason)
+		}
+		reasons = filtered
+	}
 	return serverPublishability{CanPublish: len(reasons) == 0, BlockingReasons: reasons}
 }
 
@@ -512,6 +640,27 @@ func (a *App) isServerMarketplaceVisible(server models.Server) bool {
 		return false
 	}
 	return a.serverPublishability(server).CanPublish
+}
+
+func sanitizeUpstreamHeaders(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(input))
+	for k, v := range input {
+		key := strings.TrimSpace(k)
+		if key == "" {
+			continue
+		}
+		if strings.EqualFold(key, "authorization") {
+			continue
+		}
+		out[key] = strings.TrimSpace(v)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func publishabilityStatusCode(publishability serverPublishability) int {

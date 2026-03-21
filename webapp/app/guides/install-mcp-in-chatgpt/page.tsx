@@ -4,7 +4,7 @@ import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { getSiteUrl } from '@/lib/site'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 const title = 'How To Install MCP In ChatGPT'
 const description =
@@ -18,20 +18,27 @@ export const metadata: Metadata = {
 }
 
 export default function InstallMCPInChatGPTGuidePage() {
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'HowTo',
-    name: title,
-    description,
-    url: `${getSiteUrl()}/guides/install-mcp-in-chatgpt`,
-    step: [
-      { '@type': 'HowToStep', name: 'Open a server page', text: 'Choose the MCP server to connect through the marketplace.' },
-      { '@type': 'HowToStep', name: 'Select ChatGPT', text: 'Choose ChatGPT as the target client in the install flow.' },
-      { '@type': 'HowToStep', name: 'Validate metadata and scopes', text: 'The platform confirms discovery, auth readiness, and permission scope requirements.' },
-      { '@type': 'HowToStep', name: 'Complete payment only when needed', text: 'Paid listings handle billing before the connection completes.' },
-      { '@type': 'HowToStep', name: 'Finish the remote connection', text: 'Use the generated ChatGPT setup action to complete the install.' },
-    ],
-  }
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Guides', path: '/guides' },
+      { name: title, path: '/guides/install-mcp-in-chatgpt' },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'HowTo',
+      name: title,
+      description,
+      url: toAbsoluteUrl('/guides/install-mcp-in-chatgpt'),
+      step: [
+        { '@type': 'HowToStep', name: 'Open a server page', text: 'Choose the MCP server to connect through the marketplace.' },
+        { '@type': 'HowToStep', name: 'Select ChatGPT', text: 'Choose ChatGPT as the target client in the install flow.' },
+        { '@type': 'HowToStep', name: 'Validate metadata and scopes', text: 'The platform confirms discovery, auth readiness, and permission scope requirements.' },
+        { '@type': 'HowToStep', name: 'Complete payment only when needed', text: 'Paid listings handle billing before the connection completes.' },
+        { '@type': 'HowToStep', name: 'Finish the remote connection', text: 'Use the generated ChatGPT setup action to complete the install.' },
+      ],
+    },
+  ]
 
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">

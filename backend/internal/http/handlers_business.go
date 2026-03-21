@@ -14,6 +14,7 @@ import (
 
 func (a *App) getBuyerBilling(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
+	buyerWallet, _ := a.ensureBuyerManagedWallet(r.Context(), claims.TenantID, claims.UserID)
 	intents := a.store.ListX402Intents(claims.TenantID, claims.UserID)
 	monthlySpend := 0.0
 	for _, intent := range intents {
@@ -27,6 +28,9 @@ func (a *App) getBuyerBilling(w http.ResponseWriter, r *http.Request) {
 		plan = "pro"
 	}
 	policy := a.effectivePaymentPolicy(claims.TenantID, claims.UserID)
+	if strings.TrimSpace(policy.WalletAddress) == "" {
+		policy.WalletAddress = buyerWallet.Address
+	}
 	dailySpend, monthlySpendCalc := settledSpendForWindow(intents, time.Now().UTC())
 	if monthlySpendCalc > monthlySpend {
 		monthlySpend = monthlySpendCalc
@@ -53,6 +57,10 @@ func (a *App) getBuyerBilling(w http.ResponseWriter, r *http.Request) {
 			"hardStopOnLowFunds": policy.HardStopOnLowFunds,
 			"fundingMethod":      policy.FundingMethod,
 			"walletAddress":      policy.WalletAddress,
+			"provider":           buyerWallet.Provider,
+			"network":            buyerWallet.Network,
+			"asset":              buyerWallet.Asset,
+			"custodyMode":        buyerWallet.CustodyMode,
 			"lastTopUpAt":        policy.LastTopUpAt,
 		},
 		"status": "active",
@@ -418,11 +426,12 @@ func (a *App) updateServerBuilder(w http.ResponseWriter, r *http.Request, server
 
 func (a *App) clientCompatibility(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]interface{}{
-		{"client": "codex", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "One-line CLI install command"},
+		{"client": "codex", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "One-click local bridge installer"},
 		{"client": "vscode", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "vscode:mcp/install deep-link action"},
 		{"client": "cursor", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "CLI install command when Cursor CLI is available"},
 		{"client": "claude", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "One-line CLI install command"},
 		{"client": "chatgpt", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "Connector settings flow with remote MCP URL"},
+		{"client": "chatgpt_app", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "Merchant-provided ChatGPT app entrypoint backed by a remote MCP server"},
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i]["client"].(string) < items[j]["client"].(string) })
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "count": len(items)})

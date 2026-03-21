@@ -2,7 +2,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 export const metadata: Metadata = {
   title: 'MCP Guides',
@@ -38,8 +40,32 @@ const guideGroups = [
 ]
 
 export default function GuidesIndexPage() {
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Guides', path: '/guides' },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: 'MCP Guides',
+      description: 'Canonical guides for installing and understanding MCP servers and MCP Marketplace.',
+      url: toAbsoluteUrl('/guides'),
+      mainEntity: {
+        '@type': 'ItemList',
+        itemListElement: guideGroups.flatMap(group => group.links).map((link, index) => ({
+          '@type': 'ListItem',
+          position: index + 1,
+          name: link.label,
+          url: toAbsoluteUrl(link.href),
+        })),
+      },
+    },
+  ]
+
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">
+      <JsonLd data={jsonLd} />
       <div className="mx-auto flex max-w-5xl flex-col gap-8">
         <div className="space-y-4">
           <Badge variant="outline">Guide Library</Badge>

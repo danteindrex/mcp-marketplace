@@ -58,10 +58,21 @@ func newX402Service(cfg config.Config) *x402Service {
 func (s *x402Service) verifyAndSettle(ctx context.Context, requirement map[string]interface{}, paymentResponse map[string]interface{}) (x402VerificationResult, error) {
 	// Test mode - accept any payment for development/testing
 	if s.mode == "test" {
+		paymentID := stringFromAny(paymentResponse["paymentIdentifier"])
+		if paymentID == "" {
+			paymentID = stringFromAny(paymentResponse["id"])
+		}
+		if paymentID == "" {
+			paymentID = "test_" + hashAny(paymentResponse)[:24]
+		}
+		method := stringFromAny(paymentResponse["method"])
+		if method == "" {
+			method = "x402_wallet"
+		}
 		return x402VerificationResult{
 			Valid:             true,
-			PaymentIdentifier: "test_" + randomToken("verify_"),
-			Method:            "test",
+			PaymentIdentifier: paymentID,
+			Method:            method,
 			Network:           stringFromAny(requirement["network"]),
 			Asset:             stringFromAny(requirement["asset"]),
 			TxHash:            "0xtest" + randomToken("tx_"),
@@ -71,11 +82,22 @@ func (s *x402Service) verifyAndSettle(ctx context.Context, requirement map[strin
 	// Real facilitator mode requires proper configuration
 	if s.mode != "facilitator" || s.facilitatorURL == "" {
 		if s.mode == "disabled" {
+			paymentID := stringFromAny(paymentResponse["paymentIdentifier"])
+			if paymentID == "" {
+				paymentID = stringFromAny(paymentResponse["id"])
+			}
+			if paymentID == "" {
+				paymentID = "disabled_" + hashAny(paymentResponse)[:24]
+			}
+			method := stringFromAny(paymentResponse["method"])
+			if method == "" {
+				method = "x402_wallet"
+			}
 			// Disabled mode - skip verification entirely (for development/testing)
 			return x402VerificationResult{
 				Valid:             true,
-				PaymentIdentifier: "disabled",
-				Method:            "none",
+				PaymentIdentifier: paymentID,
+				Method:            method,
 				Network:           stringFromAny(requirement["network"]),
 				Asset:             stringFromAny(requirement["asset"]),
 				Note:              "verification disabled",

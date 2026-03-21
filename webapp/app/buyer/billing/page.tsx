@@ -243,6 +243,8 @@ export default function BillingPage() {
   const walletBalanceUsdc = Number(
     controls?.wallet?.balanceUsdc ?? controls?.policy?.walletBalanceUsdc ?? billing.wallet?.balanceUsdc ?? billing.currentBalance ?? 0,
   )
+  const managedWalletAddress =
+    controls?.managedWallet?.address || controls?.policy?.walletAddress || controls?.policy?.siwxWallet || billing.wallet?.walletAddress || ''
   const stripeMethod = supportedMethods.find(method => method.id === 'stripe_onramp')
   const stripeTopUpReady = Boolean(
     topUpSummary.stripeConfigured && stripeMethod?.enabled && stripeMethod.configured,
@@ -411,6 +413,17 @@ export default function BillingPage() {
               <p className="text-xs text-muted-foreground">
                 Funding method: {controls?.wallet?.fundingMethod || controls?.policy?.fundingMethod || billing.wallet?.fundingMethod || 'Not set'}
               </p>
+              {managedWalletAddress && (
+                <p className="text-xs text-muted-foreground break-all">
+                  Marketplace wallet: {managedWalletAddress}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Backend: {controls?.walletConfig?.activeProvider || controls?.managedWallet?.provider || 'not selected'} | Auto-pay {controls?.walletConfig?.managedAutoPayEnabled ? 'on' : 'off'} | Legacy mode {controls?.walletConfig?.legacyPaymentModeEnabled ? 'on' : 'off'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                External wallets: {controls?.walletConfig?.externalWalletsEnabled ? 'advanced mode exposed' : 'hidden'}
+              </p>
             </div>
 
             {supportedMethods.length === 0 ? (
@@ -485,7 +498,7 @@ export default function BillingPage() {
                     try {
                       const res = await createStripeTopUpSession({
                         amountUsd: Number(topupAmountUsd || 0),
-                        walletAddress: controls?.policy?.walletAddress || controls?.policy?.siwxWallet || '',
+                        walletAddress: managedWalletAddress,
                         paymentMethod: 'stripe_onramp',
                       }) as StripeTopUpSessionResponse
                       if (res?.topup) {
@@ -636,10 +649,10 @@ export default function BillingPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Destination Wallet Address</p>
+                <p className="text-xs text-muted-foreground mb-1">Marketplace Wallet Address</p>
                 <Input
-                  value={controls.policy?.walletAddress || controls.policy?.siwxWallet || ''}
-                  onChange={e => setControls(prev => prev ? ({ ...prev, policy: { ...prev.policy, walletAddress: e.target.value } }) : prev)}
+                  value={managedWalletAddress}
+                  readOnly
                 />
               </div>
               <div className="space-y-2">

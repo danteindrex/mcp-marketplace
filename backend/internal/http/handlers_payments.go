@@ -28,6 +28,7 @@ type updatePaymentControlsRequest struct {
 
 func (a *App) buyerPaymentControls(w http.ResponseWriter, r *http.Request) {
 	claims, _ := getClaims(r.Context())
+	buyerWallet, walletErr := a.ensureBuyerManagedWallet(r.Context(), claims.TenantID, claims.UserID)
 	if r.Method == http.MethodPut {
 		var req updatePaymentControlsRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -64,15 +65,31 @@ func (a *App) buyerPaymentControls(w http.ResponseWriter, r *http.Request) {
 		if policy.FundingMethod == "" {
 			policy.FundingMethod = "stripe_onramp"
 		}
+		if strings.TrimSpace(policy.WalletAddress) == "" && walletErr == nil {
+			policy.WalletAddress = buyerWallet.Address
+		}
+		if strings.TrimSpace(policy.SIWXWallet) == "" && walletErr == nil {
+			policy.SIWXWallet = buyerWallet.Address
+		}
 		policy = a.store.UpsertPaymentPolicy(policy)
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"policy":  policy,
-			"methods": a.paymentMethodsCatalog(),
+			"policy":        policy,
+			"methods":       a.paymentMethodsCatalog(),
+			"managedWallet": buyerWallet,
+			"walletConfig":  a.runtimePublicConfig()["wallet"],
 		})
 		return
 	}
 
 	policy := a.effectivePaymentPolicy(claims.TenantID, claims.UserID)
+	if walletErr == nil {
+		if strings.TrimSpace(policy.WalletAddress) == "" {
+			policy.WalletAddress = buyerWallet.Address
+		}
+		if strings.TrimSpace(policy.SIWXWallet) == "" {
+			policy.SIWXWallet = buyerWallet.Address
+		}
+	}
 	intents := a.store.ListX402Intents(claims.TenantID, claims.UserID)
 	topups := a.store.ListWalletTopUps(claims.TenantID, claims.UserID, 20)
 	daily, monthly := settledSpendForWindow(intents, time.Now().UTC())
@@ -97,7 +114,17 @@ func (a *App) buyerPaymentControls(w http.ResponseWriter, r *http.Request) {
 			"walletAddress":       policy.WalletAddress,
 			"lastTopUpAt":         policy.LastTopUpAt,
 		},
-		"topups": topups,
+		"topups":       topups,
+		"walletConfig": a.runtimePublicConfig()["wallet"],
+		"managedWallet": map[string]interface{}{
+			"id":          buyerWallet.ID,
+			"provider":    buyerWallet.Provider,
+			"network":     buyerWallet.Network,
+			"asset":       buyerWallet.Asset,
+			"address":     buyerWallet.Address,
+			"status":      buyerWallet.Status,
+			"custodyMode": buyerWallet.CustodyMode,
+		},
 	})
 }
 
@@ -134,6 +161,11 @@ func (a *App) merchantServerPaymentConfig(w http.ResponseWriter, r *http.Request
 			return
 		}
 		server.PaymentAddress = strings.TrimSpace(req.PaymentAddress)
+		if server.PaymentAddress == "" {
+			if wallet, err := a.ensureSellerManagedWallet(r.Context(), server.TenantID); err == nil {
+				server.PaymentAddress = wallet.Address
+			}
+		}
 		server.PerCallCapUSDC = req.PerCallCapUSDC
 		server.DailyCapUSDC = req.DailyCapUSDC
 		server.MonthlyCapUSDC = req.MonthlyCapUSDC
@@ -343,6 +375,12 @@ func (a *App) adminPaymentsOverview(w http.ResponseWriter, r *http.Request) {
 			"mode":           integrations.X402.Mode,
 			"facilitatorUrl": integrations.X402.FacilitatorURL,
 			"apiKeySet":      strings.TrimSpace(integrations.X402.FacilitatorAPIKey) != "",
+		},
+		"wallet": map[string]interface{}{
+			"provider":               a.resolveWalletProviderName(integrations.Wallet),
+			"managedAutoPayEnabled":  integrations.Wallet.ManagedAutoPayEnabled,
+			"legacyModeEnabled":      integrations.Wallet.LegacyPaymentModeEnabled,
+			"externalWalletsEnabled": integrations.Wallet.ExternalWalletsEnabled,
 		},
 		"stripeConnect": map[string]interface{}{
 			"configured": stripeConnect.configured(),

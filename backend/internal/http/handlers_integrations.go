@@ -31,6 +31,24 @@ type updatePlatformIntegrationsRequest struct {
 		ConnectRefreshURL    string  `json:"connectRefreshUrl"`
 		ConnectWebhookSecret string  `json:"connectWebhookSecret"`
 	} `json:"stripe"`
+	Wallet struct {
+		Provider                  string `json:"provider"`
+		ManagedAutoPayEnabled     bool   `json:"managedAutoPayEnabled"`
+		LegacyPaymentModeEnabled  bool   `json:"legacyPaymentModeEnabled"`
+		ExternalWalletsEnabled    bool   `json:"externalWalletsEnabled"`
+		CDPEnabled                bool   `json:"cdpEnabled"`
+		FireflyEnabled            bool   `json:"fireflyEnabled"`
+		CDPAPIKeyID               string `json:"cdpApiKeyId"`
+		CDPAPIKeySecret           string `json:"cdpApiKeySecret"`
+		CDPWalletSecret           string `json:"cdpWalletSecret"`
+		FireflySignerURL          string `json:"fireflySignerUrl"`
+		FireflyAuthToken          string `json:"fireflyAuthToken"`
+		FireflyKeystoreDir        string `json:"fireflyKeystoreDir"`
+		FireflyKeystorePassphrase string `json:"fireflyKeystorePassphrase"`
+		DefaultNetwork            string `json:"defaultNetwork"`
+		DefaultAsset              string `json:"defaultAsset"`
+		CustodyMode               string `json:"custodyMode"`
+	} `json:"wallet"`
 	X402 struct {
 		Mode              string `json:"mode"`
 		FacilitatorURL    string `json:"facilitatorUrl"`
@@ -98,6 +116,45 @@ func (a *App) adminIntegrations(w http.ResponseWriter, r *http.Request) {
 		settings.Stripe.ConnectWebhookSecret = strings.TrimSpace(req.Stripe.ConnectWebhookSecret)
 	}
 
+	if strings.TrimSpace(req.Wallet.Provider) != "" {
+		settings.Wallet.Provider = strings.ToLower(strings.TrimSpace(req.Wallet.Provider))
+	}
+	settings.Wallet.ManagedAutoPayEnabled = req.Wallet.ManagedAutoPayEnabled
+	settings.Wallet.LegacyPaymentModeEnabled = req.Wallet.LegacyPaymentModeEnabled
+	settings.Wallet.ExternalWalletsEnabled = req.Wallet.ExternalWalletsEnabled
+	settings.Wallet.CDPEnabled = req.Wallet.CDPEnabled
+	settings.Wallet.FireflyEnabled = req.Wallet.FireflyEnabled
+	if strings.TrimSpace(req.Wallet.CDPAPIKeyID) != "" {
+		settings.Wallet.CDPAPIKeyID = strings.TrimSpace(req.Wallet.CDPAPIKeyID)
+	}
+	if strings.TrimSpace(req.Wallet.CDPAPIKeySecret) != "" {
+		settings.Wallet.CDPAPIKeySecret = strings.TrimSpace(req.Wallet.CDPAPIKeySecret)
+	}
+	if strings.TrimSpace(req.Wallet.CDPWalletSecret) != "" {
+		settings.Wallet.CDPWalletSecret = strings.TrimSpace(req.Wallet.CDPWalletSecret)
+	}
+	if strings.TrimSpace(req.Wallet.FireflySignerURL) != "" {
+		settings.Wallet.FireflySignerURL = strings.TrimSpace(req.Wallet.FireflySignerURL)
+	}
+	if strings.TrimSpace(req.Wallet.FireflyAuthToken) != "" {
+		settings.Wallet.FireflyAuthToken = strings.TrimSpace(req.Wallet.FireflyAuthToken)
+	}
+	if strings.TrimSpace(req.Wallet.FireflyKeystoreDir) != "" {
+		settings.Wallet.FireflyKeystoreDir = strings.TrimSpace(req.Wallet.FireflyKeystoreDir)
+	}
+	if strings.TrimSpace(req.Wallet.FireflyKeystorePassphrase) != "" {
+		settings.Wallet.FireflyKeystorePassphrase = strings.TrimSpace(req.Wallet.FireflyKeystorePassphrase)
+	}
+	if strings.TrimSpace(req.Wallet.DefaultNetwork) != "" {
+		settings.Wallet.DefaultNetwork = strings.TrimSpace(req.Wallet.DefaultNetwork)
+	}
+	if strings.TrimSpace(req.Wallet.DefaultAsset) != "" {
+		settings.Wallet.DefaultAsset = strings.TrimSpace(req.Wallet.DefaultAsset)
+	}
+	if strings.TrimSpace(req.Wallet.CustodyMode) != "" {
+		settings.Wallet.CustodyMode = strings.TrimSpace(req.Wallet.CustodyMode)
+	}
+
 	mode := strings.ToLower(strings.TrimSpace(req.X402.Mode))
 	if mode != "" {
 		settings.X402.Mode = mode
@@ -128,6 +185,10 @@ func (a *App) adminIntegrations(w http.ResponseWriter, r *http.Request) {
 			"googleConfigured": strings.TrimSpace(saved.Google.ClientID) != "" && strings.TrimSpace(saved.Google.ClientSecret) != "",
 			"githubConfigured": strings.TrimSpace(saved.GitHub.ClientID) != "" && strings.TrimSpace(saved.GitHub.ClientSecret) != "",
 			"stripeConfigured": strings.TrimSpace(saved.Stripe.SecretKey) != "",
+			"walletConfigured": strings.TrimSpace(saved.Wallet.Provider) != "",
+			"walletProvider":   saved.Wallet.Provider,
+			"walletAutoPay":    saved.Wallet.ManagedAutoPayEnabled,
+			"walletLegacy":     saved.Wallet.LegacyPaymentModeEnabled,
 			"x402Mode":         saved.X402.Mode,
 			"n8nConfigured":    strings.TrimSpace(saved.N8N.BaseURL) != "",
 		},

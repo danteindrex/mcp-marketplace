@@ -8,50 +8,66 @@ import (
 )
 
 type Config struct {
-	Port                       string
-	JWTPrivateKeyPEM           string
-	JWTPublicKeyPEM            string
-	JWTKeyID                   string
-	BaseURL                    string
-	N8NBaseURL                 string
-	N8NAPIKey                  string
-	N8NTimeoutSeconds          int
-	X402FacilitatorURL         string
-	X402FacilitatorAPIKey      string
-	X402Mode                   string
-	SupportedPayMethods        []string
-	StripeSecretKey            string
-	StripeWebhookSecret        string
-	StripeOnrampReturnURL      string
-	StripeOnrampRefreshURL     string
-	StripeOnrampMinUSD         float64
-	StripeOnrampDefaultUSD     float64
-	StripeConnectReturnURL     string
-	StripeConnectRefreshURL    string
-	StripeConnectWebhookSecret string
-	PlatformFeeBps             int
-	PlatformMinFeeUSDC         float64
-	PlatformMaxFeeUSDC         float64
-	PlatformHoldDays           int
-	MongoURI                   string
-	MongoDBName                string
-	MongoRequired              bool
-	SuperAdminEmail            string
-	SuperAdminPassword         string
-	DataFilePath               string
-	CORSAllowedOrigins         []string
-	RateLimitPerMinute         int
-	TrustProxyHeaders          bool
-	AllowInsecureDefaults      bool
-	GoogleClientID             string
-	GoogleClientSecret         string
-	GitHubClientID             string
-	GitHubClientSecret         string
-	OAuthRedirectBase          string
-	MCPSDKEnabled              bool
-	DockerRuntimeSocket        string
-	DockerRuntimeNetwork       string
-	DockerRuntimePublicHost    string
+	Port                           string
+	JWTPrivateKeyPEM               string
+	JWTPublicKeyPEM                string
+	JWTKeyID                       string
+	BaseURL                        string
+	N8NBaseURL                     string
+	N8NAPIKey                      string
+	N8NTimeoutSeconds              int
+	X402FacilitatorURL             string
+	X402FacilitatorAPIKey          string
+	X402Mode                       string
+	SupportedPayMethods            []string
+	StripeSecretKey                string
+	StripeWebhookSecret            string
+	StripeOnrampReturnURL          string
+	StripeOnrampRefreshURL         string
+	StripeOnrampMinUSD             float64
+	StripeOnrampDefaultUSD         float64
+	StripeConnectReturnURL         string
+	StripeConnectRefreshURL        string
+	StripeConnectWebhookSecret     string
+	WalletProvider                 string
+	WalletManagedAutoPayEnabled    bool
+	WalletLegacyPaymentModeEnabled bool
+	WalletExternalWalletsEnabled   bool
+	WalletCDPEnabled               bool
+	WalletFireflyEnabled           bool
+	CDPAPIKeyID                    string
+	CDPAPIKeySecret                string
+	CDPWalletSecret                string
+	FireflySignerURL               string
+	FireflyAuthToken               string
+	FireflyKeystoreDir             string
+	FireflyKeystorePassphrase      string
+	WalletDefaultNetwork           string
+	WalletDefaultAsset             string
+	WalletCustodyMode              string
+	PlatformFeeBps                 int
+	PlatformMinFeeUSDC             float64
+	PlatformMaxFeeUSDC             float64
+	PlatformHoldDays               int
+	MongoURI                       string
+	MongoDBName                    string
+	MongoRequired                  bool
+	SuperAdminEmail                string
+	SuperAdminPassword             string
+	DataFilePath                   string
+	CORSAllowedOrigins             []string
+	RateLimitPerMinute             int
+	TrustProxyHeaders              bool
+	AllowInsecureDefaults          bool
+	GoogleClientID                 string
+	GoogleClientSecret             string
+	GitHubClientID                 string
+	GitHubClientSecret             string
+	OAuthRedirectBase              string
+	MCPSDKEnabled                  bool
+	DockerRuntimeSocket            string
+	DockerRuntimeNetwork           string
+	DockerRuntimePublicHost        string
 }
 
 func Load() Config {
@@ -95,6 +111,37 @@ func Load() Config {
 	stripeConnectReturnURL := strings.TrimSpace(os.Getenv("STRIPE_CONNECT_RETURN_URL"))
 	stripeConnectRefreshURL := strings.TrimSpace(os.Getenv("STRIPE_CONNECT_REFRESH_URL"))
 	stripeConnectWebhookSecret := strings.TrimSpace(os.Getenv("STRIPE_CONNECT_WEBHOOK_SECRET"))
+	walletProvider := strings.ToLower(strings.TrimSpace(os.Getenv("WALLET_PROVIDER")))
+	if walletProvider == "" {
+		walletProvider = "cdp"
+	}
+	walletManagedAutoPayEnabled := parseBool(os.Getenv("WALLET_MANAGED_AUTOPAY_ENABLED"), true)
+	walletLegacyPaymentModeEnabled := parseBool(os.Getenv("WALLET_LEGACY_PAYMENT_MODE_ENABLED"), true)
+	walletExternalWalletsEnabled := parseBool(os.Getenv("WALLET_EXTERNAL_WALLETS_ENABLED"), false)
+	walletCDPEnabled := parseBool(os.Getenv("WALLET_CDP_ENABLED"), true)
+	walletFireflyEnabled := parseBool(os.Getenv("WALLET_FIREFLY_ENABLED"), false)
+	cdpAPIKeyID := strings.TrimSpace(os.Getenv("CDP_API_KEY_ID"))
+	cdpAPIKeySecret := strings.TrimSpace(os.Getenv("CDP_API_KEY_SECRET"))
+	cdpWalletSecret := strings.TrimSpace(os.Getenv("CDP_WALLET_SECRET"))
+	fireflySignerURL := strings.TrimRight(strings.TrimSpace(os.Getenv("FIREFLY_SIGNER_URL")), "/")
+	fireflyAuthToken := strings.TrimSpace(os.Getenv("FIREFLY_SIGNER_AUTH_TOKEN"))
+	fireflyKeystoreDir := strings.TrimSpace(os.Getenv("FIREFLY_KEYSTORE_DIR"))
+	if fireflyKeystoreDir == "" {
+		fireflyKeystoreDir = "./data/firefly/keystore"
+	}
+	fireflyKeystorePassphrase := strings.TrimSpace(os.Getenv("FIREFLY_KEYSTORE_PASSPHRASE"))
+	walletDefaultNetwork := strings.TrimSpace(os.Getenv("WALLET_DEFAULT_NETWORK"))
+	if walletDefaultNetwork == "" {
+		walletDefaultNetwork = "base"
+	}
+	walletDefaultAsset := strings.TrimSpace(os.Getenv("WALLET_DEFAULT_ASSET"))
+	if walletDefaultAsset == "" {
+		walletDefaultAsset = "USDC"
+	}
+	walletCustodyMode := strings.TrimSpace(os.Getenv("WALLET_CUSTODY_MODE"))
+	if walletCustodyMode == "" {
+		walletCustodyMode = "provider_managed"
+	}
 	platformFeeBps := parsePositiveInt(os.Getenv("PLATFORM_FEE_BPS"), 1000)
 	platformMinFeeUSDC := parseNonNegativeFloat(os.Getenv("PLATFORM_MIN_FEE_USDC"), 0)
 	platformMaxFeeUSDC := parseNonNegativeFloat(os.Getenv("PLATFORM_MAX_FEE_USDC"), 0)
@@ -158,50 +205,66 @@ func Load() Config {
 	}
 
 	return Config{
-		Port:                       port,
-		JWTPrivateKeyPEM:           jwtPrivateKeyPEM,
-		JWTPublicKeyPEM:            jwtPublicKeyPEM,
-		JWTKeyID:                   jwtKeyID,
-		BaseURL:                    baseURL,
-		N8NBaseURL:                 n8nBaseURL,
-		N8NAPIKey:                  n8nAPIKey,
-		N8NTimeoutSeconds:          n8nTimeoutSeconds,
-		X402FacilitatorURL:         facilitatorURL,
-		X402FacilitatorAPIKey:      facilitatorAPIKey,
-		X402Mode:                   x402Mode,
-		SupportedPayMethods:        supportedPayMethods,
-		StripeSecretKey:            stripeSecretKey,
-		StripeWebhookSecret:        stripeWebhookSecret,
-		StripeOnrampReturnURL:      stripeOnrampReturnURL,
-		StripeOnrampRefreshURL:     stripeOnrampRefreshURL,
-		StripeOnrampMinUSD:         stripeOnrampMinUSD,
-		StripeOnrampDefaultUSD:     stripeOnrampDefaultUSD,
-		StripeConnectReturnURL:     stripeConnectReturnURL,
-		StripeConnectRefreshURL:    stripeConnectRefreshURL,
-		StripeConnectWebhookSecret: stripeConnectWebhookSecret,
-		PlatformFeeBps:             platformFeeBps,
-		PlatformMinFeeUSDC:         platformMinFeeUSDC,
-		PlatformMaxFeeUSDC:         platformMaxFeeUSDC,
-		PlatformHoldDays:           platformHoldDays,
-		MongoURI:                   mongoURI,
-		MongoDBName:                mongoDBName,
-		MongoRequired:              mongoRequired,
-		SuperAdminEmail:            superAdminEmail,
-		SuperAdminPassword:         superAdminPassword,
-		DataFilePath:               dataFilePath,
-		CORSAllowedOrigins:         corsOrigins,
-		RateLimitPerMinute:         rateLimit,
-		TrustProxyHeaders:          trustProxyHeaders,
-		AllowInsecureDefaults:      allowInsecureDefaults,
-		GoogleClientID:             googleClientID,
-		GoogleClientSecret:         googleClientSecret,
-		GitHubClientID:             githubClientID,
-		GitHubClientSecret:         githubClientSecret,
-		OAuthRedirectBase:          oauthRedirectBase,
-		MCPSDKEnabled:              mcpSDKEnabled,
-		DockerRuntimeSocket:        dockerRuntimeSocket,
-		DockerRuntimeNetwork:       dockerRuntimeNetwork,
-		DockerRuntimePublicHost:    dockerRuntimePublicHost,
+		Port:                           port,
+		JWTPrivateKeyPEM:               jwtPrivateKeyPEM,
+		JWTPublicKeyPEM:                jwtPublicKeyPEM,
+		JWTKeyID:                       jwtKeyID,
+		BaseURL:                        baseURL,
+		N8NBaseURL:                     n8nBaseURL,
+		N8NAPIKey:                      n8nAPIKey,
+		N8NTimeoutSeconds:              n8nTimeoutSeconds,
+		X402FacilitatorURL:             facilitatorURL,
+		X402FacilitatorAPIKey:          facilitatorAPIKey,
+		X402Mode:                       x402Mode,
+		SupportedPayMethods:            supportedPayMethods,
+		StripeSecretKey:                stripeSecretKey,
+		StripeWebhookSecret:            stripeWebhookSecret,
+		StripeOnrampReturnURL:          stripeOnrampReturnURL,
+		StripeOnrampRefreshURL:         stripeOnrampRefreshURL,
+		StripeOnrampMinUSD:             stripeOnrampMinUSD,
+		StripeOnrampDefaultUSD:         stripeOnrampDefaultUSD,
+		StripeConnectReturnURL:         stripeConnectReturnURL,
+		StripeConnectRefreshURL:        stripeConnectRefreshURL,
+		StripeConnectWebhookSecret:     stripeConnectWebhookSecret,
+		WalletProvider:                 walletProvider,
+		WalletManagedAutoPayEnabled:    walletManagedAutoPayEnabled,
+		WalletLegacyPaymentModeEnabled: walletLegacyPaymentModeEnabled,
+		WalletExternalWalletsEnabled:   walletExternalWalletsEnabled,
+		WalletCDPEnabled:               walletCDPEnabled,
+		WalletFireflyEnabled:           walletFireflyEnabled,
+		CDPAPIKeyID:                    cdpAPIKeyID,
+		CDPAPIKeySecret:                cdpAPIKeySecret,
+		CDPWalletSecret:                cdpWalletSecret,
+		FireflySignerURL:               fireflySignerURL,
+		FireflyAuthToken:               fireflyAuthToken,
+		FireflyKeystoreDir:             fireflyKeystoreDir,
+		FireflyKeystorePassphrase:      fireflyKeystorePassphrase,
+		WalletDefaultNetwork:           walletDefaultNetwork,
+		WalletDefaultAsset:             walletDefaultAsset,
+		WalletCustodyMode:              walletCustodyMode,
+		PlatformFeeBps:                 platformFeeBps,
+		PlatformMinFeeUSDC:             platformMinFeeUSDC,
+		PlatformMaxFeeUSDC:             platformMaxFeeUSDC,
+		PlatformHoldDays:               platformHoldDays,
+		MongoURI:                       mongoURI,
+		MongoDBName:                    mongoDBName,
+		MongoRequired:                  mongoRequired,
+		SuperAdminEmail:                superAdminEmail,
+		SuperAdminPassword:             superAdminPassword,
+		DataFilePath:                   dataFilePath,
+		CORSAllowedOrigins:             corsOrigins,
+		RateLimitPerMinute:             rateLimit,
+		TrustProxyHeaders:              trustProxyHeaders,
+		AllowInsecureDefaults:          allowInsecureDefaults,
+		GoogleClientID:                 googleClientID,
+		GoogleClientSecret:             googleClientSecret,
+		GitHubClientID:                 githubClientID,
+		GitHubClientSecret:             githubClientSecret,
+		OAuthRedirectBase:              oauthRedirectBase,
+		MCPSDKEnabled:                  mcpSDKEnabled,
+		DockerRuntimeSocket:            dockerRuntimeSocket,
+		DockerRuntimeNetwork:           dockerRuntimeNetwork,
+		DockerRuntimePublicHost:        dockerRuntimePublicHost,
 	}
 }
 
@@ -213,9 +276,9 @@ func (c Config) Validate() error {
 		return fmt.Errorf("SUPER_ADMIN_EMAIL must be set")
 	}
 	switch strings.ToLower(strings.TrimSpace(c.X402Mode)) {
-	case "", "facilitator", "disabled":
+	case "", "facilitator", "disabled", "test":
 	default:
-		return fmt.Errorf("X402_MODE must be one of: facilitator, disabled")
+		return fmt.Errorf("X402_MODE must be one of: facilitator, disabled, test")
 	}
 	if c.PlatformFeeBps < 0 || c.PlatformFeeBps > 10000 {
 		return fmt.Errorf("PLATFORM_FEE_BPS must be between 0 and 10000")
@@ -239,6 +302,16 @@ func (c Config) Validate() error {
 		}
 		if strings.TrimSpace(c.StripeConnectWebhookSecret) == "" {
 			return fmt.Errorf("STRIPE_CONNECT_WEBHOOK_SECRET must be set when STRIPE_SECRET_KEY is set")
+		}
+	}
+	if strings.TrimSpace(c.WalletProvider) != "" && !c.AllowInsecureDefaults && strings.EqualFold(strings.TrimSpace(c.WalletProvider), "cdp") {
+		if strings.TrimSpace(c.CDPAPIKeyID) == "" || strings.TrimSpace(c.CDPAPIKeySecret) == "" || strings.TrimSpace(c.CDPWalletSecret) == "" {
+			return fmt.Errorf("CDP_API_KEY_ID, CDP_API_KEY_SECRET, and CDP_WALLET_SECRET must be set when WALLET_PROVIDER=cdp")
+		}
+	}
+	if strings.TrimSpace(c.WalletProvider) != "" && !c.AllowInsecureDefaults && strings.EqualFold(strings.TrimSpace(c.WalletProvider), "firefly") {
+		if strings.TrimSpace(c.FireflySignerURL) == "" || strings.TrimSpace(c.FireflyKeystoreDir) == "" || strings.TrimSpace(c.FireflyKeystorePassphrase) == "" {
+			return fmt.Errorf("FIREFLY_SIGNER_URL, FIREFLY_KEYSTORE_DIR, and FIREFLY_KEYSTORE_PASSPHRASE must be set when WALLET_PROVIDER=firefly")
 		}
 	}
 	return nil

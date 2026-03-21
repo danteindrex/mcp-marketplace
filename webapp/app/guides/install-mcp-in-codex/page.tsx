@@ -4,7 +4,7 @@ import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { getSiteUrl } from '@/lib/site'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 const title = 'How To Install MCP In Codex'
 const description =
@@ -25,21 +25,27 @@ export const metadata: Metadata = {
 }
 
 export default function InstallMCPInCodexGuidePage() {
-  const siteUrl = getSiteUrl()
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'HowTo',
-    name: title,
-    description,
-    url: `${siteUrl}/guides/install-mcp-in-codex`,
-    step: [
-      { '@type': 'HowToStep', name: 'Open a listing', text: 'Choose an MCP server from the marketplace and open its detail page.' },
-      { '@type': 'HowToStep', name: 'Select Codex', text: 'Use the install flow to choose Codex so the marketplace prepares the Codex-specific action.' },
-      { '@type': 'HowToStep', name: 'Verify metadata', text: 'The marketplace validates install metadata and buyer hub readiness before continuing.' },
-      { '@type': 'HowToStep', name: 'Approve scopes and payment', text: 'Review permissions and settle payment only if the server is not free.' },
-      { '@type': 'HowToStep', name: 'Launch the install action', text: 'Run the generated Codex install action or local bridge step to finish setup.' },
-    ],
-  }
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Guides', path: '/guides' },
+      { name: title, path: '/guides/install-mcp-in-codex' },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'HowTo',
+      name: title,
+      description,
+      url: toAbsoluteUrl('/guides/install-mcp-in-codex'),
+      step: [
+        { '@type': 'HowToStep', name: 'Open a listing', text: 'Choose an MCP server from the marketplace and open its detail page.' },
+        { '@type': 'HowToStep', name: 'Select Codex', text: 'Use the install flow to choose Codex so the marketplace prepares the Codex-specific action.' },
+        { '@type': 'HowToStep', name: 'Verify metadata', text: 'The marketplace validates install metadata and buyer hub readiness before continuing.' },
+        { '@type': 'HowToStep', name: 'Approve scopes and payment', text: 'Review permissions and settle payment only if the server is not free.' },
+        { '@type': 'HowToStep', name: 'Launch the install action', text: 'Launch the generated Codex install action. If the bridge is not registered yet, download the one-click bridge installer and retry.' },
+      ],
+    },
+  ]
 
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">
@@ -59,7 +65,8 @@ export default function InstallMCPInCodexGuidePage() {
           <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             To install MCP in Codex through MCP Marketplace, open a listing, choose Codex in the
             guided install flow, let the platform validate metadata and scopes, then launch the
-            generated Codex-specific install action.
+            generated Codex-specific install action. If the machine has not registered the local
+            bridge yet, use the downloadable bridge installer once and retry.
           </Text>
         </Card>
 
@@ -68,7 +75,7 @@ export default function InstallMCPInCodexGuidePage() {
           <Text variant="small" className="mt-3 leading-7 text-muted-foreground">
             Codex buyers should not have to manually assemble connection metadata, auth state, or
             payment context. The marketplace stages those checks first so the last step can stay
-            focused on the actual Codex install command or launch action.
+            focused on a launch action instead of manual command entry.
           </Text>
         </Card>
 

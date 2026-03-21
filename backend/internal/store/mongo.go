@@ -34,6 +34,7 @@ type MongoStore struct {
 	audit         *mongo.Collection
 	x402          *mongo.Collection
 	paymentPol    *mongo.Collection
+	managedWallets *mongo.Collection
 	topups        *mongo.Collection
 	feePol        *mongo.Collection
 	ledger        *mongo.Collection
@@ -83,6 +84,7 @@ func NewMongoStore(cfg config.Config) (*MongoStore, error) {
 		audit:         db.Collection("audit_logs"),
 		x402:          db.Collection("x402_intents"),
 		paymentPol:    db.Collection("payment_policies"),
+		managedWallets: db.Collection("managed_wallets"),
 		topups:        db.Collection("wallet_topups"),
 		feePol:        db.Collection("payment_fee_policies"),
 		ledger:        db.Collection("ledger_entries"),
@@ -194,6 +196,14 @@ func (s *MongoStore) ensureIndexes() error {
 			col: s.paymentPol,
 			model: []mongo.IndexModel{
 				{Keys: bson.D{{Key: "tenantId", Value: 1}, {Key: "userId", Value: 1}}, Options: options.Index().SetUnique(true)},
+			},
+		},
+		{
+			col: s.managedWallets,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "tenantId", Value: 1}, {Key: "userId", Value: 1}, {Key: "role", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "address", Value: 1}}, Options: options.Index().SetUnique(true)},
 			},
 		},
 		{
@@ -1196,6 +1206,70 @@ func (s *MongoStore) UpsertPaymentPolicy(policy models.PaymentPolicy) models.Pay
 	return policy
 }
 
+func (s *MongoStore) UpsertManagedWallet(wallet models.ManagedWallet) models.ManagedWallet {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	if strings.TrimSpace(wallet.ID) == "" {
+		wallet.ID = newPrefixedID("wallet")
+	}
+	if wallet.CreatedAt.IsZero() {
+		wallet.CreatedAt = now
+	}
+	wallet.UpdatedAt = now
+	filter := bson.M{
+		"tenantId": strings.TrimSpace(wallet.TenantID),
+		"userId":   strings.TrimSpace(wallet.UserID),
+		"role":     strings.ToLower(strings.TrimSpace(wallet.Role)),
+	}
+	_, _ = s.managedWallets.ReplaceOne(ctx, filter, wallet, options.Replace().SetUpsert(true))
+	return wallet
+}
+
+func (s *MongoStore) GetManagedWalletByOwner(tenantID, userID, role string) (models.ManagedWallet, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var wallet models.ManagedWallet
+	err := s.managedWallets.FindOne(ctx, bson.M{
+		"tenantId": strings.TrimSpace(tenantID),
+		"userId":   strings.TrimSpace(userID),
+		"role":     strings.ToLower(strings.TrimSpace(role)),
+	}).Decode(&wallet)
+	if err != nil {
+		return models.ManagedWallet{}, false
+	}
+	return wallet, true
+}
+
+func (s *MongoStore) GetManagedWalletByAddress(address string) (models.ManagedWallet, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var wallet models.ManagedWallet
+	err := s.managedWallets.FindOne(ctx, bson.M{"address": strings.TrimSpace(address)}).Decode(&wallet)
+	if err != nil {
+		return models.ManagedWallet{}, false
+	}
+	return wallet, true
+}
+
+func (s *MongoStore) ListManagedWallets(tenantID string) []models.ManagedWallet {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	filter := bson.M{}
+	if strings.TrimSpace(tenantID) != "" {
+		filter["tenantId"] = strings.TrimSpace(tenantID)
+	}
+	cur, err := s.managedWallets.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}}))
+	if err != nil {
+		return []models.ManagedWallet{}
+	}
+	items, err := decodeAll[models.ManagedWallet](cur)
+	if err != nil {
+		return []models.ManagedWallet{}
+	}
+	return items
+}
+
 func (s *MongoStore) CreateWalletTopUp(item models.WalletTopUp) models.WalletTopUp {
 	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
 	defer cancel()
@@ -1547,6 +1621,7 @@ func (s *MongoStore) UpsertPlatformIntegrationSettings(settings models.PlatformI
 			"google":    settings.Google,
 			"github":    settings.GitHub,
 			"stripe":    settings.Stripe,
+			"wallet":    settings.Wallet,
 			"x402":      settings.X402,
 			"n8n":       settings.N8N,
 			"updatedBy": settings.UpdatedBy,

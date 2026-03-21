@@ -57,6 +57,10 @@ type Store interface {
 	UpdateX402Intent(intent models.X402Intent) bool
 	GetPaymentPolicy(tenantID, userID string) (models.PaymentPolicy, bool)
 	UpsertPaymentPolicy(policy models.PaymentPolicy) models.PaymentPolicy
+	UpsertManagedWallet(wallet models.ManagedWallet) models.ManagedWallet
+	GetManagedWalletByOwner(tenantID, userID, role string) (models.ManagedWallet, bool)
+	GetManagedWalletByAddress(address string) (models.ManagedWallet, bool)
+	ListManagedWallets(tenantID string) []models.ManagedWallet
 	CreateWalletTopUp(item models.WalletTopUp) models.WalletTopUp
 	GetWalletTopUp(id string) (models.WalletTopUp, bool)
 	GetWalletTopUpByProviderSession(provider, providerSessionID string) (models.WalletTopUp, bool)

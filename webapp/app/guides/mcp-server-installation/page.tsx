@@ -4,7 +4,7 @@ import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { getSiteUrl } from '@/lib/site'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 const title = 'How To Install an MCP Server'
 const description =
@@ -43,8 +43,12 @@ const faqs = [
 ]
 
 export default function MCPServerInstallationGuidePage() {
-  const siteUrl = getSiteUrl()
-  const guideUrl = `${siteUrl}/guides/mcp-server-installation`
+  const guideUrl = toAbsoluteUrl('/guides/mcp-server-installation')
+  const breadcrumbData = createBreadcrumbJsonLd([
+    { name: 'Home', path: '/' },
+    { name: 'Guides', path: '/guides' },
+    { name: title, path: '/guides/mcp-server-installation' },
+  ])
   const faqData = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
@@ -94,6 +98,7 @@ export default function MCPServerInstallationGuidePage() {
 
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">
+      <JsonLd data={breadcrumbData} />
       <JsonLd data={faqData} />
       <JsonLd data={howToData} />
       <div className="mx-auto flex max-w-4xl flex-col gap-8">

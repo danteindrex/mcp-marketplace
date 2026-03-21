@@ -4,7 +4,7 @@ import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { getSiteUrl } from '@/lib/site'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 const title = 'How To Install MCP In Claude Desktop'
 const description =
@@ -18,20 +18,27 @@ export const metadata: Metadata = {
 }
 
 export default function InstallMCPInClaudeDesktopGuidePage() {
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'HowTo',
-    name: title,
-    description,
-    url: `${getSiteUrl()}/guides/install-mcp-in-claude-desktop`,
-    step: [
-      { '@type': 'HowToStep', name: 'Open a marketplace listing', text: 'Choose the MCP server you want to connect.' },
-      { '@type': 'HowToStep', name: 'Select Claude', text: 'Use the install flow to choose Claude Desktop as the target client.' },
-      { '@type': 'HowToStep', name: 'Confirm readiness', text: 'Let the marketplace validate metadata, buyer hub state, and scopes.' },
-      { '@type': 'HowToStep', name: 'Resolve payment if needed', text: 'If the listing is paid, settle payment before the final connection step.' },
-      { '@type': 'HowToStep', name: 'Launch setup', text: 'Open the generated Claude Desktop install action.' },
-    ],
-  }
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Guides', path: '/guides' },
+      { name: title, path: '/guides/install-mcp-in-claude-desktop' },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'HowTo',
+      name: title,
+      description,
+      url: toAbsoluteUrl('/guides/install-mcp-in-claude-desktop'),
+      step: [
+        { '@type': 'HowToStep', name: 'Open a marketplace listing', text: 'Choose the MCP server you want to connect.' },
+        { '@type': 'HowToStep', name: 'Select Claude', text: 'Use the install flow to choose Claude Desktop as the target client.' },
+        { '@type': 'HowToStep', name: 'Confirm readiness', text: 'Let the marketplace validate metadata, buyer hub state, and scopes.' },
+        { '@type': 'HowToStep', name: 'Resolve payment if needed', text: 'If the listing is paid, settle payment before the final connection step.' },
+        { '@type': 'HowToStep', name: 'Launch setup', text: 'Open the generated Claude Desktop install action.' },
+      ],
+    },
+  ]
 
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">

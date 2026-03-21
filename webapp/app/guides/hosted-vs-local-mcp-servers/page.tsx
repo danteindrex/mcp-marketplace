@@ -4,6 +4,7 @@ import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 const title = 'Hosted Vs Local MCP Servers'
 const description =
@@ -24,28 +25,42 @@ export const metadata: Metadata = {
 }
 
 export default function HostedVsLocalMCPServersPage() {
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: [
-      {
-        '@type': 'Question',
-        name: 'What is a hosted MCP server?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'A hosted MCP server runs on managed infrastructure and buyers connect to it remotely through the marketplace install flow.',
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Guides', path: '/guides' },
+      { name: title, path: '/guides/hosted-vs-local-mcp-servers' },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: title,
+      description,
+      url: toAbsoluteUrl('/guides/hosted-vs-local-mcp-servers'),
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'What is a hosted MCP server?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'A hosted MCP server runs on managed infrastructure and buyers connect to it remotely through the marketplace install flow.',
+          },
         },
-      },
-      {
-        '@type': 'Question',
-        name: 'What is a local MCP server?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'A local MCP server runs on the buyer machine or local environment and may require a local bridge or machine-specific install action.',
+        {
+          '@type': 'Question',
+          name: 'What is a local MCP server?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'A local MCP server runs on the buyer machine or local environment and may require a local bridge or machine-specific install action.',
+          },
         },
-      },
-    ],
-  }
+      ],
+    },
+  ]
 
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">

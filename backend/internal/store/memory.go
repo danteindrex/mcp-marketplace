@@ -33,6 +33,7 @@ type MemoryStore struct {
 	audit         map[string]models.AuditLog
 	x402          map[string]models.X402Intent
 	paymentPol    map[string]models.PaymentPolicy
+	managedWallets map[string]models.ManagedWallet
 	topups        map[string]models.WalletTopUp
 	feePol        map[string]models.PaymentFeePolicy
 	ledger        map[string]models.LedgerEntry
@@ -62,6 +63,7 @@ type diskState struct {
 	Audit         map[string]models.AuditLog            `json:"audit"`
 	X402          map[string]models.X402Intent          `json:"x402"`
 	PaymentPol    map[string]models.PaymentPolicy       `json:"paymentPolicies"`
+	ManagedWallets map[string]models.ManagedWallet      `json:"managedWallets"`
 	TopUps        map[string]models.WalletTopUp         `json:"walletTopups"`
 	FeePol        map[string]models.PaymentFeePolicy    `json:"paymentFeePolicies"`
 	Ledger        map[string]models.LedgerEntry         `json:"ledgerEntries"`
@@ -91,6 +93,7 @@ func (s *MemoryStore) snapshotLocked() diskState {
 		Audit:         s.audit,
 		X402:          s.x402,
 		PaymentPol:    s.paymentPol,
+		ManagedWallets: s.managedWallets,
 		TopUps:        s.topups,
 		FeePol:        s.feePol,
 		Ledger:        s.ledger,
@@ -174,6 +177,9 @@ func (s *MemoryStore) loadFromDisk() bool {
 	if state.PaymentPol == nil {
 		state.PaymentPol = map[string]models.PaymentPolicy{}
 	}
+	if state.ManagedWallets == nil {
+		state.ManagedWallets = map[string]models.ManagedWallet{}
+	}
 	if state.TopUps == nil {
 		state.TopUps = map[string]models.WalletTopUp{}
 	}
@@ -231,6 +237,7 @@ func (s *MemoryStore) loadFromDisk() bool {
 	s.audit = state.Audit
 	s.x402 = state.X402
 	s.paymentPol = state.PaymentPol
+	s.managedWallets = state.ManagedWallets
 	s.topups = state.TopUps
 	s.feePol = state.FeePol
 	s.ledger = state.Ledger
@@ -263,6 +270,7 @@ func NewMemoryStore(cfg config.Config) *MemoryStore {
 		audit:         map[string]models.AuditLog{},
 		x402:          map[string]models.X402Intent{},
 		paymentPol:    map[string]models.PaymentPolicy{},
+		managedWallets: map[string]models.ManagedWallet{},
 		topups:        map[string]models.WalletTopUp{},
 		feePol:        map[string]models.PaymentFeePolicy{},
 		ledger:        map[string]models.LedgerEntry{},
@@ -980,6 +988,60 @@ func (s *MemoryStore) UpsertPaymentPolicy(policy models.PaymentPolicy) models.Pa
 	s.paymentPol[keyHub(policy.TenantID, policy.UserID)] = policy
 	s.persistLocked()
 	return policy
+}
+
+func managedWalletOwnerKey(tenantID, userID, role string) string {
+	return strings.TrimSpace(tenantID) + ":" + strings.TrimSpace(userID) + ":" + strings.ToLower(strings.TrimSpace(role))
+}
+
+func (s *MemoryStore) UpsertManagedWallet(wallet models.ManagedWallet) models.ManagedWallet {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	if strings.TrimSpace(wallet.ID) == "" {
+		wallet.ID = s.next("wallet")
+	}
+	if wallet.CreatedAt.IsZero() {
+		wallet.CreatedAt = now
+	}
+	wallet.UpdatedAt = now
+	s.managedWallets[managedWalletOwnerKey(wallet.TenantID, wallet.UserID, wallet.Role)] = wallet
+	s.persistLocked()
+	return wallet
+}
+
+func (s *MemoryStore) GetManagedWalletByOwner(tenantID, userID, role string) (models.ManagedWallet, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	item, ok := s.managedWallets[managedWalletOwnerKey(tenantID, userID, role)]
+	return item, ok
+}
+
+func (s *MemoryStore) GetManagedWalletByAddress(address string) (models.ManagedWallet, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	want := strings.ToLower(strings.TrimSpace(address))
+	for _, item := range s.managedWallets {
+		if strings.ToLower(strings.TrimSpace(item.Address)) == want {
+			return item, true
+		}
+	}
+	return models.ManagedWallet{}, false
+}
+
+func (s *MemoryStore) ListManagedWallets(tenantID string) []models.ManagedWallet {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.ManagedWallet, 0)
+	for _, item := range s.managedWallets {
+		if strings.TrimSpace(tenantID) == "" || item.TenantID == tenantID {
+			out = append(out, item)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+	return out
 }
 
 func (s *MemoryStore) CreateWalletTopUp(item models.WalletTopUp) models.WalletTopUp {

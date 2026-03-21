@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { JsonLd } from '@/components/json-ld'
 import { Text } from '@/components/retroui/Text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 const title = 'MCP OAuth Explained'
 const description =
@@ -16,8 +18,24 @@ export const metadata: Metadata = {
 }
 
 export default function MCPOAuthExplainedPage() {
+  const jsonLd = [
+    createBreadcrumbJsonLd([
+      { name: 'Home', path: '/' },
+      { name: 'Guides', path: '/guides' },
+      { name: title, path: '/guides/mcp-oauth-explained' },
+    ]),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: title,
+      description,
+      url: toAbsoluteUrl('/guides/mcp-oauth-explained'),
+    },
+  ]
+
   return (
     <main className="min-h-screen bg-background px-4 py-16 sm:px-6 lg:px-8">
+      <JsonLd data={jsonLd} />
       <div className="mx-auto flex max-w-4xl flex-col gap-8">
         <div className="space-y-4">
           <Badge variant="outline">Auth Explainer</Badge>
