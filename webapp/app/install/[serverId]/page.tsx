@@ -27,6 +27,7 @@ import {
   type ScopeCheckResult,
   type Server,
 } from '@/lib/api-client'
+import { getPublicApiBase } from '@/lib/api-base'
 import {
   getPaymentMethodDescription,
   getPaymentMethodStatus,
@@ -56,6 +57,8 @@ const clientOptionMap: Record<string, { value: string; label: string; descriptio
   chatgpt: { value: 'chatgpt', label: 'ChatGPT Connector', description: 'Connector setup for remote MCP' },
   chatgpt_app: { value: 'chatgpt_app', label: 'ChatGPT App', description: 'Merchant-provided ChatGPT app backed by this MCP server' },
 }
+
+const PUBLIC_API_BASE = getPublicApiBase()
 
 type MetadataState =
   | { status: 'idle' | 'loading'; data?: undefined; error?: undefined }
@@ -367,8 +370,8 @@ export default function InstallWizardPage({ params }: PageProps) {
   const downloadBridgeInstaller = (platform: 'windows' | 'macos') => {
     window.location.href =
       platform === 'windows'
-        ? '/api/local-bridge/windows-installer'
-        : '/api/local-bridge/macos-installer'
+        ? `${PUBLIC_API_BASE}/v1/local-bridge/windows-installer`
+        : `${PUBLIC_API_BASE}/v1/local-bridge/macos-installer`
     toast.info('Download started. Run the installer once, then retry the one-click install.')
   }
 

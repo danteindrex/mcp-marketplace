@@ -60,6 +60,10 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 
 	r.Get("/health", app.health)
 	r.Get("/v1/runtime-config", app.getRuntimeConfig)
+	r.Get("/v1/local-bridge/windows-exe", app.downloadLocalBridgeWindowsBinary)
+	r.Get("/v1/local-bridge/windows-installer", app.downloadLocalBridgeWindowsInstaller)
+	r.Get("/v1/local-bridge/macos-bin", app.downloadLocalBridgeMacOSBinary)
+	r.Get("/v1/local-bridge/macos-installer", app.downloadLocalBridgeMacOSInstaller)
 	r.Post("/auth/signup", app.signup)
 	r.Post("/auth/login", app.login)
 	r.Post("/auth/oauth/complete-signup", app.completeOAuthSignup)
