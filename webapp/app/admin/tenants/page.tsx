@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app-shell'
 import { TableToolbar } from '@/components/table-toolbar'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { PieChart } from '@/components/retroui/charts/PieChart'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { fetchTenants, type TenantRecord } from '@/lib/api-client'
 
 export default function AdminTenantsPage() {

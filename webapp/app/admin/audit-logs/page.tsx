@@ -5,7 +5,7 @@ import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { TableToolbar } from '@/components/table-toolbar'
 import { fetchAuditLogs } from '@/lib/api-client'
 

@@ -5,7 +5,7 @@ import { AppShell } from '@/components/app-shell'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import {
   fetchAdminFeePolicies,
   fetchAdminPaymentsOverview,

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { type ReactNode } from 'react'
 import { Facebook, Github, Globe, Instagram, Linkedin, Twitter, Youtube } from 'lucide-react'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 
 type FooterLink = {
   label: string

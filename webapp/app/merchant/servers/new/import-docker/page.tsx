@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { createMerchantServer, deployMerchantServer } from '@/lib/api-client'
 import { toast } from 'sonner'
 

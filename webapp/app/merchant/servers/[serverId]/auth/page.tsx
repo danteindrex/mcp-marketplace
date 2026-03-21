@@ -7,7 +7,7 @@ import { ArrowLeft, AlertCircle, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { fetchServerAuth } from '@/lib/api-client'
 import { toast } from 'sonner'
 

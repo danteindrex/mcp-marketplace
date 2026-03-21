@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import {
   fetchBuyerHub,
   fetchBuyerPaymentControls,

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AppShell } from '@/components/app-shell'
 import { fetchServerObservability } from '@/lib/api-client'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { LineChart } from '@/components/retroui/charts/LineChart'
 

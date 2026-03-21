@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { JsonLd } from '@/components/json-ld'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'

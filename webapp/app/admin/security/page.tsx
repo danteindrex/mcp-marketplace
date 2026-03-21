@@ -8,7 +8,7 @@ import { AppShell } from '@/components/app-shell'
 import { TableToolbar } from '@/components/table-toolbar'
 import { toast } from 'sonner'
 import { fetchSecurityEvents } from '@/lib/api-client'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { AreaChart } from '@/components/retroui/charts/AreaChart'
 import { LineChart } from '@/components/retroui/charts/LineChart'
 

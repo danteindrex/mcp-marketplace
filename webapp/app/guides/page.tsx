@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { JsonLd } from '@/components/json-ld'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { createBreadcrumbJsonLd, toAbsoluteUrl } from '@/lib/seo'
 
 export const metadata: Metadata = {

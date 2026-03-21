@@ -18,7 +18,7 @@ import {
   updateMerchantPayoutProfile,
   updateMerchantServerPaymentConfig,
 } from '@/lib/api-client'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { BarChart } from '@/components/retroui/charts/BarChart'
 import { AreaChart } from '@/components/retroui/charts/AreaChart'
 import { LineChart } from '@/components/retroui/charts/LineChart'

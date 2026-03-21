@@ -1,7 +1,7 @@
 export { Button } from './button'
 export { Card } from './card'
 export { Input } from './input'
-export { Text } from './Text'
+export { Text } from './text'
 export { Badge } from './badge'
 export { Label } from './label'
 export { TableOfContents } from './TableOfContents'

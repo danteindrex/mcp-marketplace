@@ -11,7 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Sticker } from '@/components/ui/sticker'
 import { Marquee } from '@/components/ui/marquee'
 import { ExplosionShape, ZigzagBanner, Star5Shape, ShieldShape } from '@/components/ui/shapes'
-import { Text } from '@/components/retroui/Text'
+import { Text } from '@/components/retroui/text'
 import { SEO } from '@/components/SEO'
 import { Check, X, Sparkles, ArrowRight, Zap, Crown, Building2, HelpCircle, Mail, MessageSquare, Moon, Sun } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
