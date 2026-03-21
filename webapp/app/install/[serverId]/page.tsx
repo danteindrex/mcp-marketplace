@@ -40,6 +40,7 @@ interface PageProps {
 }
 
 type Step = 'client' | 'auth' | 'scopes' | 'connect' | 'complete'
+type BridgePlatform = 'windows' | 'macos'
 
 const steps: Array<{ id: Step; label: string; title: string }> = [
   { id: 'client', label: 'Client', title: 'Select Your Client' },
@@ -109,6 +110,7 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [manualAuthOverride, setManualAuthOverride] = useState(false)
   const [acceptedScopes, setAcceptedScopes] = useState(false)
   const [showBridgeHelp, setShowBridgeHelp] = useState(false)
+  const [bridgeFallbackPlatform, setBridgeFallbackPlatform] = useState<BridgePlatform | null>(null)
   const [autoLaunchAttempted, setAutoLaunchAttempted] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [installSession, setInstallSession] = useState<InstallSession | null>(null)
@@ -346,18 +348,58 @@ export default function InstallWizardPage({ params }: PageProps) {
     }
   }
 
+  const detectBridgePlatform = (): BridgePlatform | null => {
+    if (typeof navigator === 'undefined') return null
+    const platform = `${navigator.userAgent} ${navigator.platform}`.toLowerCase()
+    if (platform.includes('win')) return 'windows'
+    if (platform.includes('mac') || platform.includes('darwin')) return 'macos'
+    return null
+  }
+
+  const downloadBridgeInstaller = (
+    platform: BridgePlatform,
+    options?: { automatic?: boolean }
+  ) => {
+    const installerUrl =
+      platform === 'windows'
+        ? `${PUBLIC_API_BASE}/v1/local-bridge/windows-installer`
+        : `${PUBLIC_API_BASE}/v1/local-bridge/macos-installer`
+
+    const anchor = document.createElement('a')
+    anchor.href = installerUrl
+    anchor.rel = 'noopener noreferrer'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+
+    if (options?.automatic) {
+      toast.info(`MCP Local Bridge was not detected. Downloading the ${platform === 'windows' ? 'Windows' : 'macOS'} installer.`)
+      return
+    }
+    toast.info('Download started. Run the installer once, then retry the one-click install.')
+  }
+
   const runInstallAction = (action: InstallAction) => {
     setShowBridgeHelp(false)
     if (action.launchUrl) {
-      window.location.href = action.launchUrl
       if (action.requiresLocalExec && action.launchUrl.startsWith('mcp-marketplace://')) {
+        const detectedPlatform = detectBridgePlatform()
+        setBridgeFallbackPlatform(detectedPlatform)
+        window.location.href = action.launchUrl
         window.setTimeout(() => {
-          if (!document.hidden) {
-            setShowBridgeHelp(true)
-            toast.info('If nothing opened, install MCP Local Bridge once')
+          if (document.hidden) {
+            return
+          }
+          setShowBridgeHelp(true)
+          if (detectedPlatform) {
+            downloadBridgeInstaller(detectedPlatform, { automatic: true })
+          } else {
+            toast.info('MCP Local Bridge was not detected. Use the fallback installer for your platform.')
           }
         }, 1600)
+        return
       }
+      window.location.href = action.launchUrl
       return
     }
     if (action.openUrl) {
@@ -365,14 +407,6 @@ export default function InstallWizardPage({ params }: PageProps) {
       return
     }
     toast.error('No one-click install action is available for this client.')
-  }
-
-  const downloadBridgeInstaller = (platform: 'windows' | 'macos') => {
-    window.location.href =
-      platform === 'windows'
-        ? `${PUBLIC_API_BASE}/v1/local-bridge/windows-installer`
-        : `${PUBLIC_API_BASE}/v1/local-bridge/macos-installer`
-    toast.info('Download started. Run the installer once, then retry the one-click install.')
   }
 
   return (
@@ -714,8 +748,13 @@ export default function InstallWizardPage({ params }: PageProps) {
                     <Card className="text-left p-6 space-y-4 border-dashed">
                       <Text variant="small">Install MCP Local Bridge (one-time)</Text>
                       <Text variant="small" className="text-muted-foreground">
-                        Codex one-click install needs the local bridge registered once on this machine. No terminal input is required here.
+                        One-click install needs the local bridge registered once on this machine. We already tried to open it and auto-downloaded the installer when it was not detected.
                       </Text>
+                      {bridgeFallbackPlatform && (
+                        <Text variant="caption" className="text-muted-foreground">
+                          Detected platform: {bridgeFallbackPlatform === 'windows' ? 'Windows' : 'macOS'}
+                        </Text>
+                      )}
                       <div className="flex flex-wrap gap-2">
                         <Button variant="outline" onClick={() => downloadBridgeInstaller('windows')}>
                           Download Windows Installer
