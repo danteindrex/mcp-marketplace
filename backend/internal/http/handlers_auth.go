@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -549,7 +550,7 @@ func (a *App) oauthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Return success response matching loginResponse format
-	respondOAuthSuccess(w, r, user, jwtToken)
+	a.respondOAuthSuccess(w, r, user, jwtToken)
 }
 
 // oauthGitHubStart initiates GitHub OAuth flow
@@ -783,10 +784,10 @@ func (a *App) oauthGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Return success response matching loginResponse format
-	respondOAuthSuccess(w, r, user, jwtToken)
+	a.respondOAuthSuccess(w, r, user, jwtToken)
 }
 
-func respondOAuthSuccess(w http.ResponseWriter, r *http.Request, user models.User, token string) {
+func (a *App) respondOAuthSuccess(w http.ResponseWriter, r *http.Request, user models.User, token string) {
 	secure := false
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(aBaseURL(r))), "https://") {
 		secure = true
@@ -809,22 +810,45 @@ func respondOAuthSuccess(w http.ResponseWriter, r *http.Request, user models.Use
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secure,
 	})
-	target := strings.TrimRight(frontendBaseURLFromRequest(r), "/") + "/login?oauth=success"
+	target := strings.TrimRight(a.frontendBaseURLFromRequest(r), "/") + "/login?oauth=success"
 	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 }
 
-func frontendBaseURLFromRequest(r *http.Request) string {
-	origin := strings.TrimSpace(r.Header.Get("Origin"))
-	if origin != "" {
+func (a *App) frontendBaseURLFromRequest(r *http.Request) string {
+	if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" {
 		return origin
 	}
-	if len(aDefaultFrontendOrigins) > 0 {
-		return aDefaultFrontendOrigins[0]
+	if referer := strings.TrimSpace(r.Header.Get("Referer")); referer != "" {
+		if parsed, err := url.Parse(referer); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+			return parsed.Scheme + "://" + parsed.Host
+		}
 	}
-	return "http://localhost:3000"
+	if preferred := preferredFrontendOrigin(a.cfg.CORSAllowedOrigins); preferred != "" {
+		return preferred
+	}
+	return strings.TrimRight(strings.TrimSpace(a.cfg.BaseURL), "/")
 }
 
-var aDefaultFrontendOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
+func preferredFrontendOrigin(origins []string) string {
+	var first string
+	for _, origin := range origins {
+		origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+		if origin == "" {
+			continue
+		}
+		if first == "" {
+			first = origin
+		}
+		lower := strings.ToLower(origin)
+		if strings.Contains(lower, "localhost") || strings.Contains(lower, "127.0.0.1") {
+			continue
+		}
+		if strings.HasPrefix(lower, "https://") {
+			return origin
+		}
+	}
+	return first
+}
 
 func aBaseURL(r *http.Request) string {
 	if r == nil || r.URL == nil {
