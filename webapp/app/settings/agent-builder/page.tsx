@@ -56,7 +56,7 @@ export default async function AgentBuilderPage() {
   const apiBase = getServerApiBase()
   const runtime = await loadRuntimeConfig(apiBase)
   const merchantServers = await loadMerchantServers(apiBase, token, resolvedRole === 'merchant' || resolvedRole === 'admin')
-  const n8nURL = runtime?.n8n?.url || 'http://localhost:5678'
+  const n8nURL = runtime?.n8n?.url || ''
 
   return (
     <AppShell role={resolvedRole}>

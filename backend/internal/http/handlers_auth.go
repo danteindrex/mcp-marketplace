@@ -372,7 +372,8 @@ func (a *App) oauthGoogleStart(w http.ResponseWriter, r *http.Request) {
 	nonce := randomToken("nonce_")
 	redirectBase := integrations.Google.RedirectBase
 	if redirectBase == "" {
-		redirectBase = a.cfg.BaseURL
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "google redirect base is not configured"})
+		return
 	}
 	callbackURL := strings.TrimRight(redirectBase, "/") + "/auth/oauth/google/callback"
 
@@ -455,7 +456,8 @@ func (a *App) oauthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	if callbackURL == "" {
 		redirectBase := integrations.Google.RedirectBase
 		if redirectBase == "" {
-			redirectBase = a.cfg.BaseURL
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "google redirect base is not configured"})
+			return
 		}
 		callbackURL = strings.TrimRight(redirectBase, "/") + "/auth/oauth/google/callback"
 	}
@@ -572,7 +574,8 @@ func (a *App) oauthGitHubStart(w http.ResponseWriter, r *http.Request) {
 	nonce := randomToken("nonce_")
 	redirectBase := integrations.GitHub.RedirectBase
 	if redirectBase == "" {
-		redirectBase = a.cfg.BaseURL
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "github redirect base is not configured"})
+		return
 	}
 	callbackURL := strings.TrimRight(redirectBase, "/") + "/auth/oauth/github/callback"
 
@@ -653,7 +656,8 @@ func (a *App) oauthGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	if callbackURL == "" {
 		redirectBase := integrations.GitHub.RedirectBase
 		if redirectBase == "" {
-			redirectBase = a.cfg.BaseURL
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "github redirect base is not configured"})
+			return
 		}
 		callbackURL = strings.TrimRight(redirectBase, "/") + "/auth/oauth/github/callback"
 	}
@@ -811,6 +815,10 @@ func (a *App) respondOAuthSuccess(w http.ResponseWriter, r *http.Request, user m
 		Secure:   secure,
 	})
 	target := strings.TrimRight(a.frontendBaseURLFromRequest(r), "/") + "/login?oauth=success"
+	if target == "/login?oauth=success" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "frontend redirect base is not configured"})
+		return
+	}
 	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 }
 
@@ -826,7 +834,7 @@ func (a *App) frontendBaseURLFromRequest(r *http.Request) string {
 	if preferred := preferredFrontendOrigin(a.cfg.CORSAllowedOrigins); preferred != "" {
 		return preferred
 	}
-	return strings.TrimRight(strings.TrimSpace(a.cfg.BaseURL), "/")
+	return ""
 }
 
 func preferredFrontendOrigin(origins []string) string {

@@ -82,10 +82,7 @@ func Load() Config {
 	if jwtKeyID == "" {
 		jwtKeyID = "default-rs256-key"
 	}
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:" + port
-	}
+	baseURL := strings.TrimSpace(os.Getenv("BASE_URL"))
 	n8nBaseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("N8N_BASE_URL")), "/")
 	n8nAPIKey := strings.TrimSpace(os.Getenv("N8N_API_KEY"))
 	n8nTimeoutSeconds := parsePositiveInt(os.Getenv("N8N_TIMEOUT_SECONDS"), 12)
@@ -166,17 +163,11 @@ func Load() Config {
 	}
 
 	originsCSV := os.Getenv("CORS_ALLOWED_ORIGINS")
-	if originsCSV == "" {
-		originsCSV = "http://localhost:3000,http://127.0.0.1:3000"
-	}
 	corsOrigins := []string{}
 	for _, part := range splitAndTrim(originsCSV) {
 		if part != "" {
 			corsOrigins = append(corsOrigins, part)
 		}
-	}
-	if len(corsOrigins) == 0 {
-		corsOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000"}
 	}
 
 	rateLimit := parsePositiveInt(os.Getenv("RATE_LIMIT_PER_MINUTE"), 240)
@@ -187,9 +178,6 @@ func Load() Config {
 	githubClientID := strings.TrimSpace(os.Getenv("GITHUB_CLIENT_ID"))
 	githubClientSecret := strings.TrimSpace(os.Getenv("GITHUB_CLIENT_SECRET"))
 	oauthRedirectBase := strings.TrimSpace(os.Getenv("OAUTH_REDIRECT_BASE"))
-	if oauthRedirectBase == "" {
-		oauthRedirectBase = baseURL
-	}
 	mcpSDKEnabled := parseBool(os.Getenv("MCP_SDK_ENABLED"), false)
 	dockerRuntimeSocket := strings.TrimSpace(os.Getenv("DOCKER_RUNTIME_SOCKET"))
 	if dockerRuntimeSocket == "" {
@@ -271,6 +259,18 @@ func Load() Config {
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Port) == "" {
 		return fmt.Errorf("PORT must be set")
+	}
+	if strings.TrimSpace(c.BaseURL) == "" {
+		return fmt.Errorf("BASE_URL must be set")
+	}
+	if len(c.CORSAllowedOrigins) == 0 {
+		return fmt.Errorf("CORS_ALLOWED_ORIGINS must be set")
+	}
+	if strings.TrimSpace(c.GoogleClientID) != "" || strings.TrimSpace(c.GoogleClientSecret) != "" ||
+		strings.TrimSpace(c.GitHubClientID) != "" || strings.TrimSpace(c.GitHubClientSecret) != "" {
+		if strings.TrimSpace(c.OAuthRedirectBase) == "" {
+			return fmt.Errorf("OAUTH_REDIRECT_BASE must be set when Google or GitHub OAuth is configured")
+		}
 	}
 	if strings.TrimSpace(c.SuperAdminEmail) == "" {
 		return fmt.Errorf("SUPER_ADMIN_EMAIL must be set")

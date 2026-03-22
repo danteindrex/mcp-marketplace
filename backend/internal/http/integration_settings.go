@@ -41,12 +41,12 @@ func (a *App) resolvedIntegrations() resolvedIntegrations {
 		Google: models.OAuthProviderSettings{
 			ClientID:     strings.TrimSpace(a.cfg.GoogleClientID),
 			ClientSecret: strings.TrimSpace(a.cfg.GoogleClientSecret),
-			RedirectBase: nonEmpty(strings.TrimSpace(a.cfg.OAuthRedirectBase), strings.TrimSpace(a.cfg.BaseURL)),
+			RedirectBase: strings.TrimSpace(a.cfg.OAuthRedirectBase),
 		},
 		GitHub: models.OAuthProviderSettings{
 			ClientID:     strings.TrimSpace(a.cfg.GitHubClientID),
 			ClientSecret: strings.TrimSpace(a.cfg.GitHubClientSecret),
-			RedirectBase: nonEmpty(strings.TrimSpace(a.cfg.OAuthRedirectBase), strings.TrimSpace(a.cfg.BaseURL)),
+			RedirectBase: strings.TrimSpace(a.cfg.OAuthRedirectBase),
 		},
 		Stripe: models.StripeIntegrationSettings{
 			SecretKey:            strings.TrimSpace(a.cfg.StripeSecretKey),

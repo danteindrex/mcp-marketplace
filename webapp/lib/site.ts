@@ -1,9 +1,7 @@
-const DEFAULT_SITE_URL = 'http://localhost:3000'
-
 function normalizeUrl(value: string | undefined): string {
   const trimmed = value?.trim()
   if (!trimmed) {
-    return DEFAULT_SITE_URL
+    throw new Error('SITE_URL, NEXT_PUBLIC_SITE_URL, or NEXT_PUBLIC_APP_URL must be set')
   }
   return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
 }

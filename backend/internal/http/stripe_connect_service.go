@@ -188,14 +188,14 @@ func (s *stripeConnectService) effectiveReturnURL() string {
 	if strings.TrimSpace(s.returnURL) != "" {
 		return s.returnURL
 	}
-	return "http://localhost:3000/merchant/revenue?connect=return"
+	return ""
 }
 
 func (s *stripeConnectService) effectiveRefreshURL() string {
 	if strings.TrimSpace(s.refreshURL) != "" {
 		return s.refreshURL
 	}
-	return "http://localhost:3000/merchant/revenue?connect=refresh"
+	return ""
 }
 
 func connectSnapshotFromObject(obj map[string]interface{}) stripeConnectAccountSnapshot {
