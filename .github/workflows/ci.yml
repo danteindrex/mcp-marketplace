@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+env:
+  AZURE_RESOURCE_GROUP: mcp-marketplace-prod-it-rg
+  AZURE_CONTAINER_APP_NAME: mcp-backend
+  AZURE_CONTAINER_REGISTRY: mcpmarketplaceprodit0322acr
+  AZURE_CONTAINER_REGISTRY_LOGIN_SERVER: mcpmarketplaceprodit0322acr.azurecr.io
+  BACKEND_IMAGE_NAME: mcp-backend
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -33,3 +40,40 @@ jobs:
           npm run lint
           npm run typecheck
           npm run build
+
+  deploy-backend:
+    runs-on: ubuntu-latest
+    needs:
+      - backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to Azure Container Registry
+        run: az acr login --name "$AZURE_CONTAINER_REGISTRY"
+
+      - name: Build and push backend image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -f backend/Dockerfile \
+            -t "$AZURE_CONTAINER_REGISTRY_LOGIN_SERVER/$BACKEND_IMAGE_NAME:$IMAGE_TAG" \
+            .
+          docker push "$AZURE_CONTAINER_REGISTRY_LOGIN_SERVER/$BACKEND_IMAGE_NAME:$IMAGE_TAG"
+
+      - name: Deploy backend image to Azure Container App
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          az containerapp update \
+            --name "$AZURE_CONTAINER_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$AZURE_CONTAINER_REGISTRY_LOGIN_SERVER/$BACKEND_IMAGE_NAME:$IMAGE_TAG"

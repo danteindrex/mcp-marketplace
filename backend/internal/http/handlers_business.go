@@ -429,7 +429,8 @@ func (a *App) clientCompatibility(w http.ResponseWriter, r *http.Request) {
 		{"client": "codex", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "One-click local bridge installer"},
 		{"client": "vscode", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "vscode:mcp/install deep-link action"},
 		{"client": "cursor", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "CLI install command when Cursor CLI is available"},
-		{"client": "claude", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "One-line CLI install command"},
+		{"client": "claude", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "One-click local bridge installer for desktop-style setup"},
+		{"client": "claude_web", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "Open Claude web and continue the documented remote MCP setup there"},
 		{"client": "chatgpt", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "Connector settings flow with remote MCP URL"},
 		{"client": "chatgpt_app", "supportsDCR": true, "supportsCIMD": true, "supportsInteractive": true, "notes": "Merchant-provided ChatGPT app entrypoint backed by a remote MCP server"},
 	}

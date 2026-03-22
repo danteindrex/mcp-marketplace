@@ -116,8 +116,8 @@ function LoginForm() {
 
   return (
     <main className="min-h-screen grid-pattern">
-      <div className="mx-auto min-h-screen max-w-7xl px-4 py-8 lg:px-6 lg:py-10">
-        <div className="grid min-h-[calc(100vh-5rem)] overflow-hidden border-2 border-foreground bg-card shadow-[8px_8px_0px_hsl(var(--shadow-color))] lg:grid-cols-2">
+      <div className="mx-auto min-h-screen max-w-7xl px-4 py-5 sm:py-8 lg:px-6 lg:py-10">
+        <div className="grid min-h-[calc(100vh-2.5rem)] overflow-hidden bg-transparent sm:border-2 sm:border-foreground sm:bg-card sm:shadow-[8px_8px_0px_hsl(var(--shadow-color))] lg:min-h-[calc(100vh-5rem)] lg:grid-cols-2">
           <section className="relative hidden overflow-hidden border-r-2 border-foreground bg-accent lg:flex lg:flex-col lg:justify-between lg:p-10">
             <div className="space-y-5">
               <Sticker
@@ -149,12 +149,12 @@ function LoginForm() {
             <Star5Shape size={64} className="absolute bottom-28 left-10 text-secondary" />
           </section>
 
-          <section className="flex items-center justify-center bg-background p-6 sm:p-10">
-            <Card className="w-full max-w-md border-2 border-foreground bg-card p-6 shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
-              <div className="mb-5 space-y-1 text-center">
+          <section className="flex items-start justify-center bg-background px-0 py-4 sm:p-6 lg:items-center lg:p-10">
+            <Card className="w-full max-w-md border-2 border-foreground bg-card p-5 shadow-[6px_6px_0px_hsl(var(--shadow-color))] sm:p-6">
+              <div className="mb-6 space-y-2 text-center">
                 <Text as="span" variant="caption" className="inline-flex items-center gap-2 uppercase tracking-wide text-muted-foreground"><ShieldCheck className="h-4 w-4" />Secure account access</Text>
-                <Text variant="h3" className="uppercase">{mode === 'login' ? 'Welcome back' : 'Create account'}</Text>
-                <Text variant="small" className="text-muted-foreground">
+                <Text variant="h3" className="text-2xl uppercase sm:text-3xl">{mode === 'login' ? 'Welcome back' : 'Create account'}</Text>
+                <Text variant="small" className="mx-auto max-w-sm text-muted-foreground">
                   {oauthSignupToken
                     ? 'Finish your social signup by choosing a role and workspace.'
                     : mode === 'login'
@@ -165,7 +165,7 @@ function LoginForm() {
 
               {error && <div className="mb-4 rounded-none border-2 border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
-              <div className="mb-4 grid grid-cols-2 gap-2">
+              <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Button
                   variant={mode === 'login' ? 'default' : 'outline'}
                   disabled={Boolean(oauthSignupToken)}
@@ -198,7 +198,7 @@ function LoginForm() {
                     </span>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <Button
                     variant="outline"
                     onClick={() => handleOAuthLogin('google')}
@@ -247,6 +247,7 @@ function LoginForm() {
                   <Input
                     id="email"
                     placeholder="you@example.com"
+                    autoComplete="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     readOnly={Boolean(oauthSignupToken)}
@@ -254,7 +255,7 @@ function LoginForm() {
                 </div>
                 {!oauthSignupToken && <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
-                  <Input id="password" type="password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} />
+                  <Input id="password" type="password" placeholder="Enter your password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} />
                 </div>}
                 {mode === 'login' && showMFA && (
                   <div className="space-y-2">
@@ -263,6 +264,7 @@ function LoginForm() {
                       id="mfaCode"
                       placeholder="123456"
                       inputMode="numeric"
+                      autoComplete="one-time-code"
                       value={mfaCode}
                       onChange={e => setMfaCode(e.target.value)}
                     />
@@ -273,15 +275,15 @@ function LoginForm() {
                   <>
                     <div className="space-y-2">
                       <Label htmlFor="name">Full name</Label>
-                      <Input id="name" value={name} onChange={e => setName(e.target.value)} />
+                      <Input id="name" autoComplete="name" value={name} onChange={e => setName(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="tenantName">Workspace / Tenant name</Label>
-                      <Input id="tenantName" value={tenantName} onChange={e => setTenantName(e.target.value)} />
+                      <Input id="tenantName" autoComplete="organization" value={tenantName} onChange={e => setTenantName(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label>Role</Label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <Button type="button" variant={role === 'buyer' ? 'default' : 'outline'} onClick={() => setRole('buyer')}>Buyer</Button>
                         <Button type="button" variant={role === 'merchant' ? 'default' : 'outline'} onClick={() => setRole('merchant')}>Merchant</Button>
                       </div>
@@ -296,7 +298,7 @@ function LoginForm() {
                   </label>
                 )}
 
-                <Button type="submit" disabled={loading} className="w-full">
+                <Button type="submit" disabled={loading} className="mt-2 w-full">
                   {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : oauthSignupToken ? 'Complete Signup' : 'Create Account'}
                 </Button>
               </form>
@@ -315,11 +317,11 @@ function LoginForm() {
 function LoginLoading() {
   return (
     <main className="min-h-screen grid-pattern">
-      <div className="mx-auto min-h-screen max-w-7xl px-4 py-8 lg:px-6 lg:py-10">
-        <div className="grid min-h-[calc(100vh-5rem)] overflow-hidden border-2 border-foreground bg-card shadow-[8px_8px_0px_hsl(var(--shadow-color))] lg:grid-cols-2">
+      <div className="mx-auto min-h-screen max-w-7xl px-4 py-5 sm:py-8 lg:px-6 lg:py-10">
+        <div className="grid min-h-[calc(100vh-2.5rem)] overflow-hidden bg-transparent sm:border-2 sm:border-foreground sm:bg-card sm:shadow-[8px_8px_0px_hsl(var(--shadow-color))] lg:min-h-[calc(100vh-5rem)] lg:grid-cols-2">
           <section className="relative hidden overflow-hidden border-r-2 border-foreground bg-accent lg:flex lg:flex-col lg:justify-between lg:p-10" />
-          <section className="flex items-center justify-center bg-background p-6 sm:p-10">
-            <Card className="w-full max-w-md border-2 border-foreground bg-card p-6 shadow-[6px_6px_0px_hsl(var(--shadow-color))]">
+          <section className="flex items-start justify-center bg-background px-0 py-4 sm:p-6 lg:items-center lg:p-10">
+            <Card className="w-full max-w-md border-2 border-foreground bg-card p-5 shadow-[6px_6px_0px_hsl(var(--shadow-color))] sm:p-6">
               <div className="flex items-center justify-center py-20">
                 <span className="h-8 w-8 animate-spin rounded-full border-4 border-current border-t-transparent" />
               </div>

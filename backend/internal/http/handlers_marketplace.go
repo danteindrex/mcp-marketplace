@@ -10,7 +10,7 @@ import (
 
 func (a *App) marketplaceInstallMetadata(server models.Server) map[string]interface{} {
 	baseURL := strings.TrimRight(a.cfg.BaseURL, "/")
-	clients := []string{"vscode", "codex", "claude", "cursor", "chatgpt"}
+	clients := []string{"vscode", "codex", "claude", "claude_web", "cursor", "chatgpt"}
 	if strings.TrimSpace(server.ChatGPTAppURL) != "" && server.SupportsChatGPTApp {
 		clients = append(clients, "chatgpt_app")
 	}

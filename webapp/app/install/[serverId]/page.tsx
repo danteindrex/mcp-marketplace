@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use, useCallback, useMemo } from 'react'
+import { useState, useEffect, use, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Check, ChevronRight, ExternalLink, Check as CheckIcon, Terminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -41,6 +41,10 @@ interface PageProps {
 
 type Step = 'client' | 'auth' | 'scopes' | 'connect' | 'complete'
 type BridgePlatform = 'windows' | 'macos'
+type BridgeLaunchState = 'idle' | 'opening' | 'fallback' | 'downloading'
+
+const mobileOnlyClients = new Set(['claude_web', 'chatgpt', 'chatgpt_app'])
+const desktopOnlyClients = new Set(['vscode', 'cursor', 'codex', 'claude'])
 
 const steps: Array<{ id: Step; label: string; title: string }> = [
   { id: 'client', label: 'Client', title: 'Select Your Client' },
@@ -53,7 +57,8 @@ const steps: Array<{ id: Step; label: string; title: string }> = [
 const clientOptionMap: Record<string, { value: string; label: string; description: string }> = {
   vscode: { value: 'vscode', label: 'VS Code', description: 'Full support with native extension' },
   cursor: { value: 'cursor', label: 'Cursor', description: 'Built-in MCP support' },
-  claude: { value: 'claude', label: 'Claude', description: 'Desktop application' },
+  claude: { value: 'claude', label: 'Claude Desktop', description: 'One-click local install via bridge' },
+  claude_web: { value: 'claude_web', label: 'Claude Web', description: 'Guided remote MCP setup through claude.ai' },
   codex: { value: 'codex', label: 'OpenAI Codex', description: 'One-click local install via bridge' },
   chatgpt: { value: 'chatgpt', label: 'ChatGPT Connector', description: 'Connector setup for remote MCP' },
   chatgpt_app: { value: 'chatgpt_app', label: 'ChatGPT App', description: 'Merchant-provided ChatGPT app backed by this MCP server' },
@@ -111,6 +116,7 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [acceptedScopes, setAcceptedScopes] = useState(false)
   const [showBridgeHelp, setShowBridgeHelp] = useState(false)
   const [bridgeFallbackPlatform, setBridgeFallbackPlatform] = useState<BridgePlatform | null>(null)
+  const [bridgeLaunchState, setBridgeLaunchState] = useState<BridgeLaunchState>('idle')
   const [autoLaunchAttempted, setAutoLaunchAttempted] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [installSession, setInstallSession] = useState<InstallSession | null>(null)
@@ -125,6 +131,10 @@ export default function InstallWizardPage({ params }: PageProps) {
   const [paymentControlsError, setPaymentControlsError] = useState('')
   const [metadataState, setMetadataState] = useState<MetadataState>({ status: 'idle' })
   const [scopeCheckState, setScopeCheckState] = useState<ScopeCheckState>({ status: 'idle' })
+  const [isMobileDevice, setIsMobileDevice] = useState(false)
+  const bridgeFallbackTimerRef = useRef<number | null>(null)
+  const bridgeAutoDownloadTimerRef = useRef<number | null>(null)
+  const bridgeAutoDownloadDoneRef = useRef(false)
   const parsedPaymentChallenge = useMemo(() => {
     if (!paymentRequired?.paymentChallenge) return null
     try {
@@ -165,6 +175,12 @@ export default function InstallWizardPage({ params }: PageProps) {
     }
 
     loadPaymentControls()
+  }, [])
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined') return
+    const ua = navigator.userAgent.toLowerCase()
+    setIsMobileDevice(/android|iphone|ipad|ipod|mobile/.test(ua))
   }, [])
 
   useEffect(() => {
@@ -236,7 +252,12 @@ export default function InstallWizardPage({ params }: PageProps) {
   const currentStepIndex = steps.findIndex(s => s.id === currentStep)
   const currentStepData = steps[currentStepIndex]
   const selectedAction: InstallAction | null = installSession?.install?.selected || null
-  const clientOptions = (installMetadata?.clients || ['vscode', 'cursor', 'claude', 'codex', 'chatgpt'])
+  const clientOptions = (installMetadata?.clients || ['vscode', 'cursor', 'claude', 'claude_web', 'codex', 'chatgpt'])
+    .filter(client => {
+      if (!isMobileDevice) return true
+      if (desktopOnlyClients.has(client)) return false
+      return mobileOnlyClients.has(client)
+    })
     .map(client => clientOptionMap[client])
     .filter((value): value is { value: string; label: string; description: string } => Boolean(value))
   const allowedMethods = paymentControls?.policy?.allowedMethods || []
@@ -268,6 +289,17 @@ export default function InstallWizardPage({ params }: PageProps) {
     setAutoLaunchAttempted(true)
     runInstallAction(selectedAction)
   }, [autoLaunchAttempted, currentStep, selectedAction])
+
+  useEffect(() => {
+    return () => {
+      if (bridgeFallbackTimerRef.current !== null) {
+        window.clearTimeout(bridgeFallbackTimerRef.current)
+      }
+      if (bridgeAutoDownloadTimerRef.current !== null) {
+        window.clearTimeout(bridgeAutoDownloadTimerRef.current)
+      }
+    }
+  }, [])
 
   if (!server) {
     return (
@@ -373,6 +405,7 @@ export default function InstallWizardPage({ params }: PageProps) {
     anchor.remove()
 
     if (options?.automatic) {
+      setBridgeLaunchState('downloading')
       toast.info(`MCP Local Bridge was not detected. Downloading the ${platform === 'windows' ? 'Windows' : 'macOS'} installer.`)
       return
     }
@@ -381,22 +414,61 @@ export default function InstallWizardPage({ params }: PageProps) {
 
   const runInstallAction = (action: InstallAction) => {
     setShowBridgeHelp(false)
+    setBridgeLaunchState('idle')
     if (action.launchUrl) {
       if (action.requiresLocalExec && action.launchUrl.startsWith('mcp-marketplace://')) {
         const detectedPlatform = detectBridgePlatform()
         setBridgeFallbackPlatform(detectedPlatform)
-        window.location.href = action.launchUrl
-        window.setTimeout(() => {
+        setBridgeLaunchState('opening')
+        if (bridgeFallbackTimerRef.current !== null) {
+          window.clearTimeout(bridgeFallbackTimerRef.current)
+        }
+        if (bridgeAutoDownloadTimerRef.current !== null) {
+          window.clearTimeout(bridgeAutoDownloadTimerRef.current)
+        }
+
+        let bridgeOpened = false
+        const markBridgeOpened = () => {
+          bridgeOpened = true
+        }
+        const handleVisibilityChange = () => {
           if (document.hidden) {
+            markBridgeOpened()
+          }
+        }
+
+        window.addEventListener('blur', markBridgeOpened, { once: true })
+        window.addEventListener('pagehide', markBridgeOpened, { once: true })
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+
+        window.location.href = action.launchUrl
+        bridgeFallbackTimerRef.current = window.setTimeout(() => {
+          window.removeEventListener('blur', markBridgeOpened)
+          window.removeEventListener('pagehide', markBridgeOpened)
+          document.removeEventListener('visibilitychange', handleVisibilityChange)
+
+          if (bridgeOpened || document.hidden) {
+            setBridgeLaunchState('idle')
             return
           }
+
           setShowBridgeHelp(true)
-          if (detectedPlatform) {
-            downloadBridgeInstaller(detectedPlatform, { automatic: true })
-          } else {
-            toast.info('MCP Local Bridge was not detected. Use the fallback installer for your platform.')
+          setBridgeLaunchState('fallback')
+          toast.info('If the bridge did not open, we will download the installer automatically in a moment.')
+
+          if (!detectedPlatform || bridgeAutoDownloadDoneRef.current) {
+            return
           }
-        }, 1600)
+
+          bridgeAutoDownloadTimerRef.current = window.setTimeout(() => {
+            if (document.hidden || bridgeOpened || bridgeAutoDownloadDoneRef.current) {
+              setBridgeLaunchState('idle')
+              return
+            }
+            bridgeAutoDownloadDoneRef.current = true
+            downloadBridgeInstaller(detectedPlatform, { automatic: true })
+          }, 2200)
+        }, 2200)
         return
       }
       window.location.href = action.launchUrl
@@ -440,6 +512,15 @@ export default function InstallWizardPage({ params }: PageProps) {
               <Text variant="h4" className="mb-6">{currentStepData.title}</Text>
 
               {currentStep === 'client' && (
+                <div className="space-y-4">
+                  {isMobileDevice && (
+                    <Card className="p-4 border border-border bg-muted/40">
+                      <Text variant="small">Mobile device detected</Text>
+                      <Text variant="caption" className="text-muted-foreground">
+                        Showing web and mobile-capable install targets. Desktop-only clients remain available from desktop browsers.
+                      </Text>
+                    </Card>
+                  )}
                 <RadioGroup value={selectedClient} onValueChange={setSelectedClient}>
                   {clientOptions.map(client => (
                     <div key={client.value} className="flex items-center space-x-3 p-4 border border-border rounded-lg hover:bg-muted/50">
@@ -448,6 +529,7 @@ export default function InstallWizardPage({ params }: PageProps) {
                     </div>
                   ))}
                 </RadioGroup>
+                </div>
               )}
 
               {currentStep === 'auth' && (
@@ -730,6 +812,21 @@ export default function InstallWizardPage({ params }: PageProps) {
                       <Text variant="small">{selectedAction.label}</Text>
                       {selectedAction.description && (
                         <Text variant="small" className="text-muted-foreground">{selectedAction.description}</Text>
+                      )}
+                      {selectedAction.requiresLocalExec && bridgeLaunchState === 'opening' && (
+                        <Text variant="small" className="text-muted-foreground">
+                          Opening MCP Local Bridge...
+                        </Text>
+                      )}
+                      {selectedAction.requiresLocalExec && bridgeLaunchState === 'fallback' && (
+                        <Text variant="small" className="text-muted-foreground">
+                          Bridge did not respond yet. Fallback installer options are ready below.
+                        </Text>
+                      )}
+                      {selectedAction.requiresLocalExec && bridgeLaunchState === 'downloading' && (
+                        <Text variant="small" className="text-muted-foreground">
+                          Downloading the MCP Local Bridge installer automatically...
+                        </Text>
                       )}
                       <div className="flex flex-wrap gap-2">
                         <Button onClick={() => runInstallAction(selectedAction)}>

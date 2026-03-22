@@ -1,0 +1,10 @@
+.git
+.gitignore
+webapp/.next
+webapp/node_modules
+backend/.cache
+backend/tmp
+infra/data
+**/node_modules
+**/.DS_Store
+**/Thumbs.db

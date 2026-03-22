@@ -505,6 +505,7 @@ func buildInstallActions(serverName string, serverSlug string, resourceURL strin
 	cursorLaunchURL := "cursor://anysphere.cursor-deeplink/mcp/install?" + cursorValues.Encode()
 	codexLaunchURL := buildLocalBridgeInstallURL("codex", serverSlug, resourceURL)
 	claudeLaunchURL := buildLocalBridgeInstallURL("claude", serverSlug, resourceURL)
+	claudeWebURL := "https://claude.ai"
 
 	actions := []installAction{
 		{
@@ -522,10 +523,16 @@ func buildInstallActions(serverName string, serverSlug string, resourceURL strin
 		},
 		{
 			Client:            "claude",
-			Label:             "Install in Claude",
+			Label:             "Install in Claude Desktop",
 			LaunchURL:         claudeLaunchURL,
-			Description:       "One-click install via MCP Local Bridge.",
+			Description:       "One-click install via MCP Local Bridge for desktop setup.",
 			RequiresLocalExec: true,
+		},
+		{
+			Client:      "claude_web",
+			Label:       "Open Claude Web",
+			OpenURL:     claudeWebURL,
+			Description: "Open Claude on the web and finish the documented remote MCP setup there.",
 		},
 		{
 			Client:      "cursor",
