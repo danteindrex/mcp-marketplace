@@ -36,24 +36,14 @@ func (a *App) triggerDeployWorker() {
 
 func (a *App) processDeployQueue(ctx context.Context, limit int) {
 	now := time.Now().UTC()
-	tasks := a.store.ListDueDeployTasks(now, limit)
+	tasks := a.store.ClaimDueDeployTasks(now, limit, a.instanceID)
 	for _, task := range tasks {
 		a.processDeployTask(ctx, task)
 	}
 }
 
 func (a *App) processDeployTask(ctx context.Context, task models.DeployTask) {
-	if task.Status != models.DeployTaskStatusPending {
-		return
-	}
 	now := time.Now().UTC()
-
-	task.Status = models.DeployTaskStatusProcessing
-	task.AttemptCount++
-	task.UpdatedAt = now
-	if !a.store.UpdateDeployTask(task) {
-		return
-	}
 
 	server, ok := a.store.GetServerByID(task.ServerID)
 	if !ok {

@@ -100,17 +100,23 @@ func (a *App) oauthRegisterClient(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(clientSecret), bcrypt.DefaultCost)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to hash client secret"})
+		return
+	}
+
 	client := a.store.CreateOAuthClient(models.OAuthClient{
 		ClientID:                clientID,
 		ClientName:              req.ClientName,
 		RedirectURIs:            req.RedirectURIs,
 		GrantTypes:              req.GrantTypes,
 		TokenEndpointAuthMethod: req.TokenEndpointAuthMethod,
-		ClientSecret:            clientSecret,
+		ClientSecret:            string(passwordHash),
 	})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"client_id":                  client.ClientID,
-		"client_secret":              client.ClientSecret,
+		"client_secret":              clientSecret, // Return plain secret to client ONLY ONCE
 		"redirect_uris":              client.RedirectURIs,
 		"grant_types":                client.GrantTypes,
 		"token_endpoint_auth_method": client.TokenEndpointAuthMethod,
@@ -176,11 +182,7 @@ func (a *App) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		params.Set("state", state)
 	}
 	rURL.RawQuery = params.Encode()
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"redirect_to": rURL.String(),
-		"code":        code,
-		"state":       state,
-	})
+	http.Redirect(w, r, rURL.String(), http.StatusFound)
 }
 
 func (a *App) oauthToken(w http.ResponseWriter, r *http.Request) {
@@ -188,18 +190,12 @@ func (a *App) oauthToken(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_request"})
 		return
 	}
-	grantType := r.PostFormValue("grant_type")
-	if grantType != "authorization_code" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported_grant_type"})
-		return
-	}
 
+	grantType := r.PostFormValue("grant_type")
 	clientID := r.PostFormValue("client_id")
 	clientSecret := r.PostFormValue("client_secret")
-	code := r.PostFormValue("code")
-	redirectURI := r.PostFormValue("redirect_uri")
-	verifier := r.PostFormValue("code_verifier")
 	resource := r.PostFormValue("resource")
+
 	canonicalResource, _, _, ok := canonicalHubResource(a.cfg.BaseURL, resource)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_resource"})
@@ -212,41 +208,105 @@ func (a *App) oauthToken(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client"})
 		return
 	}
-	if strings.EqualFold(client.TokenEndpointAuthMethod, "client_secret_post") && client.ClientSecret != clientSecret {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client_secret"})
-		return
+	if strings.EqualFold(client.TokenEndpointAuthMethod, "client_secret_post") {
+		if err := bcrypt.CompareHashAndPassword([]byte(client.ClientSecret), []byte(clientSecret)); err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client_secret"})
+			return
+		}
 	}
-	ac, ok := a.store.GetOAuthAuthCode(code)
-	if !ok || ac.Consumed || time.Now().UTC().After(ac.ExpiresAt) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant"})
-		return
-	}
-	if ac.ClientID != clientID || ac.RedirectURI != redirectURI || ac.Resource != resource {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant_binding"})
-		return
-	}
-	if !verifyPKCE(verifier, ac.CodeChallengeMethod, ac.CodeChallenge) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_code_verifier"})
-		return
-	}
-	ac, _ = a.store.ConsumeOAuthAuthCode(code)
 
-	user, ok := a.store.GetUserByID(ac.UserID)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "user_not_found"})
+	var user models.User
+	var scopes []string
+	var rtScopes []string
+
+	if grantType == "authorization_code" {
+		code := r.PostFormValue("code")
+		redirectURI := r.PostFormValue("redirect_uri")
+		verifier := r.PostFormValue("code_verifier")
+		ac, ok := a.store.GetOAuthAuthCode(code)
+		if !ok || ac.Consumed || time.Now().UTC().After(ac.ExpiresAt) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant"})
+			return
+		}
+		if ac.ClientID != clientID || ac.RedirectURI != redirectURI || ac.Resource != resource {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant_binding"})
+			return
+		}
+		if !verifyPKCE(verifier, ac.CodeChallengeMethod, ac.CodeChallenge) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_code_verifier"})
+			return
+		}
+		a.store.ConsumeOAuthAuthCode(code)
+		u, ok := a.store.GetUserByID(ac.UserID)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "user_not_found"})
+			return
+		}
+		user = u
+		scopes = ac.Scopes
+		rtScopes = ac.Scopes
+	} else if grantType == "refresh_token" {
+		rtOpaque := r.PostFormValue("refresh_token")
+		hash := a.jwt.HashToken(rtOpaque)
+		rt, ok := a.store.GetOAuthRefreshToken(hash)
+		if !ok || rt.Revoked || rt.ExpiresAt.Before(time.Now().UTC()) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant"})
+			return
+		}
+		if rt.ClientID != clientID {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_client"})
+			return
+		}
+		u, ok := a.store.GetUserByID(rt.UserID)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "user_not_found"})
+			return
+		}
+		user = u
+		scopes = rt.Scopes
+		rtScopes = rt.Scopes
+		// Rotate: revoke old one
+		a.store.RevokeOAuthRefreshToken(rt.ID)
+	} else {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported_grant_type"})
 		return
 	}
-	accessToken, err := a.jwt.GenerateOAuthAccessToken(user, resource, ac.Scopes)
+
+	accessToken, err := a.jwt.GenerateOAuthAccessToken(user, resource, scopes)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token_generation_failed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"access_token": accessToken,
-		"token_type":   "Bearer",
-		"expires_in":   28800,
-		"scope":        joinScopes(ac.Scopes),
-		"audience":     tokenAudience(resource),
-		"resource":     resource,
+
+	// Generate and store new refresh token
+	newRT := a.jwt.GenerateOpaqueToken()
+	newRTHash := a.jwt.HashToken(newRT)
+	a.store.CreateOAuthRefreshToken(models.OAuthRefreshToken{
+		ClientID:  clientID,
+		UserID:    user.ID,
+		TenantID:  user.TenantID,
+		TokenHash: newRTHash,
+		Scopes:    rtScopes,
+		Revoked:   false,
+		ExpiresAt: time.Now().UTC().Add(30 * 24 * time.Hour),
+		CreatedAt: time.Now().UTC(),
 	})
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"access_token":  accessToken,
+		"token_type":    "Bearer",
+		"expires_in":    900,
+		"refresh_token": newRT,
+		"scope":         truncateScope(joinScopes(scopes), r.PostFormValue("scope")),
+		"audience":      tokenAudience(resource),
+		"resource":      resource,
+	})
+}
+
+func truncateScope(granted, requested string) string {
+	if requested == "" {
+		return granted
+	}
+	// Simple implementation: for now return granted
+	return granted
 }

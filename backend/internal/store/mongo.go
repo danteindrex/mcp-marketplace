@@ -47,6 +47,8 @@ type MongoStore struct {
 	oauthAccounts *mongo.Collection
 	oauthClients  *mongo.Collection
 	oauthCodes    *mongo.Collection
+	sessions      *mongo.Collection
+	oauthRefreshTokens *mongo.Collection
 }
 
 func NewMongoStore(cfg config.Config) (*MongoStore, error) {
@@ -97,6 +99,8 @@ func NewMongoStore(cfg config.Config) (*MongoStore, error) {
 		oauthAccounts: db.Collection("oauth_accounts"),
 		oauthClients:  db.Collection("oauth_clients"),
 		oauthCodes:    db.Collection("oauth_auth_codes"),
+		sessions:      db.Collection("sessions"),
+		oauthRefreshTokens: db.Collection("oauth_refresh_tokens"),
 	}
 	if err := s.ensureIndexes(); err != nil {
 		return nil, err
@@ -296,6 +300,26 @@ func (s *MongoStore) ensureIndexes() error {
 				{Keys: bson.D{{Key: "clientId", Value: 1}}},
 				{Keys: bson.D{{Key: "userId", Value: 1}}},
 				// TTL index for auto-expiration of auth codes
+				{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
+			},
+		},
+		{
+			col: s.sessions,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "refreshTokenHash", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "userId", Value: 1}}},
+				// TTL index for auto-expiration of sessions
+				{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
+			},
+		},
+		{
+			col: s.oauthRefreshTokens,
+			model: []mongo.IndexModel{
+				{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "tokenHash", Value: 1}}, Options: options.Index().SetUnique(true)},
+				{Keys: bson.D{{Key: "clientId", Value: 1}, {Key: "userId", Value: 1}}},
+				// TTL index for auto-expiration of OAuth refresh tokens
 				{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
 			},
 		},
@@ -756,6 +780,35 @@ func (s *MongoStore) ListDueDeployTasks(now time.Time, limit int) []models.Deplo
 		return []models.DeployTask{}
 	}
 	return items
+}
+
+func (s *MongoStore) ClaimDueDeployTasks(now time.Time, limit int, instanceID string) []models.DeployTask {
+	var claimed []models.DeployTask
+	for i := 0; i < limit; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+		filter := bson.M{
+			"status":        models.DeployTaskStatusPending,
+			"nextAttemptAt": bson.M{"$lte": now},
+		}
+		update := bson.M{
+			"$set": bson.M{
+				"status":    models.DeployTaskStatusProcessing,
+				"claimedBy": instanceID,
+				"claimedAt": now,
+				"updatedAt": now,
+			},
+			"$inc": bson.M{"attemptCount": 1},
+		}
+		opts := options.FindOneAndUpdate().SetReturnDocument(options.After).SetSort(bson.D{{Key: "nextAttemptAt", Value: 1}, {Key: "createdAt", Value: 1}})
+		var task models.DeployTask
+		err := s.deployTasks.FindOneAndUpdate(ctx, filter, update, opts).Decode(&task)
+		cancel()
+		if err != nil {
+			break
+		}
+		claimed = append(claimed, task)
+	}
+	return claimed
 }
 
 func (s *MongoStore) UpdateDeployTask(task models.DeployTask) bool {
@@ -1597,6 +1650,98 @@ func (s *MongoStore) UpsertUserSettings(settings models.UserSettings) models.Use
 	}
 	_, _ = s.userSettings.UpdateOne(ctx, bson.M{"userId": settings.UserID}, update, options.Update().SetUpsert(true))
 	return settings
+}
+
+// Session methods
+func (s *MongoStore) CreateSession(session models.Session) models.Session {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	if session.ID == "" {
+		session.ID = newPrefixedID("sess")
+	}
+	if session.CreatedAt.IsZero() {
+		session.CreatedAt = time.Now().UTC()
+	}
+	_, _ = s.sessions.InsertOne(ctx, session)
+	return session
+}
+
+func (s *MongoStore) GetSessionByRefreshToken(tokenHash string) (models.Session, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var session models.Session
+	err := s.sessions.FindOne(ctx, bson.M{"refreshTokenHash": tokenHash, "revoked": false}).Decode(&session)
+	if err != nil {
+		return models.Session{}, false
+	}
+	return session, true
+}
+
+func (s *MongoStore) RevokeSession(id string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	res, err := s.sessions.UpdateOne(ctx, bson.M{"id": id}, bson.M{"$set": bson.M{"revoked": true}})
+	return err == nil && res.MatchedCount > 0
+}
+
+func (s *MongoStore) RevokeAllUserSessions(userID string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	_, err := s.sessions.UpdateMany(ctx, bson.M{"userId": userID}, bson.M{"$set": bson.M{"revoked": true}})
+	return err == nil
+}
+
+func (s *MongoStore) ListUserSessions(userID string) []models.Session {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	cur, err := s.sessions.Find(ctx, bson.M{"userId": userID})
+	if err != nil {
+		return []models.Session{}
+	}
+	items, err := decodeAll[models.Session](cur)
+	if err != nil {
+		return []models.Session{}
+	}
+	return items
+}
+
+// OAuth refresh token methods
+func (s *MongoStore) CreateOAuthRefreshToken(token models.OAuthRefreshToken) models.OAuthRefreshToken {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	if token.ID == "" {
+		token.ID = newPrefixedID("ref")
+	}
+	if token.CreatedAt.IsZero() {
+		token.CreatedAt = time.Now().UTC()
+	}
+	_, _ = s.oauthRefreshTokens.InsertOne(ctx, token)
+	return token
+}
+
+func (s *MongoStore) GetOAuthRefreshToken(tokenHash string) (models.OAuthRefreshToken, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	var token models.OAuthRefreshToken
+	err := s.oauthRefreshTokens.FindOne(ctx, bson.M{"tokenHash": tokenHash, "revoked": false}).Decode(&token)
+	if err != nil {
+		return models.OAuthRefreshToken{}, false
+	}
+	return token, true
+}
+
+func (s *MongoStore) RevokeOAuthRefreshToken(id string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	res, err := s.oauthRefreshTokens.UpdateOne(ctx, bson.M{"id": id}, bson.M{"$set": bson.M{"revoked": true}})
+	return err == nil && res.MatchedCount > 0
+}
+
+func (s *MongoStore) RevokeClientUserOAuthRefreshTokens(clientID, userID string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), mongoTimeout)
+	defer cancel()
+	_, err := s.oauthRefreshTokens.UpdateMany(ctx, bson.M{"clientId": clientID, "userId": userID}, bson.M{"$set": bson.M{"revoked": true}})
+	return err == nil
 }
 
 func (s *MongoStore) GetPlatformIntegrationSettings() (models.PlatformIntegrationSettings, bool) {

@@ -13,6 +13,13 @@ type Store interface {
 	CreateUser(user models.User) (models.User, bool)
 	UpdateUser(user models.User) bool
 
+	// Session methods
+	CreateSession(session models.Session) models.Session
+	GetSessionByRefreshToken(tokenHash string) (models.Session, bool)
+	RevokeSession(id string) bool
+	RevokeAllUserSessions(userID string) bool
+	ListUserSessions(userID string) []models.Session
+
 	// OAuth account methods
 	GetOAuthAccount(provider models.OAuthProvider, providerID string) (models.OAuthAccount, bool)
 	GetOAuthAccountsByUserID(userID string) []models.OAuthAccount
@@ -31,6 +38,7 @@ type Store interface {
 	UpsertDeployTaskByServer(task models.DeployTask) models.DeployTask
 	GetDeployTaskByServer(serverID string) (models.DeployTask, bool)
 	ListDueDeployTasks(now time.Time, limit int) []models.DeployTask
+	ClaimDueDeployTasks(now time.Time, limit int, instanceID string) []models.DeployTask
 	UpdateDeployTask(task models.DeployTask) bool
 
 	ListEntitlements(tenantID, userID string) []models.Entitlement
@@ -94,4 +102,10 @@ type Store interface {
 	CreateOAuthAuthCode(code models.OAuthAuthCode) models.OAuthAuthCode
 	GetOAuthAuthCode(code string) (models.OAuthAuthCode, bool)
 	ConsumeOAuthAuthCode(code string) (models.OAuthAuthCode, bool)
+
+	// OAuth refresh token methods
+	CreateOAuthRefreshToken(token models.OAuthRefreshToken) models.OAuthRefreshToken
+	GetOAuthRefreshToken(tokenHash string) (models.OAuthRefreshToken, bool)
+	RevokeOAuthRefreshToken(id string) bool
+	RevokeClientUserOAuthRefreshTokens(clientID, userID string) bool
 }

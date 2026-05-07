@@ -2,7 +2,9 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -25,6 +27,7 @@ type App struct {
 	allowedOrigins map[string]struct{}
 	rateLimiter    *ipRateLimiter
 	authLimiter    *ipRateLimiter
+	instanceID     string
 }
 
 func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Handler {
@@ -46,6 +49,7 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 		allowedOrigins: allowedOrigins,
 		rateLimiter:    newIPRateLimiter(cfg.RateLimitPerMinute, cfg.RateLimitPerMinute/4),
 		authLimiter:    newIPRateLimiter(30, 10),
+		instanceID:     fmt.Sprintf("worker-%d", time.Now().UnixNano()),
 	}
 	app.startDeployWorker()
 	r := chi.NewRouter()
@@ -66,6 +70,8 @@ func NewRouter(cfg config.Config, st store.Store, jwt *auth.JWTManager) http.Han
 	r.Get("/v1/local-bridge/macos-installer", app.downloadLocalBridgeMacOSInstaller)
 	r.Post("/auth/signup", app.signup)
 	r.Post("/auth/login", app.login)
+	r.Post("/auth/refresh", app.refresh)
+	r.Post("/auth/logout", app.logout)
 	r.Post("/auth/oauth/complete-signup", app.completeOAuthSignup)
 	r.Get("/auth/oauth/google/start", app.oauthGoogleStart)
 	r.Get("/auth/oauth/google/callback", app.oauthGoogleCallback)

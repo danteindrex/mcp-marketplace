@@ -139,44 +139,52 @@ async function parseError(res: Response, fallback: string): Promise<Error> {
   return new Error(body.error || fallback)
 }
 
-export async function apiGet<T>(path: string, _role?: AppRole): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+async function callApi<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const url = `${API_BASE}${path}`
+  const options: RequestInit = {
+    method,
     credentials: 'include',
-  })
-  if (!res.ok) {
-    throw await parseError(res, `API GET failed ${path} (${res.status})`)
   }
+  if (body) {
+    options.headers = { 'Content-Type': 'application/json' }
+    options.body = JSON.stringify(body)
+  }
+
+  let res = await fetch(url, options)
+
+  if (res.status === 401 && !path.startsWith('/auth/refresh') && !path.startsWith('/auth/login') && !path.startsWith('/auth/signup')) {
+    // Attempt to refresh the session
+    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+
+    if (refreshRes.ok) {
+      // Retry the original request
+      res = await fetch(url, options)
+    } else {
+      // Refresh failed, possibly clear session/redirect to login
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login?expired=1'
+      }
+    }
+  }
+
+  if (!res.ok) {
+    throw await parseError(res, `API ${method} failed ${path} (${res.status})`)
+  }
+
   return res.json()
+}
+
+export async function apiGet<T>(path: string, _role?: AppRole): Promise<T> {
+  return callApi<T>('GET', path)
 }
 
 export async function apiPost<T>(path: string, body: unknown, _role?: AppRole): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    credentials: 'include',
-  })
-  if (!res.ok) {
-    throw await parseError(res, `API POST failed ${path} (${res.status})`)
-  }
-  return res.json()
+  return callApi<T>('POST', path, body)
 }
 
 export async function apiPut<T>(path: string, body: unknown, _role?: AppRole): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify(body),
-    credentials: 'include',
-  })
-  if (!res.ok) {
-    throw await parseError(res, `API PUT failed ${path} (${res.status})`)
-  }
-  return res.json()
+  return callApi<T>('PUT', path, body)
 }

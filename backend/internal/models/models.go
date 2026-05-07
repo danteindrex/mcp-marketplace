@@ -68,6 +68,32 @@ type OAuthAccount struct {
 	UpdatedAt    time.Time     `json:"updatedAt" bson:"updatedAt"`
 }
 
+// Session represents a durable browser session
+type Session struct {
+	ID               string    `json:"id" bson:"id"`
+	UserID           string    `json:"userId" bson:"userId"`
+	TenantID         string    `json:"tenantId" bson:"tenantId"`
+	RefreshTokenHash string    `json:"-" bson:"refreshTokenHash"`
+	UserAgent        string    `json:"userAgent,omitempty" bson:"userAgent,omitempty"`
+	IPAddress        string    `json:"ipAddress,omitempty" bson:"ipAddress,omitempty"`
+	Revoked          bool      `json:"revoked" bson:"revoked"`
+	ExpiresAt        time.Time `json:"expiresAt" bson:"expiresAt"`
+	CreatedAt        time.Time `json:"createdAt" bson:"createdAt"`
+}
+
+// OAuthRefreshToken represents a durable OAuth refresh token for MCP clients
+type OAuthRefreshToken struct {
+	ID        string    `json:"id" bson:"id"`
+	ClientID  string    `json:"clientId" bson:"clientId"`
+	UserID    string    `json:"userId" bson:"userId"`
+	TenantID  string    `json:"tenantId" bson:"tenantId"`
+	TokenHash string    `json:"-" bson:"tokenHash"`
+	Scopes    []string  `json:"scopes" bson:"scopes"`
+	Revoked   bool      `json:"revoked" bson:"revoked"`
+	ExpiresAt time.Time `json:"expiresAt" bson:"expiresAt"`
+	CreatedAt time.Time `json:"createdAt" bson:"createdAt"`
+}
+
 type Tenant struct {
 	ID          string    `json:"id" bson:"id"`
 	Name        string    `json:"name" bson:"name"`
@@ -151,6 +177,8 @@ type DeployTask struct {
 	AttemptCount        int       `json:"attemptCount" bson:"attemptCount"`
 	MaxAttempts         int       `json:"maxAttempts" bson:"maxAttempts"`
 	NextAttemptAt       time.Time `json:"nextAttemptAt" bson:"nextAttemptAt"`
+	ClaimedBy           string    `json:"claimedBy,omitempty" bson:"claimedBy,omitempty"`
+	ClaimedAt           time.Time `json:"claimedAt,omitempty" bson:"claimedAt,omitempty"`
 	LastError           string    `json:"lastError,omitempty" bson:"lastError,omitempty"`
 	CreatedAt           time.Time `json:"createdAt" bson:"createdAt"`
 	UpdatedAt           time.Time `json:"updatedAt" bson:"updatedAt"`

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"crypto/sha256"
+	"encoding/hex"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/yourorg/mcp-marketplace/backend/internal/config"
 	"github.com/yourorg/mcp-marketplace/backend/internal/models"
@@ -83,7 +85,7 @@ func (j *JWTManager) GenerateAppToken(user models.User) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.ID,
 			Issuer:    j.issuer,
-			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(8 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(15 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
 		},
 	}
@@ -102,7 +104,7 @@ func (j *JWTManager) GenerateOAuthAccessToken(user models.User, resource string,
 			Subject:   user.ID,
 			Issuer:    j.issuer,
 			Audience:  jwt.ClaimStrings{resource},
-			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(8 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(15 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
 		},
 	}
@@ -147,6 +149,18 @@ func (j *JWTManager) ParseForPurpose(token string, expectedPurpose string) (*Cla
 		return nil, errors.New("missing token purpose")
 	}
 	return claims, nil
+}
+
+func (j *JWTManager) GenerateOpaqueToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func (j *JWTManager) HashToken(token string) string {
+	h := sha256.New()
+	h.Write([]byte(token))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (j *JWTManager) JWKS() JWKS {

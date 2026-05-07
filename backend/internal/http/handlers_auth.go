@@ -17,7 +17,10 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-const appSessionMaxAgeSeconds = 60 * 60 * 8
+const (
+	appSessionMaxAgeSeconds    = 15 * 60             // 15 minutes for access token
+	refreshSessionMaxAgeSeconds = 7 * 24 * 60 * 60    // 7 days for refresh token
+)
 
 type loginRequest struct {
 	Email    string `json:"email"`
@@ -96,9 +99,9 @@ func slugifyTenant(name string) string {
 	return slug
 }
 
-func loginResponse(user models.User, token string) map[string]interface{} {
+func loginResponse(user models.User, accessToken string) map[string]interface{} {
 	return map[string]interface{}{
-		"accessToken": token,
+		"accessToken": accessToken,
 		"user": map[string]interface{}{
 			"id":       user.ID,
 			"tenantId": user.TenantID,
@@ -112,6 +115,78 @@ func loginResponse(user models.User, token string) map[string]interface{} {
 			"registrationModes":         []string{"pre_registered", "cimd", "dcr"},
 		},
 	}
+}
+
+func (a *App) issueSession(w http.ResponseWriter, r *http.Request, user models.User) (string, string, error) {
+	// 1. Generate access token
+	accessToken, err := a.jwt.GenerateAppToken(user)
+	if err != nil {
+		return "", "", err
+	}
+
+	// 2. Generate refresh token
+	refreshToken := a.jwt.GenerateOpaqueToken()
+	refreshTokenHash := a.jwt.HashToken(refreshToken)
+
+	// 3. Create session in DB
+	a.store.CreateSession(models.Session{
+		UserID:           user.ID,
+		TenantID:         user.TenantID,
+		RefreshTokenHash: refreshTokenHash,
+		UserAgent:        r.UserAgent(),
+		IPAddress:        getClientIP(r),
+		Revoked:          false,
+		ExpiresAt:        time.Now().UTC().Add(time.Duration(refreshSessionMaxAgeSeconds) * time.Second),
+		CreatedAt:        time.Now().UTC(),
+	})
+
+	// 4. Set cookies
+	secure := strings.HasPrefix(strings.ToLower(aBaseURL(r)), "https://")
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "mcp_access_token",
+		Value:    accessToken,
+		Path:     "/",
+		MaxAge:   appSessionMaxAgeSeconds,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "mcp_refresh_token",
+		Value:    refreshToken,
+		Path:     "/",
+		MaxAge:   refreshSessionMaxAgeSeconds,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "mcp_active_role",
+		Value:    roleForUser(user),
+		Path:     "/",
+		MaxAge:   refreshSessionMaxAgeSeconds,
+		HttpOnly: false,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	})
+
+	return accessToken, refreshToken, nil
+}
+
+func getClientIP(r *http.Request) string {
+	ip := r.Header.Get("X-Forwarded-For")
+	if ip != "" {
+		parts := strings.Split(ip, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	ip = r.Header.Get("X-Real-IP")
+	if ip != "" {
+		return ip
+	}
+	return r.RemoteAddr
 }
 
 func (a *App) signup(w http.ResponseWriter, r *http.Request) {
@@ -178,9 +253,9 @@ func (a *App) signup(w http.ResponseWriter, r *http.Request) {
 		Metadata:   map[string]interface{}{"email": user.Email, "role": roleName(user.Role)},
 	})
 
-	token, err := a.jwt.GenerateAppToken(user)
+	token, err := a.issueSession(w, r, user)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session generation failed"})
 		return
 	}
 	writeJSON(w, http.StatusCreated, loginResponse(user, token))
@@ -224,9 +299,9 @@ func (a *App) completeOAuthSignup(w http.ResponseWriter, r *http.Request) {
 			ProviderID: pending.ProviderID,
 			Email:      strings.ToLower(pending.Email),
 		})
-		token, err := a.jwt.GenerateAppToken(existingUser)
+		token, err := a.issueSession(w, r, existingUser)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session generation failed"})
 			return
 		}
 		writeJSON(w, http.StatusOK, loginResponse(existingUser, token))
@@ -257,9 +332,9 @@ func (a *App) completeOAuthSignup(w http.ResponseWriter, r *http.Request) {
 		Metadata:   map[string]interface{}{"email": user.Email, "provider": string(pending.Provider), "role": roleName(user.Role)},
 	})
 
-	token, err := a.jwt.GenerateAppToken(user)
+	token, err := a.issueSession(w, r, user)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session generation failed"})
 		return
 	}
 	writeJSON(w, http.StatusOK, loginResponse(user, token))
@@ -327,9 +402,9 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		Outcome:    "success",
 		Metadata:   map[string]interface{}{"email": user.Email},
 	})
-	token, err := a.jwt.GenerateAppToken(user)
+	token, err := a.issueSession(w, r, user)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session generation failed"})
 		return
 	}
 	writeJSON(w, http.StatusOK, loginResponse(user, token))
@@ -529,10 +604,10 @@ func (a *App) oauthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate JWT token
-	jwtToken, err := a.jwt.GenerateAppToken(user)
+	// Generate session
+	_, _, err = a.issueSession(w, r, user)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session generation failed"})
 		return
 	}
 
@@ -552,7 +627,7 @@ func (a *App) oauthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Return success response matching loginResponse format
-	a.respondOAuthSuccess(w, r, user, jwtToken)
+	a.respondOAuthSuccess(w, r, user)
 }
 
 // oauthGitHubStart initiates GitHub OAuth flow
@@ -765,10 +840,10 @@ func (a *App) oauthGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate JWT token
-	jwtToken, err := a.jwt.GenerateAppToken(user)
+	// Generate session
+	_, _, err = a.issueSession(w, r, user)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token generation failed"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session generation failed"})
 		return
 	}
 
@@ -788,38 +863,82 @@ func (a *App) oauthGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Return success response matching loginResponse format
-	a.respondOAuthSuccess(w, r, user, jwtToken)
+	a.respondOAuthSuccess(w, r, user)
 }
 
-func (a *App) respondOAuthSuccess(w http.ResponseWriter, r *http.Request, user models.User, token string) {
-	secure := false
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(aBaseURL(r))), "https://") {
-		secure = true
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     "mcp_access_token",
-		Value:    token,
-		Path:     "/",
-		MaxAge:   appSessionMaxAgeSeconds,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   secure,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:     "mcp_active_role",
-		Value:    roleForUser(user),
-		Path:     "/",
-		MaxAge:   appSessionMaxAgeSeconds,
-		HttpOnly: false,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   secure,
-	})
+func (a *App) respondOAuthSuccess(w http.ResponseWriter, r *http.Request, user models.User) {
 	target := strings.TrimRight(a.frontendBaseURLFromRequest(r), "/") + "/login?oauth=success"
 	if target == "/login?oauth=success" {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "frontend redirect base is not configured"})
 		return
 	}
 	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+}
+
+func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("mcp_refresh_token")
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing refresh token"})
+		return
+	}
+	refreshToken := c.Value
+	hash := a.jwt.HashToken(refreshToken)
+
+	session, ok := a.store.GetSessionByRefreshToken(hash)
+	if !ok || session.Revoked || session.ExpiresAt.Before(time.Now().UTC()) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired session"})
+		return
+	}
+
+	user, ok := a.store.GetUserByID(session.UserID)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "user not found"})
+		return
+	}
+
+	// Rotate refresh token: revoke old session
+	a.store.RevokeSession(session.ID)
+
+	// Issue new session
+	accessToken, _, err := a.issueSession(w, r, user)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to refresh token"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"accessToken": accessToken})
+}
+
+func (a *App) logout(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("mcp_refresh_token")
+	if err == nil {
+		refreshToken := c.Value
+		hash := a.jwt.HashToken(refreshToken)
+		if session, ok := a.store.GetSessionByRefreshToken(hash); ok {
+			a.store.RevokeSession(session.ID)
+		}
+	}
+
+	// Clear cookies
+	secure := strings.HasPrefix(strings.ToLower(aBaseURL(r)), "https://")
+	http.SetCookie(w, &http.Cookie{
+		Name:     "mcp_access_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   secure,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "mcp_refresh_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   secure,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "logged out"})
 }
 
 func (a *App) frontendBaseURLFromRequest(r *http.Request) string {
